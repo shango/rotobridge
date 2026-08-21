@@ -564,6 +564,106 @@ describe("options", function () {
     });
 });
 
+/* --- per-point feather ----------------------------------------------------- */
+
+describe("import per-point feather", function () {
+    var LAST = 24;
+
+    function featherDoc(radiusAt) {
+        /* Four vertices that never move, so geometry contributes nothing to
+         * the deviation and anything the drift pass reacts to is the feather.
+         * `radiusAt(frame)` returns the four signed radii. */
+        var frames = {};
+        for (var f = 0; f <= LAST; f++) {
+            var radii = radiusAt(f);
+            var pts = [];
+            for (var i = 0; i < 4; i++) {
+                pts[i] = { "c": [100 + (i === 1 || i === 2 ? 200 : 0),
+                                 100 + (i >= 2 ? 200 : 0)],
+                           "in": [0, 0], "out": [0, 0], "feather": radii[i] };
+            }
+            frames[String(f)] = { "opacity": 1.0, "feather_uniform": [0, 0],
+                                  "points": pts };
+        }
+        var sides = { "in": "linear", "out": "linear" };
+        return JSON.stringify({
+            "format": "rotobridge", "version": 1,
+            "source": { "app": "test", "app_version": "1", "width": 1920,
+                        "height": 1080, "pixel_aspect": 1, "fps": 24 },
+            "range": [0, LAST], "warnings": [],
+            "shapes": [{ "name": "feathered", "closed": true, "blend": "union",
+                         "feather_model": "per_point",
+                         "feather_falloff": "smooth",
+                         "frames": frames,
+                         "keys": [{ "frame": 0, "interp": sides },
+                                  { "frame": LAST, "interp": sides }] }]
+        });
+    }
+
+    var STATIC = function () { return [30, -15, 0, 12]; };
+
+    function importFeather(radiusAt) {
+        return importInto(featherDoc(radiusAt),
+                          { workAreaDuration: (LAST + 1) / 24 });
+    }
+
+    it("does not chase drift that is only the host's array order", function () {
+        // The regression this whole investigation was about. The feather is
+        // [30, -15, 0, 12] on all 25 frames and the geometry never moves, so
+        // there is nothing for the pass to correct. Comparing `featherRadii`
+        // by array index instead of by anchor made it look like 27 px of drift
+        // - the host regroups the points by type at an interpolated frame, and
+        // 12 - (-15) = 27. It burned every pass and gave up.
+        var host = importFeather(STATIC);
+        has(host.alerts, "2 authored key(s), 0 corrective");
+    });
+
+    it("still measures feather that genuinely drifts", function () {
+        // The fix must not simply stop looking at the feather. This bows one
+        // radius parabolically between the two keys, which a straight line
+        // between them cannot follow, so the pass has to add keys.
+        var host = importFeather(function (f) {
+            var u = f / LAST;
+            return [30 + 40 * u * (1 - u) * 4, -15, 0, 12];
+        });
+        var report = has(host.alerts, "authored key(s)");
+        if (report.indexOf("0 corrective") > -1) {
+            fail("feather drift went unmeasured: " + report);
+        }
+    });
+
+    it("reads the radii back grouped by type between keys", function () {
+        // Guards the mock's model of the host rather than the adapters: if this
+        // stops reordering, the test above stops proving anything. Measured in
+        // After Effects by probe_ae_feather_interpolated.jsx.
+        var host = importFeather(STATIC);
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Shape");
+        var onKey = prop.valueAtTime(0, false).featherRadii;
+        var between = prop.valueAtTime(6 / 24, false).featherRadii;
+        eq(onKey.join(","), "30,-15,0,12", "the written order, on a key");
+        eq(between.join(","), "30,0,12,-15", "regrouped, between keys");
+    });
+
+    it("keeps each radius with its own anchor through the reorder", function () {
+        // Why the anchor is a safe key and the array index is not: nothing is
+        // lost in the reorder, so a comparison that resolves the anchor sees
+        // the same four points either way.
+        var host = importFeather(STATIC);
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Shape");
+        var got = prop.valueAtTime(6 / 24, false);
+        var seen = {};
+        for (var i = 0; i < got.featherRadii.length; i++) {
+            var pos = (Number(got.featherSegLocs[i])
+                       + Number(got.featherRelSegLocs[i])) % 4;
+            seen[pos.toFixed(4)] = Number(got.featherRadii[i]);
+        }
+        eq(seen["0.0000"], 30, "vertex 0");
+        eq(seen["1.0000"], -15, "vertex 1");
+        eq(seen["2.0000"], 0, "vertex 2");
+        eq(seen["3.0000"], 12, "vertex 3");
+    });
+});
+
 /* --- the sparse layer and the drift pass ----------------------------------- */
 
 describe("import keys", function () {

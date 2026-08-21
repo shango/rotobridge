@@ -3,10 +3,11 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-21 (drift pass now splits a monotone gap instead of
-walking back from its end, which closes the `hold`-over-a-moving-ancestor
-question; first real After Effects host run: **export passed, import FAILED**;
-Phase 6 open splines drafted and implemented host-free; Q10 closed)
+Last updated: 2026-08-21 (both After Effects import bugs fixed host-free - stale
+mask handles, and feather compared by array index; the drift pass now splits a
+monotone gap instead of walking back from its end, which closes the
+`hold`-over-a-moving-ancestor question; Phase 6 open splines drafted and
+implemented host-free; Q10 closed)
 
 ## Status
 
@@ -74,19 +75,19 @@ Everything is committed on `main`, working tree clean.
 
 ## In flight
 
-**STOP HERE FIRST. Two things are waiting on After Effects, in this order.**
-Both are described in full under "The AE import: one bug fixed, one open".
+**STOP HERE FIRST. One thing is waiting on After Effects.**
 
-1. **Run `test/probe/probe_ae_feather_interpolated.jsx`** (already on the
-   Desktop). `probe_ae_feather_order.jsx` has run and cleared the static path:
-   order **is** preserved, so `deviation` comparing by index is legitimate and
-   was left alone. What is left is whether the host reorders while
-   **interpolating**, which is the path the drift pass actually measures on.
-   **`deviation()` still must not be changed until this one has run.**
-2. **Re-run the six-shape import with the subset prompt blank**, to confirm the
-   stale-mask-handle fix in the host. It is fixed and tested host-free but has
-   never run in After Effects. Expect `feathered` to still warn - that is item
-   1, unrelated.
+**Re-run the six-shape import with the subset prompt blank.** Both import bugs
+are now fixed and tested host-free, and neither has ever run in After Effects.
+It confirms two things at once:
+
+- the **stale mask handle** fix - six shapes importing at all, rather than
+  failing with "object invalid";
+- the **feather anchor** fix - `feathered` converging, rather than warning that
+  27.0000 px is unaccounted for at frame 15.
+
+Re-copy `ae/*.jsx` to the Desktop folder first; both fixes are in there. Both
+probes have run and both are described in full under "The AE import".
 
 **Nuke is not blocked on anyone** - it runs headless from this shell. Both Nuke
 runs pass: Phase 6 open splines, and the AE-to-Nuke crossing.
@@ -314,10 +315,11 @@ Two independent drift passes over two independent geometry pipelines landing on
 the same residual at the same frame is the geometry core being genuinely shared,
 rather than two implementations that merely both look plausible.
 
-### The AE import: one bug fixed, one open, 2026-08-21
+### The AE import: two bugs, both fixed host-free, 2026-08-21
 
-Importing each shape on its own isolated it. Five of six converge; **only
-`feathered` fails**, and it is the only mask with per-point feather.
+Importing each shape on its own isolated it. Five of six converged; **only
+`feathered` failed**, and it is the only mask with per-point feather. Both bugs
+are now fixed host-free and neither has been confirmed in the host.
 
 | shape | corrective | worst drift | |
 |---|---|---|---|
@@ -326,7 +328,7 @@ Importing each shape on its own isolated it. Five of six converge; **only
 | `mixed` | 9 | 0.4615 px @ 8 | ok |
 | `offgrid` | 4 | 0.3957 px @ 17 | ok |
 | `opened` | 3 | 0.2584 px @ 16 | ok |
-| `feathered` | 18 | **27.0000 px @ 15** | **ran out of passes** |
+| `feathered` | 18 | **27.0000 px @ 15** | **ran out of passes**, fixed below |
 
 **Bug 1, FIXED: stale mask handles.** Every multi-shape import failed with
 "object invalid"; every single-shape import succeeded. `createMask` returned
@@ -340,63 +342,59 @@ and `test/test_ae_import.js` gained a two-shape case that fails on the old code
 with "mask 0 got no keys". Every previous import fixture was single-shape, which
 is exactly why nothing caught it. **Not yet confirmed in the host.**
 
-**Bug 2, still OPEN, but much narrower after probe 1 (2026-08-21).** The
-residual is **exactly 27.0000** and the file's per-vertex feather is
-`[30, -15, 0, 12]`, where `12 - (-15) = 27`. `deviation` compares `featherRadii`
-by array index, which is only meaningful if the host returns the array in the
-order it was given.
+**Bug 2, FIXED 2026-08-21: `deviation` compared `featherRadii` by array
+index.** The residual was **exactly 27.0000** against a file whose per-vertex
+feather is `[30, -15, 0, 12]`, where `12 - (-15) = 27`.
 
-**`probe_ae_feather_order.jsx` ran, and the type-grouping hypothesis was WRONG.**
-Written `[30, -15, 0, 12]` with types `[0, 1, 0, 0]`, read straight back as
-`[30, -15, 0, 12]` with types `[0, 1, 0, 0]`. Order preserved, so comparing by
-index is legitimate and `deviation` was **not** changed.
+**Two probes, and the answer needed both.**
 
-**The anchors are re-encoded, though, and that is worth keeping.** `segLocs
-[0, 1, 2, 3]` with `relSegLocs [0, 0, 0, 0]` came back as `segLocs [3, 0, 1, 2]`
-with `relSegLocs [1, 1, 1, 1]`: the same four positions, renamed from "start of
-segment *i*" to "end of segment *i-1*". Entry *i* is still entry *i* and still
-carries its own radius. So **matching feather points by anchor - the obvious fix
-- would have matched nothing**, which is exactly what the old note warned about
-before there was evidence either way. Do not reach for it now either.
+`probe_ae_feather_order.jsx` set a value once and read it straight back: order
+**preserved**, `[30, -15, 0, 12]` in and out. That looked like it killed the
+type-grouping hypothesis, and `deviation` was correctly left alone.
 
-**Four things narrow what is left.**
+`probe_ae_feather_interpolated.jsx` wrote **keys** and read at a frame
+**between** them, which is the path the drift pass actually measures on. There
+the array comes back `[30, 0, 12, -15]` with types `[0, 0, 0, 1]` - **grouped by
+type, non-negative before negative** - and index-wise that is 0, 15, 12, 27.
+So the original hypothesis had the right rule and the wrong code path, and only
+splitting the two reads apart could show it.
 
-- **It is not the geometry.** `feathered` bows only **3.856 px** off the chord
-  between its own authored keys, the second easiest of the six shapes in the
-  file (`linear` bows 13.223, `eased` 49.175, `mixed` 300.177). A 27 px residual
-  cannot come from geometry that gentle.
-- **It is the feather, by elimination.** Nuke converges the same shape to
-  0.2143 px, and Nuke's importer carries **no feather at all** from an
-  AE-sourced file - it uses the `feather_offset` vector, which only a Nuke
-  source writes. The one thing the two importers do differently is the one
-  thing left.
-- **The residual is constant because the feather is.** `[30, -15, 0, 12]` on
-  every one of the 25 frames. That is why 18 corrective keys moved it nowhere:
-  no number of keys closes a gap that does not depend on the frame.
-- **It cannot be reproduced under the mock.** `test/ae_mock.js` lerps
-  `featherRadii` component by component from two identical arrays, so it gives
-  back the identical array by construction, and it refuses BEZIER anyway - all
-  four of `feathered`'s key sides are `ease`. This one genuinely needs the host.
+**It happens for LINEAR keys as well as BEZIER**, so it is interpolation that
+does it, not the curve type.
 
-**What probe 1 did not test, and probe 2 does.** Probe 1 set the value **once**
-and read it **straight back**. The importer writes **keys** with
-`setValueAtTime` and reads with `valueAtTime` at frames **between** them, which
-is a different path through the host, and the drift pass measures at exactly
-those in-between frames. `test/probe/probe_ae_feather_interpolated.jsx` reads the
-array back on a key and between two keys, with BEZIER keys and again with
-LINEAR, so "interpolated at all" and "interpolated as a bezier" come apart.
-Synced to the Desktop.
+**Nothing is lost in the reorder, which is what makes a fix possible.** The
+anchors move with the radii: on a key, `segLocs [3, 0, 1, 2]` against
+`[30, -15, 0, 12]`; between keys, `segLocs [3, 1, 2, 0]` against
+`[30, 0, 12, -15]`. Both describe the same four points. Add the always-on rename
+that probe 1 found - a point written at `(segment i, rel 0)` returns at
+`(segment i-1, rel 1)` - and the invariant is `seg + rel`, the position in
+segment units, which wraps to the same value under both.
 
-Two orders both produce exactly 27 index-wise against `[30, -15, 0, 12]`, so the
-probe has to say which, if either:
+**The fix.** `deviation` now compares feather as a map keyed by
+`(seg + rel) % vertexCount` instead of by array index, in
+`ae/rotobridge_import.jsx`. It is deliberately **not** a raw anchor match on
+`(segLocs, relSegLocs)`, which is the obvious fix and would have matched nothing:
+the target shape is built in JS and never sees the host, so it carries
+`(i, 0)` while everything from the host carries `(i-1, 1)`.
 
-| candidate | order | index-wise diffs |
-|---|---|---|
-| grouped by type, non-negative first | `[30, 0, 12, -15]` | 0, 15, 12, **27** |
-| sorted by radius, descending | `[30, 12, 0, -15]` | 0, **27**, 0, **27** |
+**Reproduced host-free before it was fixed.** `test/ae_mock.js` now models both
+measured behaviours - the rename on every read, the regroup on interpolated
+reads only. With the model in and the old comparison still in place, the
+pre-existing "honours a real Nuke export's sparse layer" test failed with **41
+keys instead of 5**: the pass keying every frame in pursuit of drift that was
+never there. That is the `feathered` failure, off the host. Four new tests in
+`test/test_ae_import.js` pin it, including one that a **genuine** feather drift
+is still measured, because a fix that simply stopped looking at the feather
+would pass every other test here.
 
-Ruled out arithmetically: dropping the zero radius gives 12, reversal gives 18,
-and a rotation either way gives 45.
+**The exporter already had this right, and now says so.** `snapFeatherPoints`
+resolves each point through its own anchor rather than its array position, so
+the frame-major bake - which reads mostly in-between frames - was never
+affected. `test/test_ae_export.js` gained a keyed-path feather test to keep it
+that way, since index-by-index would look like a simplification.
+
+**Not yet confirmed in the host.** The six-shape import is the confirmation, and
+`feathered` should now converge instead of warning.
 
 ### A `hold` can contradict its own dense layer
 
@@ -625,16 +623,11 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 
 ## Next
 
-1. **Settle the feather order at an INTERPOLATED frame.** Run
-   `test/probe/probe_ae_feather_interpolated.jsx`; the reasoning, the elimination
-   and the two candidate orders are above. Probe 1 already answered the static
-   question - order preserved - and already ruled out the anchor-matching fix,
-   because the host renames `(seg i, rel 0)` to `(seg i-1, rel 1)` and an anchor
-   match would find nothing. If the interpolated read-back does reorder, the fix
-   is for `deviation` to compare feather as a **set keyed by resolved position**,
-   normalising `(seg, rel)` the way the host does, or to stop measuring feather
-   at all on the grounds that it never animates. Decide that with the probe
-   output in hand, not before.
+1. **Confirm both import fixes in the host.** Both probes have run, both bugs
+   are fixed, and the reasoning is above. What is left is a six-shape import
+   with the subset prompt blank. Nothing needs rebuilding: the export is
+   committed as `test/golden/ae_scene.rbj`. Re-copy `ae/*.jsx` to the Desktop
+   folder first.
 
    Then re-run the **six-shape** import to confirm the stale-handle fix in the
    host. Nothing needs rebuilding: the export is committed as

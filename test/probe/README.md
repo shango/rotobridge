@@ -110,7 +110,7 @@ the whole `ae/` directory rather than one script.
 Unlike the Nuke pair, most of this is testable with no application present:
 
 ```bash
-./test/run.sh          # 357 tests, no host needed
+./test/run.sh          # 362 tests, no host needed
 ```
 
 `test/ae_mock.js` stands in for After Effects - `valueAtTime`,
@@ -238,21 +238,39 @@ back as "end of segment *i-1*", the same four positions renamed. Entry *i* keeps
 its own radius. That kills the obvious fix - matching feather points by
 `featherSegLocs` plus `featherRelSegLocs` would match nothing.
 
-**`probe_ae_feather_interpolated.jsx` - NOT YET RUN.** Probe 1 tested a static
-write and read. The importer writes **keys** and reads at frames **between**
-them, which is where the drift pass measures. This one reads the array back on a
-key and between two keys, with BEZIER keys (all four of `feathered`'s sides are
-`ease`) and again with LINEAR, so "interpolated at all" and "interpolated as a
-bezier" come apart. 27 on an interpolated frame and 0 on a key means the host
-reorders while interpolating; 0 everywhere means the feather is not the cause
-and it is open again.
+**`probe_ae_feather_interpolated.jsx` - RUN 2026-08-21.** Probe 1 tested a
+static write and read. The importer writes **keys** and reads at frames
+**between** them, which is where the drift pass measures.
 
-What is already eliminated, host-free: it is not the geometry (`feathered` bows
-only 3.856 px off its own chord, against 13.223 for `linear` and 49.175 for
-`eased`); it is not visible to Nuke (which converges the same shape to 0.2143 px
-carrying no feather at all, because `feather_offset` is Nuke-only); and it
-cannot be reproduced under `test/ae_mock.js`, which lerps `featherRadii` from
-two identical arrays and refuses BEZIER outright.
+| Frame | radii | types | segLocs | worst vs written |
+|---|---|---|---|---|
+| 0, on a key | `[30, -15, 0, 12]` | `[0, 1, 0, 0]` | `[3, 0, 1, 2]` | 0 |
+| 6, **interpolated** | `[30, 0, 12, -15]` | `[0, 0, 0, 1]` | `[3, 1, 2, 0]` | **27** |
+| 12, on a key | `[30, -15, 0, 12]` | `[0, 1, 0, 0]` | `[3, 0, 1, 2]` | 0 |
+
+Identical for **LINEAR keys and BEZIER**, so it is interpolation that reorders,
+not the curve type. The rule is **grouped by type, non-negative before
+negative** - which was the original hypothesis, right about the rule and wrong
+about the code path. Only splitting the static read from the interpolated one
+could tell those apart.
+
+**Nothing is lost.** The anchors move with the radii: `segLoc 3` carries 30 in
+both rows, `segLoc 0` carries -15 in both. So `seg + rel`, the position in
+segment units, identifies a point under both the rename and the regroup, and
+that is what `deviation()` in `ae/rotobridge_import.jsx` now keys on. A raw
+`(segLocs, relSegLocs)` match would **not** work: the target shape is built in
+JS and never sees the host, so it carries `(i, 0)` while the host returns
+`(i-1, 1)`.
+
+`test/ae_mock.js` models both behaviours now, so this is caught without the
+host: with the model in and the old comparison still in place, the pre-existing
+"honours a real Nuke export's sparse layer" test fails with 41 keys instead of
+5 - the pass keying every frame chasing drift that was never there.
+
+Eliminated along the way, all host-free: it is not the geometry (`feathered`
+bows only 3.856 px off its own chord, against 13.223 for `linear` and 49.175 for
+`eased`), and it is invisible to Nuke, which converges the same shape to
+0.2143 px carrying no feather at all because `feather_offset` is Nuke-only.
 
 ## Known gaps
 

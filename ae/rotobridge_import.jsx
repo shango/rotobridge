@@ -328,6 +328,43 @@
 
     var MEASURED = ["vertices", "inTangents", "outTangents"];
 
+    function featherByAnchor(shape) {
+        /* Feather radii keyed by where each point actually sits on the path,
+         * not by its position in the array.
+         *
+         * After Effects hands feather points back in an order of its own, and
+         * two probes measured what it does. The anchor is always renamed: a
+         * point written at (segment i, rel 0) returns at (segment i-1, rel 1),
+         * the same place described as the end of the previous segment
+         * (`probe_ae_feather_order.jsx`). And at an INTERPOLATED frame the
+         * points are regrouped by type, non-negative before negative, for
+         * LINEAR keys as well as BEZIER (`probe_ae_feather_interpolated.jsx`).
+         *
+         * Both preserve every point; only the array order moves. So comparing
+         * `featherRadii` element by element measures the host's bookkeeping
+         * instead of the feather, which is what left `feathered` from
+         * `test/golden/ae_scene.rbj` with exactly 27.0000 px of drift the pass
+         * could never remove - the file's feather is [30, -15, 0, 12] on every
+         * frame, and 12 - (-15) = 27.
+         *
+         * `seg + rel` is the position in segment units and is invariant under
+         * the rename: (0, 0) and (n-1, 1) both land on vertex 0 once the sum
+         * wraps. Keying on it makes the comparison independent of both
+         * reorderings without assuming either.
+         */
+        var out = {};
+        var radii = shape.featherRadii || [];
+        var n = shape.vertices.length;
+        if (!n) { return out; }
+        for (var i = 0; i < radii.length; i++) {
+            var seg = Number(shape.featherSegLocs[i]);
+            var rel = Number(shape.featherRelSegLocs[i]);
+            var pos = (seg + rel) % n;
+            out[pos.toFixed(4)] = Number(radii[i]);
+        }
+        return out;
+    }
+
     function deviation(got, target) {
         /* How far the host's own interpolation sits from the dense layer, in
          * pixels - the worst single coordinate.
@@ -349,10 +386,21 @@
                 }
             }
         }
-        var radii = target.featherRadii || [];
-        var here = got.featherRadii || [];
-        for (i = 0; i < radii.length; i++) {
-            d = Math.abs(Number(here[i] || 0) - Number(radii[i]));
+        var want = featherByAnchor(target);
+        var have = featherByAnchor(got);
+        var at;
+        for (at in want) {
+            if (!RB.util.hasOwn(want, at)) { continue; }
+            d = Math.abs((RB.util.hasOwn(have, at) ? have[at] : 0) - want[at]);
+            if (d > worst) { worst = d; }
+        }
+        for (at in have) {
+            /* A point the host carries that the dense layer does not is a real
+             * difference, not a bookkeeping one. */
+            if (!RB.util.hasOwn(have, at) || RB.util.hasOwn(want, at)) {
+                continue;
+            }
+            d = Math.abs(have[at]);
             if (d > worst) { worst = d; }
         }
         return worst;

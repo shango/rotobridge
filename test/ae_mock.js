@@ -43,6 +43,73 @@ function makeShape(spec) {
     };
 }
 
+function feathersAsHostReturns(shape, interpolated) {
+    /* After Effects does not hand feather points back the way they were
+     * written, and it does two different things to them.
+     *
+     * ALWAYS, even reading a value straight back: the anchor is renamed. A
+     * point written at (segment i, rel 0) returns at (segment i-1, rel 1) - the
+     * same place on the path, described as the end of the previous segment
+     * rather than the start of this one. Measured by
+     * `test/probe/probe_ae_feather_order.jsx`: segLocs [0, 1, 2, 3] with
+     * relSegLocs [0, 0, 0, 0] came back [3, 0, 1, 2] with [1, 1, 1, 1].
+     *
+     * AT AN INTERPOLATED FRAME, additionally: the points are regrouped by
+     * type, every non-negative one before every negative one, stably. Measured
+     * by `test/probe/probe_ae_feather_interpolated.jsx`, which saw it for
+     * LINEAR keys as well as BEZIER - so it is interpolation that does it, not
+     * the curve type. On a key frame the written order comes back.
+     *
+     * The radius, type and anchor of each point travel together through both.
+     * Nothing is lost; only the array order changes. That is the whole reason
+     * an importer must not compare `featherRadii` by array index, which is what
+     * left 27.0000 px of phantom drift on `feathered` (HANDOFF.md).
+     */
+    var n = shape.vertices.length;
+    var radii = shape.featherRadii || [];
+    if (!radii.length || !n) { return shape; }
+    var segments = shape.closed ? n : n - 1;
+
+    var points = [];
+    for (var i = 0; i < radii.length; i++) {
+        var seg = Number(shape.featherSegLocs[i]);
+        var rel = Number(shape.featherRelSegLocs[i]);
+        if (rel === 0) {
+            if (seg > 0) { seg -= 1; rel = 1; }
+            else if (shape.closed) { seg = segments - 1; rel = 1; }
+        }
+        points[i] = { seg: seg, rel: rel, radius: Number(radii[i]),
+                      type: Number(shape.featherTypes[i]) };
+    }
+
+    if (interpolated) {
+        var outer = [], inner = [];
+        for (i = 0; i < points.length; i++) {
+            if (points[i].type === 1) { inner[inner.length] = points[i]; }
+            else { outer[outer.length] = points[i]; }
+        }
+        points = outer.concat(inner);
+    }
+
+    var segLocs = [], relLocs = [], out = [], types = [];
+    for (i = 0; i < points.length; i++) {
+        segLocs[i] = points[i].seg;
+        relLocs[i] = points[i].rel;
+        out[i] = points[i].radius;
+        types[i] = points[i].type;
+    }
+    return makeShape({
+        vertices: shape.vertices,
+        inTangents: shape.inTangents,
+        outTangents: shape.outTangents,
+        closed: shape.closed,
+        featherSegLocs: segLocs,
+        featherRelSegLocs: relLocs,
+        featherRadii: out,
+        featherTypes: types
+    });
+}
+
 var LINEAR = 6612, BEZIER = 6613, HOLD = 6614;
 
 function KeyframeEase(speed, influence) {
@@ -74,6 +141,13 @@ function lerp(a, b, u) {
         featherRadii: lerp(a.featherRadii, b.featherRadii, u),
         featherTypes: a.featherTypes
     });
+}
+
+function asHostReturns(value, interpolated) {
+    /* Only a mask path has feather points; everything else reads back as it
+     * was written. */
+    if (!value || value.featherRadii === undefined) { return value; }
+    return feathersAsHostReturns(value, interpolated);
 }
 
 function makeProp(valueFn, seed) {
@@ -123,13 +197,17 @@ function makeProp(valueFn, seed) {
 
     var prop = {
         get numKeys() { return keys.length; },
-        get value() { return keys.length ? keys[0].value : valueFn(0); },
+        get value() {
+            return asHostReturns(keys.length ? keys[0].value : valueFn(0),
+                                 false);
+        },
         _keys: keys,
 
         valueAtTime: function (t) {
-            if (!keys.length) { return valueFn(t); }
+            if (!keys.length) { return asHostReturns(valueFn(t), false); }
             var i = find(t);
-            return i === -1 ? between(t) : keys[i].value;
+            return i === -1 ? asHostReturns(between(t), true)
+                            : asHostReturns(keys[i].value, false);
         },
 
         setValueAtTime: function (t, value) {

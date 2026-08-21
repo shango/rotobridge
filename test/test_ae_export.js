@@ -352,6 +352,41 @@ describe("feather", function () {
         eq(doc.shapes[0].frames["2"].points[2].feather, -30);
     });
 
+    it("resolves feather by anchor when the host has reordered it", function () {
+        // The fixtures above read an unkeyed path, so the host hands the
+        // feather back renamed but in written order. A real mask is keyed, and
+        // between two keys After Effects also regroups the points by type -
+        // non-negative before negative - which
+        // test/probe/probe_ae_feather_interpolated.jsx measured for LINEAR keys
+        // as well as BEZIER.
+        //
+        // The export is frame-major and bakes every frame, so most of the
+        // frames it reads are exactly those in-between ones. It survives that
+        // because `snapFeatherPoints` resolves each point through its own
+        // anchor rather than trusting the array order. If that is ever
+        // "simplified" to index-by-index, every non-key frame of a feathered
+        // shape starts exporting scrambled radii, and only this test says so.
+        var withFeather = function (t) {
+            var s = movingSquare(t);
+            s.featherSegLocs = [0, 1, 2, 3];
+            s.featherRelSegLocs = [0, 0, 0, 0];
+            s.featherRadii = [30, -15, 0, 12];
+            s.featherTypes = [0, 1, 0, 0];
+            return s;
+        };
+        var spec = basic({ mask: { pathAt: withFeather } });
+        spec.layers[0].masks[0].pathKeys = [
+            { t: 0, value: withFeather(0) },
+            { t: 4 / 24, value: withFeather(4 / 24) }
+        ];
+        var doc = runExport(mock.install(spec));
+        var pts = doc.shapes[0].frames["2"].points;   // between the two keys
+        eq(pts[0].feather, 30, "vertex 0");
+        eq(pts[1].feather, -15, "vertex 1");
+        eq(pts[2].feather, 0, "vertex 2");
+        eq(pts[3].feather, 12, "vertex 3");
+    });
+
     it("warns when a point was mid-segment", function () {
         var doc = runExport(mock.install(withFeatherPoints({
             segLocs: [0], relLocs: [0.7], radii: [5]
