@@ -93,7 +93,8 @@ runs pass: Phase 6 open splines, and the AE-to-Nuke crossing.
 
 No open questions in the `prd.md` §15 sense - Q10 closed 2026-08-20.
 
-**Open splines are drafted, not frozen** (`spec/rbj-v2-draft.md`). `closed`
+**Open splines are a PERMANENT draft** (`spec/rbj-v2-draft.md`), decided
+2026-08-21 - see "Open splines may not be worth a version number". `closed`
 becomes a real boolean and a file containing an open shape declares
 `version: 2`. Four things worth carrying forward:
 
@@ -472,11 +473,20 @@ Even the Nuke-to-Nuke case loses the stroke, because the importer builds a new
 node. What Phase 6 built is a data-carrying feature wearing a matte feature's
 clothes, and `spec/rbj-v2-draft.md` section 7 now says so.
 
-**Undecided, and it is a scope call rather than a bug:** whether to keep v2 as a
-never-frozen draft, drop open splines and stay at v1, or extend v2 to carry
-stroke width and end caps so that at least the Nuke round trip is whole. Nothing
-is broken either way - the code is written, tested and honest about what it does
-not carry.
+**DECIDED 2026-08-21, by the user: v2 stays a PERMANENT draft.** Not a document
+waiting to be frozen - a record of a feature that works and has no demonstrated
+use. `spec/rbj-v1.md` remains the format.
+
+Rejected, and why. **Deleting it**: the code exists, is tested, is honest about
+what it drops, and costs the v1 paths nothing, since a writer emits `version: 1`
+unless a shape is actually open. **Extending it** with stroke width and end
+caps: that would make the feature real in exactly one host by inventing members
+for something After Effects has no equivalent of, and would commit an
+interchange format for roto mattes to a paint model it was not designed for.
+
+The practical rule: no file should be written with `version: 2` on purpose. If a
+Silhouette or Mocha adapter ever turns up a real use for open splines, the work
+is already done. Do not reopen this without one.
 
 ### Bezier ease, answered in the host 2026-08-21
 

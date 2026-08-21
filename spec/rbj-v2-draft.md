@@ -1,7 +1,25 @@
 # `.rbj` version 2 - open splines (DRAFT)
 
-**Status:** DRAFT, 2026-08-21. Not frozen. `spec/rbj-v1.md` is unchanged and stays
-FROZEN; this document is a delta against it and nothing here weakens a v1 file.
+**Status: PERMANENT DRAFT.** Decided 2026-08-21, after §5 and §7 turned out the
+way they did. This is not a document waiting to be frozen; it is a record of a
+feature that works and has no demonstrated use. `spec/rbj-v1.md` is unchanged and
+stays **FROZEN**, and it is the format. This is a delta against it and nothing
+here weakens a v1 file.
+
+**Why it stays a draft rather than being deleted or finished.** Open splines do
+not produce a matte anywhere `.rbj` can reach: After Effects renders no alpha
+from an open mask path at all, and Nuke renders a stroke whose width and end
+caps are node knobs this format has no member for, so even a Nuke-to-Nuke
+crossing arrives at the defaults (width 10.0, `rounded` caps). In roto practice,
+across applications, open splines are not used for matting - they are strokes,
+guides and paths-as-data. So the feature carries **geometry** correctly and
+cannot make it render correctly, which is not enough to justify a version number.
+
+Deleting it would be equally wrong: the code exists, is tested, is honest about
+what it drops, and costs the v1 paths nothing (a writer emits `version: 1`
+unless a shape is actually open, §2). If a Silhouette or Mocha adapter ever
+turns up a real use, this is ready. Until then no file should be written with
+`version: 2` on purpose.
 
 **Scope:** one change - open splines, `prd.md` §12 Phase 6. The other three Phase 6
 extras (inverted flag, mask expansion, richer ease fitting) are **not** in this draft.

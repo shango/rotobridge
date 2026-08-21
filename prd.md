@@ -1,7 +1,7 @@
 # RotoBridge - Product Requirements Document
 
 **Version:** 4.10
-**Status:** Phases 0-3 complete on the Nuke side, Phase 4 complete on the After Effects side pending a run in the host. `spec/rbj-v1.md` **frozen** 2026-08-20. Q10 closed 2026-08-20; no open questions. Phase 6 open splines drafted 2026-08-21 in `spec/rbj-v2-draft.md`, host-free tests green, pending a run in either host
+**Status:** Phases 0-3 complete on the Nuke side, Phase 4 complete on the After Effects side pending a run in the host. `spec/rbj-v1.md` **frozen** 2026-08-20. Q10 closed 2026-08-20; no open questions. Phase 6 open splines implemented and tested 2026-08-21, and `spec/rbj-v2-draft.md` is a **permanent draft**: they carry geometry correctly and cannot render anywhere the format reaches (After Effects produces no alpha from an open mask path; Nuke strokes them through node knobs `.rbj` has no member for), so v1 remains the format
 **Phase 0 results:** `test/golden/nuke_probe/17.1v1/`, `test/golden/ae_probe/` (six AE runs; run 3 carries the feather points, run 6 the mixed key interpolation)
 **Verified against:** Nuke 17.1v1 (non-commercial), After Effects 25.6x101
 **Scope:** After Effects ↔ Nuke roto spline interchange via a neutral format, designed for later expansion to Mocha Pro, Flame, and others
@@ -538,7 +538,7 @@ The other three extras are **not** in the draft, and their absence is a decision
 rotobridge/
 ├── spec/
 │   ├── rbj-v1.md               # format specification, FROZEN 2026-08-20
-│   └── rbj-v2-draft.md         # open splines, DRAFT 2026-08-21
+│   └── rbj-v2-draft.md         # open splines, PERMANENT DRAFT 2026-08-21
 ├── core/                       # host-free, stdlib only, no I/O
 │   ├── geom.py                 # canonical-space conversion, per app per direction
 │   ├── timing.py               # frame/second conversion, ranges, offsets
