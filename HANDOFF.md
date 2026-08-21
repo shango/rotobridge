@@ -1048,11 +1048,26 @@ half of the defect was not reproducible host-free. Key times and transform
 geometry stay independent on purpose: a mismatch between them is a state a real
 comp can be in.
 
-**Still outstanding.** `test/golden/ae_scene.rbj` was exported by the old code
-and still carries the old labels. It needs a re-export in After Effects before
-the golden files agree with the exporter, and the Nuke crossing report
-(`ae_to_nuke_report.txt`, `mixed` 5 authored + 15 corrective) is measured
-against the stale file. Expect roughly 15 corrective keys to become 3.
+**Still outstanding, and it needs the host.**
+`test/golden/ae_scene.rbj` was exported by the old code and still carries the
+old labels. Until it is re-exported the golden files disagree with the exporter,
+and the Nuke crossing report (`ae_to_nuke_report.txt`, `mixed` 5 authored + 15
+corrective) is measured against the stale file. Expect roughly 15 corrective
+keys to become 3.
+
+The procedure is written down at `test/probe/README.md`, "Re-exporting the scene
+golden". The part worth knowing before starting: **the re-export is only
+believable if its diff is the one predicted here** - geometry identical, and
+exactly two label changes, `mixed` key 12 out `hold -> ease` and key 18 out
+`ease -> hold`. Anything else means the fixture moved rather than the exporter,
+and the two are indistinguishable in the committed file afterwards.
+
+`test/probe/diff_rbj.py` is what makes that check possible. A plain `diff` on a
+thousand lines of pretty-printed floats cannot separate a one-ulp wobble in the
+bake from a flipped `interp` label, so the tool reports geometry as a worst-case
+pixel distance and labels one at a time. It was verified against a synthetic
+copy of the golden carrying exactly the predicted change, and against one with a
+key dropped and a vertex moved 0.75 px, so both halves are known to report.
 
 ## Next
 

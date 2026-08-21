@@ -159,6 +159,62 @@ the whole reason it has to be built in the host at all. Three tests in
 `test_ae_export.js` check that the builder still runs and authors what it
 claims, because a typo in it is otherwise only discovered on another machine.
 
+### Re-exporting the scene golden
+
+`test/golden/ae_scene.rbj` is a host artefact, so a change to the exporter does
+not update it - it makes it stale, and every downstream measurement keeps being
+taken against the old answer. Re-exporting is a by-hand run, and the last
+step is the one that matters.
+
+```bash
+cp ae/*.jsx "/mnt/c/Users/shann/OneDrive/Desktop/rb-ae/"   # all five together
+```
+
+1. Make an **empty comp, 1920 x 1080, 24 fps, at least 25 frames** and leave it
+   active. Those numbers land in the file's `source` block and the builder takes
+   its solid size from the comp, so a comp that differs is a different fixture.
+   Build in a fresh project rather than one that already has the scene - the
+   builder adds solids, it does not replace them, and a second copy exports as
+   twice the masks.
+2. `File > Scripts > Run Script File...` -> `setup_ae_scene.jsx`. It authors two
+   solids: `RotoBridge test` with the six masks, and `RotoBridge static` with
+   the two control masks.
+3. **Select the `RotoBridge test` layer, and only that one.** With nothing
+   selected the exporter takes every masked layer in the comp, which is eight
+   shapes and a different file. (`ae_static_ease.rbj` is the other solid,
+   exported the same way with the other layer selected.)
+4. Same menu -> `rotobridge_export.jsx`. Save as `ae_scene.rbj`.
+5. Read the alert: **6 shapes, 600 points, 4 warnings**. Any other count means
+   step 1 or step 3 went wrong, and the file is not this fixture.
+6. Copy the file back over `test/golden/ae_scene.rbj`.
+7. **Check the diff before committing it**, against the version you replaced:
+
+```bash
+git show HEAD:test/golden/ae_scene.rbj > /tmp/ae_scene_was.rbj
+python3 test/probe/diff_rbj.py /tmp/ae_scene_was.rbj test/golden/ae_scene.rbj
+```
+
+Step 7 is the point of the exercise, and `diff_rbj.py` exists because a plain
+`diff` cannot do it: the file is a thousand lines of pretty-printed floats, so a
+one-ulp wobble in the bake and a flipped `interp` label look identical in it.
+The tool reports geometry as a worst-case distance and labels one at a time.
+
+**The re-export is only believable if the diff is the one that was predicted.**
+Geometry identical, and exactly two lines under labels:
+
+    mixed key 12 out: hold -> ease
+    mixed key 18 out: ease -> hold
+
+Anything else means the fixture moved, not the exporter - a different AE build,
+a stale project, a hand-tweaked mask - and the file should not be committed
+until that is explained. Geometry drifting by a float epsilon is fine and worth
+recording; geometry drifting by a pixel is a different scene.
+
+Then re-run the crossing, because `ae_to_nuke_report.txt` is measured against
+this file. `mixed` currently reports 5 authored + 15 corrective at tolerance
+0.5; with the hold in the right place the drift pass has a flat segment to
+agree with, so expect roughly 3.
+
 What still has to be run by hand, and what to look for:
 
 | Check | Why the mock cannot do it |
