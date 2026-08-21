@@ -634,6 +634,63 @@ describe("export keys", function () {
     });
 });
 
+/* --- the by-hand fixture --------------------------------------------------- */
+
+describe("the scene builder for the host run", function () {
+    /* `test/probe/setup_ae_scene.jsx` authors the comp the Phase 4 checklist
+     * needs. It is run by hand in After Effects, so nothing here can say what
+     * the host makes of it - but a typo in it is only discovered after a trip
+     * to another machine, and that is worth one test.
+     *
+     * The scene cannot be exported under the mock, deliberately: its `eased`
+     * mask is bezier on every side, and the dense bake would have to
+     * interpolate one, which is exactly the thing the mock refuses to guess
+     * at. That refusal is why the fixture exists. */
+
+    function built() {
+        var host = mock.install({
+            width: 1920, height: 1080, frameRate: 24,
+            workAreaStart: 0, workAreaDuration: 25 / 24, duration: 60 / 24,
+            layers: [], selected: []
+        });
+        vm.runInThisContext(
+            fs.readFileSync(path.join(ROOT, "test", "probe",
+                                      "setup_ae_scene.jsx"), "utf8"),
+            { filename: "setup_ae_scene.jsx" });
+        return host;
+    }
+
+    it("runs start to finish and authors one mask per checklist row",
+       function () {
+        var host = built();
+        var masks = host.comp.layer(1)._masks;
+        var names = [];
+        for (var i = 0; i < masks.length; i++) { names[i] = masks[i].name; }
+        eq(String(names),
+           String(["linear", "eased", "mixed", "feathered", "offgrid"]));
+        // A failed authoring step is reported rather than thrown, so an alert
+        // naming one is the thing that would otherwise pass unnoticed.
+        eq(host.alerts.length, 1);
+        ok(String(host.alerts[0]).indexOf("FAILED") === -1, host.alerts[0]);
+    });
+
+    it("puts a key where no frame is, for the export to snap", function () {
+        var host = built();
+        var prop = host.comp.layer(1)._masks[4].property("ADBE Mask Shape");
+        near(prop.keyTime(2) * 24, 10.4, 6, "the off-grid key");
+    });
+
+    it("eases nowhere near the default, so a default cannot pass for it",
+       function () {
+        // 16.667 is what After Effects reports on a key nobody eased, so an
+        // ease that survives the round trip has to be distinguishable from it.
+        var host = built();
+        var prop = host.comp.layer(1)._masks[1].property("ADBE Mask Shape");
+        near(prop.keyInTemporalEase(1)[0].influence, 91.176, 3);
+        near(prop.keyOutTemporalEase(1)[0].influence, 33.333, 3);
+    });
+});
+
 /* --- report ---------------------------------------------------------------- */
 
 if (failures.length) {

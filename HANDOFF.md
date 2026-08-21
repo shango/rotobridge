@@ -22,7 +22,7 @@ under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
 adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
 `test/test_core.py` is **153 passing tests**, run with `python3
 test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
-package). `./test/run.sh` runs all five host-free suites: **321 tests**.
+package). `./test/run.sh` runs all five host-free suites: **324 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -264,7 +264,18 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 1. **Phase 4 needs a run in After Effects.** Everything else about it is done
    and tested with no host present. The by-hand checklist is in
    `test/probe/README.md` under "After Effects adapters" and names what the mock
-   cannot reach; the two entries that matter most:
+   cannot reach.
+
+   **Run `test/probe/setup_ae_scene.jsx` first.** It authors the whole scene -
+   five masks, one per checklist row that needs something built, on a scaled and
+   rotating layer - so the run is the same every time and a difference in the
+   fixture cannot be mistaken for a difference in the adapters. It ends in an
+   alert saying what to look for in each mask. Its own final line is worth
+   reading too: an authoring step that failed is reported rather than thrown,
+   and `setTemporalEaseAtKey` is the one call in it that no probe run has ever
+   made in the host.
+
+   The two entries that matter most:
 
    - **A mask keyed with bezier ease, exported and reimported.** This is the one
      interpolation `test/ae_mock.js` refuses to guess at. The question is

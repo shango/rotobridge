@@ -232,13 +232,23 @@ function makeLayer(host, spec) {
     /* The transform group, with keys where a test asked for them. Only the
      * key TIMES matter to the export - the transform itself is `toComp` above,
      * which is the thing the geometry actually goes through - so a keyed
-     * property here holds times and nothing else. */
+     * property here holds times and nothing else.
+     *
+     * The properties an unseparated 2D layer really has are present whether a
+     * test asked for them or not, so a script can write one; the separated
+     * `ADBE Position_0` / `_1` are absent, which is what such a layer reports
+     * and what the export's null handling exists for. */
     var transform = {
         _props: {},
         property: function (matchName) {
             return this._props[matchName] || null;
         }
     };
+    var STANDARD = ["ADBE Anchor Point", "ADBE Position", "ADBE Scale",
+                    "ADBE Rotate Z", "ADBE Opacity"];
+    for (var d = 0; d < STANDARD.length; d++) {
+        transform._props[STANDARD[d]] = makeProp(function () { return 0; });
+    }
     var wantKeys = spec.transformKeys || {};
     for (var name in wantKeys) {
         if (!Object.prototype.hasOwnProperty.call(wantKeys, name)) { continue; }
@@ -368,6 +378,10 @@ function install(spec) {
     global.MaskMode = { NONE: 6812, ADD: 6813, SUBTRACT: 6814,
                         INTERSECT: 6815, LIGHTEN: 6816, DARKEN: 6817,
                         DIFFERENCE: 6818 };
+    /* The adapters carry their own copies of these two (`ae.FFO_SMOOTH`), so
+     * nothing under `ae/` needs this - a script written the way host code is
+     * written does. */
+    global.MaskFeatherFalloff = { FFO_SMOOTH: 7212, FFO_LINEAR: 7213 };
     global.prompt = function (message, preset) {
         host.prompts.push(message);
         if (host.answers.length) { return host.answers.shift(); }

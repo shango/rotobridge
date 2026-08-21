@@ -110,7 +110,7 @@ the whole `ae/` directory rather than one script.
 Unlike the Nuke pair, most of this is testable with no application present:
 
 ```bash
-./test/run.sh          # 321 tests, no host needed
+./test/run.sh          # 324 tests, no host needed
 ```
 
 `test/ae_mock.js` stands in for After Effects - `valueAtTime`,
@@ -145,6 +145,19 @@ The import asks three questions: start frame, shape subset, and drift tolerance
 in pixels. The third only appears when the file has keys to honour - `0` keys
 every frame and is exact but uneditable, `inf` keeps only the authored keys, and
 the `0.5` default lands corrective keys where the mismatch would show.
+
+**Build the scene with `test/probe/setup_ae_scene.jsx`** rather than by hand.
+It adds one solid carrying five masks, one per row below that needs something
+authored, on a layer that is both scaled and rotating so the derived-affine path
+is live. Everything is inside one undo group, and it ends in an alert saying
+what to look for in each mask. A hand-drawn mask differs run to run, and a
+difference in the fixture reads exactly like a difference in the adapters.
+
+The scene deliberately cannot be exported under the mock: its `eased` mask is
+bezier on every side, and the dense bake would have to interpolate one. That is
+the whole reason it has to be built in the host at all. Three tests in
+`test_ae_export.js` check that the builder still runs and authors what it
+claims, because a typo in it is otherwise only discovered on another machine.
 
 What still has to be run by hand, and what to look for:
 
