@@ -197,7 +197,7 @@ rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
 | geometry, tolerance 0 | worst **6.1e-05 px** over 6 shapes and 25 frames - the float32 storage floor |
 | the open spline | arrives open; closed shapes stay closed |
 | key preservation, tolerance inf | the field-by-field diff is **empty** - `closed`, `feather_model`, `feather_falloff`, `blend`, key frames and per-side `interp` all identical, `{in: linear, out: hold}` included |
-| drift, tolerance 0.5 | every shape inside tolerance; worst `mixed` at 0.4616 px |
+| drift, tolerance 0.5 | every shape inside tolerance; worst `mixed` at 0.1000 px |
 | corrective counts | **Do not read these as a verdict on interpolation.** Every mask is on a rotating layer whose transform is baked into the points, so even `linear` bows 13.2 px off the straight chord between its own LINEAR keys and must need corrective keys. Masks 7 and 8, on the static solid, are what answer that |
 | re-export | validates, `version: 2`, carries the open spline back |
 
@@ -205,6 +205,54 @@ rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
 keys every frame by definition (`prd.md` §8), so its key list says nothing about
 key preservation; reading one off it produces a page of "losses" that are only
 dense mode working. Tolerance inf is the one that speaks to criterion 3.
+
+## AE feather point order
+
+Two probes, both about one number: importing `feathered` from
+`test/golden/ae_scene.rbj` leaves exactly **27.0000 px** at frame 15 that the
+drift pass cannot remove. The file's per-vertex feather is `[30, -15, 0, 12]`
+and `12 - (-15) = 27`. `deviation()` in `ae/rotobridge_import.jsx` compares
+`featherRadii` by array index, which is only sound if the host preserves order.
+
+Both need any open comp and are run with `File > Scripts > Run Script File...`.
+Sync first, as with every AE script:
+
+```bash
+cp test/probe/probe_ae_feather_interpolated.jsx \
+   "/mnt/c/Users/shann/OneDrive/Desktop/probe_ae_feather_interpolated.jsx"
+```
+
+**`probe_ae_feather_order.jsx` - RUN 2026-08-21.** Sets the value once and reads
+it straight back.
+
+| Written | Read back |
+|---|---|
+| `radii [30, -15, 0, 12]` | `[30, -15, 0, 12]` |
+| `types [0, 1, 0, 0]` | `[0, 1, 0, 0]` |
+| `segLocs [0, 1, 2, 3]` | `[3, 0, 1, 2]` |
+| `relSegLocs [0, 0, 0, 0]` | `[1, 1, 1, 1]` |
+
+**Order is preserved**, so index-wise comparison is legitimate and `deviation`
+was left alone. The anchors are **re-encoded**: "start of segment *i*" comes
+back as "end of segment *i-1*", the same four positions renamed. Entry *i* keeps
+its own radius. That kills the obvious fix - matching feather points by
+`featherSegLocs` plus `featherRelSegLocs` would match nothing.
+
+**`probe_ae_feather_interpolated.jsx` - NOT YET RUN.** Probe 1 tested a static
+write and read. The importer writes **keys** and reads at frames **between**
+them, which is where the drift pass measures. This one reads the array back on a
+key and between two keys, with BEZIER keys (all four of `feathered`'s sides are
+`ease`) and again with LINEAR, so "interpolated at all" and "interpolated as a
+bezier" come apart. 27 on an interpolated frame and 0 on a key means the host
+reorders while interpolating; 0 everywhere means the feather is not the cause
+and it is open again.
+
+What is already eliminated, host-free: it is not the geometry (`feathered` bows
+only 3.856 px off its own chord, against 13.223 for `linear` and 49.175 for
+`eased`); it is not visible to Nuke (which converges the same shape to 0.2143 px
+carrying no feather at all, because `feather_offset` is Nuke-only); and it
+cannot be reproduced under `test/ae_mock.js`, which lerps `featherRadii` from
+two identical arrays and refuses BEZIER outright.
 
 ## Known gaps
 
