@@ -23,7 +23,7 @@ under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
 adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
 `test/test_core.py` is **165 passing tests**, run with `python3
 test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
-package). `./test/run.sh` runs all five host-free suites: **346 tests**.
+package). `./test/run.sh` runs all five host-free suites: **348 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -69,19 +69,26 @@ nothing here renders a pixel. What it buys is that a Phase 5 mismatch is now
 attributable: the document-level conversion is exact, so a pixel-level
 disagreement is the host or the render, not the geometry core.
 
-Everything through Phase 4 and the scene builder is committed on `main`; the
-open-spline work is the working tree on top of it.
+Everything is committed on `main`, working tree clean.
 
 ## In flight
 
-**STOP HERE FIRST: the After Effects import fails in the host, and the next
-step is one experiment.** See "The first After Effects host run" below. The
-Nuke Phase 6 run has not been done at all and is staged ready to paste.
+**STOP HERE FIRST. Two things are waiting on After Effects, in this order.**
+Both are described in full under "The AE import: one bug fixed, one open".
 
-Nothing else blocking, and **no open questions** - Q10 closed 2026-08-20. Phase 4 is complete in code and in the host-free tests; what it has
-not had is a run inside After Effects. Phase 6's first extra, open splines, is
-in the same position as of 2026-08-21: written, tested with no host present,
-and waiting on a run. See `Next`.
+1. **Run `test/probe/probe_ae_feather_order.jsx`** (already on the Desktop). It
+   decides whether After Effects returns feather points in the order they were
+   written. Everything about the one remaining import failure hangs on it, and
+   **`deviation()` must not be changed until it has run.**
+2. **Re-run the six-shape import with the subset prompt blank**, to confirm the
+   stale-mask-handle fix in the host. It is fixed and tested host-free but has
+   never run in After Effects. Expect `feathered` to still warn - that is item
+   1, unrelated.
+
+**Nuke is not blocked on anyone** - it runs headless from this shell. Both Nuke
+runs pass: Phase 6 open splines, and the AE-to-Nuke crossing.
+
+No open questions in the `prd.md` §15 sense - Q10 closed 2026-08-20.
 
 **Open splines are drafted, not frozen** (`spec/rbj-v2-draft.md`). `closed`
 becomes a real boolean and a file containing an open shape declares
@@ -545,32 +552,31 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 
 ## Next
 
-1. **Fix the After Effects import.** It failed in the host on 2026-08-21 with
-   "object invalid" and the whole account is above, under "The first After
-   Effects host run". Two things unblock it and both are cheap:
+1. **Settle the feather order, then fix `deviation`.** Run
+   `test/probe/probe_ae_feather_order.jsx`; the reasoning and the arithmetic are
+   above. If the order is not preserved, the fix is to match feather points by
+   their anchor (`featherSegLocs` plus `featherRelSegLocs`) rather than by array
+   index - but read what the probe says about the anchors first, because
+   matching by anchor fails just as silently if those move too.
 
-   - Re-run the import typing `opened` at the shape-subset prompt. One shape
-     working where six failed confirms the stale-mask-reference hypothesis.
-   - Capture the **full alert text**, including the `(line N)` the catch block
-     appends.
+   Then re-run the **six-shape** import to confirm the stale-handle fix in the
+   host. Nothing needs rebuilding: the export is committed as
+   `test/golden/ae_scene.rbj`. Re-copy `ae/*.jsx` to the Desktop folder after
+   any edit.
 
-   The scene is already built and its export is committed as
-   `test/golden/ae_scene.rbj`, so the import can be retried without rebuilding
-   anything. The Desktop copy under `rotobridge_ae/` was in sync with the repo
-   as of this run - re-copy after any edit under `ae/`.
+1b. **Two Phase 4 checklist entries are still unanswered, and the current scene
+   cannot answer either.** Both need a run of the rebuilt scene, whose masks 7
+   and 8 sit on a static layer:
 
-   Still unanswered because the import never completed, both from the Phase 4
-   checklist:
-
-   - **Bezier ease reimported.** The export half is now settled - AE ease
-     reaches `.rbj` exactly, factor of 100, measured. What is still open is
-     whether the *importer* reproduces AE's own curve: the drift pass should
-     report a near-zero residual on a file After Effects wrote itself. If it
-     does not, spec §10.3 is what to look at, not the adapter.
-   - **Ease-then-type ordering.** `setTemporalEaseAtKey` forces a key to BEZIER,
-     so the importer sets the ease first and the per-side types after. The
-     export side of `mixed` proves the ordering works when *reading*. The
-     symptom to look for on import is a hold key that renders smooth.
+   - **Bezier ease reimported.** The export half is settled - AE ease reaches
+     `.rbj` exactly, factor of 100, measured. Whether the *importer* reproduces
+     AE's own curve is what `eased_static` is for. Read `linear_static` first:
+     it must come back with zero corrective keys or the rig is wrong before ease
+     is reached.
+   - **Ease-then-type ordering.** `setTemporalEaseAtKey` forces a key to BEZIER
+     and the importer sets the types after. The export side of `mixed` proves
+     the ordering works when *reading*. The symptom on import is a hold key that
+     renders smooth.
 
 1a. **The Nuke Phase 6 run PASSED, 2026-08-21.** Report committed at
    `test/golden/nuke_probe/17.1v1/phase6/roundtrip_report.txt`. The new section
