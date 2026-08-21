@@ -389,6 +389,10 @@ an authored point that pins feather to zero width, not an absent one.
 
 Both host applications are **Windows-side**; this repo lives in WSL.
 
+- **Nuke is drivable straight from the WSL shell** - it is headless (`--nc -t`),
+  so the acceptance test needs no human. After Effects is not: its scripts are
+  reached through `File > Scripts > Run Script File...` and it genuinely needs a
+  person. Do not treat the Nuke half as blocked on the user.
 - Nuke: non-commercial licence. `-t` alone fails (asks for a render licence);
   `--nc -t` works. NC caps Python-visible nodes at 10, and `scriptSaveAs(".nk")`
   silently writes nothing - only `.nknc` saves. Full invocation in
@@ -440,10 +444,17 @@ Both host applications are **Windows-side**; this repo lives in WSL.
      export side of `mixed` proves the ordering works when *reading*. The
      symptom to look for on import is a hold key that renders smooth.
 
-1a. **The Nuke Phase 6 run has not been done.** Fully staged, nothing to
-   prepare - `/mnt/c/Users/shann/rotobridge/rb/` was synced from the repo and
-   `out/phase6` created. **Re-sync before running** if anything under `core/`,
-   `nuke/` or `test/` changed since:
+1a. **The Nuke Phase 6 run PASSED, 2026-08-21.** Report committed at
+   `test/golden/nuke_probe/17.1v1/phase6/roundtrip_report.txt`. The new section
+   read `exported closed=False, version=2`, the render-settings warning present,
+   `rebuilt 'open_spline' with 4 points, open=True`, and worst deviation
+   **0.000e+00 px** - exact, not merely inside the float32 floor, because the
+   fixture is static so nothing re-evaluates through an interpolation. Every
+   Phase 2 and 3 stage still passes unchanged and `roundtrip.rbj` / `sparse.rbj`
+   regenerate **byte-identical** to the committed goldens, so open splines cost
+   the existing paths nothing.
+
+   To re-run it:
 
    ```bash
    rm -rf "/mnt/c/Users/shann/rotobridge/rb" \

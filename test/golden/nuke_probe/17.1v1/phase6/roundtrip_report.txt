@@ -1,0 +1,101 @@
+RotoBridge Phase 2, 3 and 6 acceptance - Nuke round trip
+Nuke 17.1v1, frames 1001-1020
+
+--- core.geom matrix vs Nuke's matrix * vector ---
+  worst disagreement over 9 samples: 3.052e-05
+  OK
+
+--- export ---
+  1 shape(s), 20 frames, 4 points
+  feather_model = per_point, blend = union, falloff = smooth
+  took 0.007 s
+  warning: shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
+
+--- schema ---
+  the exported document validates against the frozen v1 schema
+
+--- the sparse layer (spec section 9) ---
+  keys written: 20
+  interp on the first key: {'in': 'ease', 'out': 'ease'}
+
+--- import at tolerance 0 ---
+  rebuilt 'round_trip' with 4 points, closed=True
+  took 0.015 s
+
+--- geometry, every point on every frame ---
+  worst centre deviation:  3.052e-05 px
+  worst tangent deviation: 0.000e+00 px
+  worst feather deviation: 0.000e+00 px
+  Criterion 1 wants corners within 0.1 px, criterion 2 wants
+  tolerance 0 exact. The residual here is float32 epsilon at these
+  magnitudes - Nuke stores point positions as float32 (case 73's
+  serialised x42c80000 is 100.0f) - so it is the storage floor, not
+  accumulated error. Tangents and feather land exactly because they
+  are small numbers where float32 still resolves the float64 value.
+
+--- attributes ---
+  worst opacity / uniform feather deviation: 0.000e+00
+
+--- frame offset ---
+  imported at offset -1000; worst centre deviation 3.052e-05 px
+
+--- acceptance criterion 11, 20 points over 150 frames ---
+  export: 0.16 s  (budget 10 s)
+  import at tolerance 0:   0.03 s  (budget 30 s)
+  import at tolerance 0.5: 0.03 s  (budget 30 s)
+
+--- Phase 3: a shape keyed on 5 frames ---
+  The acceptance criterion: five authored keys survive as five keys
+  the artist can grab, not as one key per frame.
+  exported keys: [1, 11, 21, 31, 41]
+  interp across all keys: [('linear', 'linear')]
+  imported keys: [1, 11, 21, 31, 41]
+  report: 5 authored, 0 corrective, worst 6.104e-05 px
+  worst deviation over every frame: 6.104e-05 px
+
+--- Phase 3: an animated transform is shape animation ---
+  spec section 9 and prd.md section 9.2 step 5: the transform is
+  baked into the points, so its keys are the shape's keys even when
+  no control point is keyed at all.
+  keys from the transform alone: [1, 20]
+  the baked first vertex travelled 400.0 px
+
+--- Phase 3: the drift bound, acceptance criterion 4 ---
+  Nuke to Nuke does not drift - the same keys re-evaluate to the
+  same curve, which is the round trip working. So this thins the
+  file's sparse layer to two straight keys over the same curved
+  dense layer, which is what a foreign exporter's tier-2 output
+  looks like, and checks the pass brings it back inside tolerance.
+  tolerance inf: 2 key(s), worst deviation 30.919 px
+  tolerance 0.5: 12 key(s), worst deviation 0.465 px
+  report: 2 authored, 10 corrective
+
+--- Phase 3: mode switching, acceptance criterion 5 ---
+  Re-importing the same file at tolerance 0 must reach the dense
+  result with no trip back to the source application.
+  20 key(s), worst deviation 3.052e-05 px
+
+--- a shape inside a transformed layer ---
+  Nuke keeps a transform per layer AND per shape, neither aware of
+  the other (case 77). Flattening without composing the chain moves
+  the geometry, so check the layer translation actually lands.
+  authored [100.0, 100.0], layer translation (500, 25)
+  exported [600.0, 125.0], expected [600.0, 125.0]
+  deviation 0.000e+00 px
+  flatten warnings: layer 'moved' flattened to the root
+
+--- Phase 6: an open spline (spec/rbj-v2-draft.md) ---
+  Nuke carries open/closed as a shape FLAG (case 72), so the round
+  trip has to keep it and the file has to declare version 2 to be
+  allowed to say so at all.
+  exported closed=False, version=2
+  render-settings warning: shape 'open_spline': an open spline's render settings are node knobs (openspline_width and the end types), not shape attributes, so they are not carried in the file
+  rebuilt 'open_spline' with 4 points, open=True
+  worst deviation 0.000e+00 px
+  The scalar-feather path on an open spline is arithmetic, not host
+  behaviour, and test_core.py TestOpenSplines covers it. What is
+  still unmeasured is what an OPEN mask renders as in After Effects
+  (spec/rbj-v2-draft.md section 5).
+
+=== VERDICT ===
+PASS - Nuke round trips through .rbj, dense, sparse and open
