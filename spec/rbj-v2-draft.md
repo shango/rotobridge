@@ -99,19 +99,34 @@ none of them are per shape:
   `toolbar_openspline_falloff`, `toolbar_openspline_render_hull` (probe
   `q10/93_node_knobs.txt`). Probe `phase2/72_shape_attributes.txt` enumerates the
   per-shape attributes and none of them is any of these.
-- **After Effects** has no equivalent knob at all. What an open mask path renders as
-  is **unmeasured**; nothing in probe runs 1-6 authored one.
+- **After Effects** cannot matte an open path **at all**. A mask whose path is
+  open produces **no alpha**. Open paths exist in AE - on shape layers, for
+  strokes, trim paths and paths-as-data - but masking is not one of their uses.
+  Reported by the user 2026-08-21, after `setup_ae_scene.jsx` authored one.
 
-So a v2 exporter warns that the render settings were not carried, and a v2 importer
-warns when it takes an open spline from a **different** application than its own. Both
-are soft failures (v1 §12.2, extended):
+  This is not the "unmeasured" earlier drafts of this section recorded. It is
+  measured, and the answer is that the After Effects side of an open spline is a
+  **data** round trip and never a rendered one. Note the API does not object:
+  `maskPath.closed = false` is stored, read back as `false` and exported as
+  `closed: false`, which is why `test/golden/ae_scene.rbj` says so and stamps
+  `version: 2` honestly. The document is right; the matte is empty.
+
+So a v2 exporter warns that the render settings were not carried, and a v2
+importer into After Effects warns that the mask will produce nothing. Both are
+soft failures (v1 §12.2, extended):
 
 > - An open spline's host render settings, not carried. Warned once per shape.
-> - An open spline whose `source.app` is not the importing application: what it
->   renders as is unverified across hosts. Warned once per shape.
+> - An open spline imported into an application that cannot matte one. Warned
+>   once per shape, **regardless of `source.app`**: After Effects produces no
+>   alpha from an open mask path whoever wrote the file, itself included.
 
-The document-level round trip is exact in both hosts. The **rendered** one is exact
-only within a host, and says so.
+The document-level round trip is exact in both hosts. The **rendered** one is
+exact in Nuke and does not exist in After Effects.
+
+**This is deliberately not a hard failure.** The geometry is real, it mattes in
+Nuke, and an artist may want it in an AE comp to move onto a shape layer or to
+drive a stroke. Refusing it would destroy data to prevent a surprise a warning
+covers, and closing it would invent a segment the artist never drew.
 
 ## 6. Validation summary, as a delta
 
@@ -131,8 +146,24 @@ Nothing else in §12.1 or §12.2 moves.
 1. An open spline authored in Nuke exports, re-imports, and renders the same matte -
    including the stroke width the file does not carry, which means confirming the
    node knobs are untouched by the importer rather than assuming it.
-2. An open mask authored in After Effects does the same, which first needs somebody
-   to author one and find out what AE renders it as (§5).
+2. ~~An open mask authored in After Effects does the same.~~ **Answered
+   2026-08-21, and it cannot ever be satisfied: After Effects produces no alpha
+   from an open mask path (§5).** Replaced by a condition that can be met - that
+   an open spline survives After Effects as *data*: it imports, exports again
+   with `closed: false`, and the geometry returns unchanged. Covered by
+   `test/test_ae_import.js`, so this half is already done.
 3. §4 point 2 measured rather than assumed, in the same run that settles `ff`.
+   **This got cheaper and less urgent at once.** The open-path feather sign only
+   ever mattered for what it renders, and After Effects does not render an open
+   path at all, so the only application that could disagree with Nuke about it is
+   one that does not exist yet. It stays a stated convention until a third
+   adapter needs it.
+
+**Read §5 before treating this as nearly frozen.** Two of the three conditions
+turned out to be about rendering, and rendering is where open splines are
+weakest: After Effects produces nothing, and Nuke produces a stroke whose width
+and end caps `.rbj` does not carry. What v2 reliably does is move the
+**geometry**. That may be the honest scope of the feature rather than a gap in
+it, but it is a decision that has not been taken.
 
 Until all three, this stays a draft and `spec/rbj-v1.md` stays the frozen format.

@@ -259,13 +259,15 @@
         for (s = 0; s < shapes.length; s++) {
             headers[s]["closed"] = states[s].closed;
             if (!states[s].closed) {
-                /* What After Effects renders an open mask path as is unmeasured
-                 * - nothing in probe runs 1-6 authored one - and Nuke's own
-                 * open-spline width and end caps are node knobs the file has no
-                 * member for. spec/rbj-v2-draft.md section 5. */
-                warn("mask '" + shapes[s].name + "' is an open spline; the"
-                     + " geometry is carried but what it renders as is not,"
-                     + " and is unverified across applications");
+                /* An open mask path produces no alpha in After Effects, so
+                 * this mask was not matting anything here either. The geometry
+                 * is still worth carrying - it mattes in Nuke - but no host's
+                 * stroke settings travel with it, and Nuke's are node knobs the
+                 * file has no member for. spec/rbj-v2-draft.md section 5. */
+                warn("mask '" + shapes[s].name + "' is an open spline, which"
+                     + " produces no alpha as an After Effects mask; the"
+                     + " geometry is carried but no stroke width or end caps"
+                     + " are");
             }
             finishFeather(headers[s], states[s]);
         }

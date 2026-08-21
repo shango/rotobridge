@@ -427,6 +427,57 @@ keys and 0.2148 px, against 18 and an unremovable 27.0000 px before. Nuke
 measures 0.2143 px on the same shape by a route that carries no feather at all,
 which is about as independent a second opinion as this project can get.
 
+### After Effects cannot matte an open path, 2026-08-21
+
+**A mask whose path is open produces no alpha in After Effects.** Reported by
+the user after `setup_ae_scene.jsx` authored one. Open paths do exist in AE - on
+shape layers, for strokes, trim paths and paths-as-data - but masking is not one
+of their uses.
+
+**The API does not object, which is why nothing caught this.**
+`maskPath.closed = false` is accepted, reads back `false`, and exports as
+`closed: false`. That is why `test/golden/ae_scene.rbj` says so and stamps
+`version: 2` honestly, and why the AE-to-Nuke crossing legitimately passes. The
+document is right. The matte is empty.
+
+**Both warnings were wrong and are fixed.** They said "unverified across
+applications". It is not unverified any more, and the import warning is no
+longer gated on `source.app`: an open mask produces no alpha whoever wrote the
+file, After Effects included.
+
+**This is deliberately still a soft failure**, not a refusal. The geometry is
+real, it mattes in Nuke, and an artist may want it in a comp to move onto a
+shape layer. Refusing would destroy data to prevent a surprise a warning covers;
+closing it would invent a segment nobody drew.
+
+**And it puts a serious question over v2 as a whole - see below.**
+
+### Open splines may not be worth a version number
+
+Raised by the user 2026-08-21: in roto, across applications, open splines are
+not used. That matches what the two hosts actually do, and the numbers are now
+measured on both sides:
+
+- **After Effects renders nothing at all** from an open mask path (above).
+- **Nuke does render one, but as a stroke**, and the parameters that make it a
+  stroke are **node** knobs the format has no member for: `openspline_width`
+  defaults to **10.0**, both end types to **`rounded`**, `toolbar_openspline_
+  falloff` to 0.0 (measured headless, 17.1v1). So an open spline that crosses
+  through `.rbj` into a fresh Roto node arrives at those defaults, not at
+  whatever the author set.
+
+So the format moves an open spline's **geometry** faithfully and cannot make it
+render correctly anywhere: nothing in AE, and a default-width stroke in Nuke.
+Even the Nuke-to-Nuke case loses the stroke, because the importer builds a new
+node. What Phase 6 built is a data-carrying feature wearing a matte feature's
+clothes, and `spec/rbj-v2-draft.md` section 7 now says so.
+
+**Undecided, and it is a scope call rather than a bug:** whether to keep v2 as a
+never-frozen draft, drop open splines and stay at v1, or extend v2 to carry
+stroke width and end caps so that at least the Nuke round trip is whole. Nothing
+is broken either way - the code is written, tested and honest about what it does
+not carry.
+
 ### Bezier ease, answered in the host 2026-08-21
 
 **`.rbj` ease reproduces After Effects' own curve exactly.** This was the last

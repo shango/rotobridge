@@ -529,14 +529,18 @@
         var maskIndex = [];
         var s;
         for (s = 0; s < specs.length; s++) {
-            /* An open spline round trips exactly within one application; what
-             * it *renders* as across two is unmeasured on this side and lives
-             * in node knobs on Nuke's. spec/rbj-v2-draft.md section 5. */
-            if (specs[s]["closed"] === false
-                    && doc.source.app !== ae.SOURCE_APP) {
-                warn("shape '" + specs[s].name + "' is an open spline from "
-                     + doc.source.app + "; the geometry is exact but what it"
-                     + " renders as across applications is unverified");
+            /* After Effects cannot matte an open path at all: a mask whose
+             * path is open produces no alpha. Open paths are usable in AE on a
+             * shape layer, for strokes and trim paths, but not for masking.
+             * Reported by the user 2026-08-21 and it is why this warns on every
+             * open spline rather than only on one from another application -
+             * the provenance makes no difference to the result.
+             * spec/rbj-v2-draft.md section 5. */
+            if (specs[s]["closed"] === false) {
+                warn("shape '" + specs[s].name + "' is an open spline: After"
+                     + " Effects produces no alpha from an open mask path, so"
+                     + " the geometry arrives exactly but the mask renders"
+                     + " nothing. Open paths matte in Nuke, not here");
             }
             maskIndex[s] = createMask(layer, specs[s]);
         }

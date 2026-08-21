@@ -338,23 +338,32 @@ describe("open splines", function () {
         eq(second.version, 2);
     });
 
-    it("warns when the open spline came from another application", function () {
-        // The geometry is exact either way; what an open path renders as
-        // across two applications is what nobody has measured.
+    it("warns that the mask will render nothing", function () {
+        // After Effects produces no alpha from an open mask path at all, so
+        // the geometry arriving exactly is not the same as the mask working.
+        var host = importInto(exported(openMask()));
+        has(host.alerts, "produces no alpha from an open mask path");
+    });
+
+    it("warns whatever application the file came from", function () {
+        // This used to be gated on provenance, back when the question was
+        // "unverified across applications". It is not a crossing question: an
+        // open mask produces no alpha in After Effects whoever wrote the file,
+        // including After Effects.
         var text = exported(openMask());
         var doc = JSON.parse(text);
         doc.source.app = "Nuke";
-        var host = importInto(JSON.stringify(doc));
-        has(host.alerts, "is an open spline from Nuke");
+        var fromNuke = importInto(JSON.stringify(doc));
+        has(fromNuke.alerts, "produces no alpha from an open mask path");
+        var own = importInto(text);
+        has(own.alerts, "produces no alpha from an open mask path");
     });
 
-    it("says nothing about crossing when the file is its own", function () {
-        // The exporter's own warning is replayed either way - a .rbj carries
-        // its provenance - so the thing being asserted is the importer's.
-        var host = importInto(exported(openMask()));
+    it("says nothing of the sort about a closed spline", function () {
+        var host = importInto(exported());
         for (var i = 0; i < host.alerts.length; i++) {
-            ok(host.alerts[i].indexOf("open spline from") === -1,
-               "warned about its own file: " + host.alerts[i]);
+            ok(host.alerts[i].indexOf("open spline") === -1,
+               "warned about a closed shape: " + host.alerts[i]);
         }
     });
 });
