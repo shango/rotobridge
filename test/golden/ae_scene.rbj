@@ -13,7 +13,8 @@
   "warnings": [
     "mask 'feathered': 3 feather point(s) sat mid-segment and were snapped to the nearer vertex; Nuke can only anchor feather at a vertex",
     "mask 'feathered': two feather points resolved to vertex 3; kept radius 12 and dropped 0",
-    "mask 'opened' is an open spline; the geometry is carried but what it renders as is not, and is unverified across applications",
+    "mask 'opened' is an open spline, which produces no alpha as an After Effects mask; the geometry is carried but no stroke width or end caps are",
+    "mask 'mixed': 1 key(s) hold the mask path while the layer moves under it, so the shape is not flat there and the hold is not carried as one. Geometry is unaffected; what is lost is a held key the artist could edit",
     "mask 'offgrid': a key sat 0.400 of a frame off the grid and was snapped to frame 10; .rbj keys are whole frames"
   ],
   "shapes": [
@@ -2091,14 +2092,14 @@
           "frame": 12,
           "interp": {
             "in": "linear",
-            "out": "hold"
+            "out": "ease"
           }
         },
         {
           "frame": 18,
           "interp": {
             "in": "ease",
-            "out": "ease"
+            "out": "hold"
           }
         },
         {
