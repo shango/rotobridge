@@ -1058,9 +1058,10 @@ keys to become 3.
 The procedure is written down at `test/probe/README.md`, "Re-exporting the scene
 golden". The part worth knowing before starting: **the re-export is only
 believable if its diff is the one predicted here** - geometry identical, and
-exactly two label changes, `mixed` key 12 out `hold -> ease` and key 18 out
-`ease -> hold`. Anything else means the fixture moved rather than the exporter,
-and the two are indistinguishable in the committed file afterwards.
+exactly three label changes, `mixed` key 12 out `hold -> ease`, key 18 out
+`ease -> hold`, and the new `mask 'mixed'` warning that says the same thing in
+prose. Anything else means the fixture moved rather than the exporter, and the
+two are indistinguishable in the committed file afterwards.
 
 `test/probe/diff_rbj.py` is what makes that check possible. A plain `diff` on a
 thousand lines of pretty-printed floats cannot separate a one-ulp wobble in the
@@ -1068,6 +1069,24 @@ bake from a flipped `interp` label, so the tool reports geometry as a worst-case
 pixel distance and labels one at a time. It was verified against a synthetic
 copy of the golden carrying exactly the predicted change, and against one with a
 key dropped and a vertex moved 0.75 px, so both halves are known to report.
+
+**The first attempt at this failed, and it is worth knowing how.**
+2026-08-21: the scene was rebuilt and re-exported cleanly, the alert read 6
+shapes / 600 points / 4 warnings, and the diff came back with no key changes at
+all - which reads exactly like "the exporter change did nothing". It had not
+run. The scripts on the Windows side were a copy taken before `0c1b3af`, and
+nothing in the procedure looks at them. That is the failure mode this whole
+arrangement is blind to: the code under test lives on one machine and the
+acceptance check on another, and a stale deployment produces a plausible file, a
+plausible alert, and a wrong-shaped diff whose natural reading is that the
+*fixture* moved. So the procedure now opens by copying the scripts and
+`diff`-ing them, and the alert's warning count is part of the check - four
+warnings instead of five is the specific fingerprint of a pre-`0c1b3af` build.
+
+That run was not wasted. Its geometry was **bit-identical** to the committed
+golden, which is a fact worth having on its own: `setup_ae_scene.jsx` plus the
+exporter reproduce the bake exactly across a fresh project, so any geometry line
+in a future diff is signal rather than host noise.
 
 ## Next
 

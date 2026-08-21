@@ -167,8 +167,19 @@ taken against the old answer. Re-exporting is a by-hand run, and the last
 step is the one that matters.
 
 ```bash
-cp ae/*.jsx "/mnt/c/Users/shann/OneDrive/Desktop/rb-ae/"   # all five together
+DEST="/mnt/c/Users/shann/OneDrive/Desktop/rotobridge_ae"
+cp ae/*.jsx test/probe/setup_ae_scene.jsx "$DEST/"
+for f in ae/*.jsx; do diff -q "$f" "$DEST/$(basename $f)"; done
 ```
+
+Do the copy and the `diff` even when you are sure, because a stale deployment is
+the one failure this whole procedure cannot see. The scripts run on the Windows
+side and the acceptance check runs here; nothing connects them. An export from a
+script one commit behind produces a plausible file, a plausible alert, and a
+diff that is simply the wrong shape - and the natural reading of that diff is
+that the fixture moved. This has already happened once. The five `ae/*.jsx` load
+each other and must go together; `setup_ae_scene.jsx` lives elsewhere in the
+tree, so a `cp ae/*.jsx` on its own leaves it behind.
 
 1. Make an **empty comp, 1920 x 1080, 24 fps, at least 25 frames** and leave it
    active. Those numbers land in the file's `source` block and the builder takes
@@ -184,8 +195,10 @@ cp ae/*.jsx "/mnt/c/Users/shann/OneDrive/Desktop/rb-ae/"   # all five together
    shapes and a different file. (`ae_static_ease.rbj` is the other solid,
    exported the same way with the other layer selected.)
 4. Same menu -> `rotobridge_export.jsx`. Save as `ae_scene.rbj`.
-5. Read the alert: **6 shapes, 600 points, 4 warnings**. Any other count means
-   step 1 or step 3 went wrong, and the file is not this fixture.
+5. Read the alert: **6 shapes, 600 points, 5 warnings**. Any other count means
+   step 1 or step 3 went wrong, and the file is not this fixture. Four warnings
+   is the specific symptom of a deployment predating `0c1b3af`, which is the
+   commit that adds the fifth.
 6. Copy the file back over `test/golden/ae_scene.rbj`.
 7. **Check the diff before committing it**, against the version you replaced:
 
@@ -200,10 +213,19 @@ one-ulp wobble in the bake and a flipped `interp` label look identical in it.
 The tool reports geometry as a worst-case distance and labels one at a time.
 
 **The re-export is only believable if the diff is the one that was predicted.**
-Geometry identical, and exactly two lines under labels:
+Geometry identical, and exactly three lines under labels:
 
     mixed key 12 out: hold -> ease
     mixed key 18 out: ease -> hold
+    warning changed: mask 'mixed': 1 key(s) hold the mask path while the layer
+    moves under it, ...
+
+The two key lines are the change itself: `mixed` holds its mask path from frame
+12 to 24, but the layer's rotation is keyed at 6 and 18, so the composite only
+stops moving at 18. The old exporter read the path property and put the hold at
+12; the new one reads the bake and puts it at 18, where the shape actually
+stands still. The warning is the same fact said out loud - a held key the artist
+authored is not carried as a hold, and they should hear that.
 
 Anything else means the fixture moved, not the exporter - a different AE build,
 a stale project, a hand-tweaked mask - and the file should not be committed
