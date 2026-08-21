@@ -24,7 +24,7 @@ acceptance tests pass. `core/` holds the host-free geometry, timing, schema, int
 drift code: stdlib only, no host imports, no file access, so it runs unchanged
 under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
 adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
-`test/test_core.py` is **170 passing tests**, run with `python3
+`test/test_core.py` is **176 passing tests**, run with `python3
 test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
 package). `./test/run.sh` runs all five host-free suites: **357 tests**.
 
@@ -39,7 +39,9 @@ against 0.465 px at tolerance 0.5. Report committed at
 Golden files: `test/golden/square.rbj` (hand-built), `test/golden/roundtrip.rbj`
 (a real Nuke export carrying every v1 field), `test/golden/sparse.rbj` (a real
 export of a shape keyed on 5 frames of 41), **`test/golden/ae_scene.rbj`** (the
-first real After Effects export, 6 shapes, `version: 2`, 2026-08-21) and
+first real After Effects export, 6 shapes, `version: 2`, 2026-08-21),
+**`test/golden/ae_static_ease.rbj`** (2 shapes on a layer that does not move,
+the file that answered the ease question) and
 **`test/golden/held_over_moving_layer.rbj`** (hand-built: a `hold` the dense
 layer contradicts - see below). All three are validated with no
 Nuke present by `test/test_core.py`, and the latter two are **run through the
@@ -82,13 +84,9 @@ and `feathered` converges at 0.2148 px with 3 corrective keys where it used to
 burn every pass on a phantom 27.0000. Both Nuke runs pass. Nothing is blocked on
 a bug.
 
-**The one thing still waiting on After Effects is a scene rebuild**, and it
-answers a question rather than fixing a defect. `test/golden/ae_scene.rbj` has
-**six** shapes; `test/probe/setup_ae_scene.jsx` now builds **eight**. Masks 7
-and 8 - `eased_static` and `linear_static`, on a solid that does not move - are
-the only way to answer whether the importer reproduces After Effects' own ease
-curve, because every mask in the six sits on a rotating layer whose transform is
-baked into the points. See `Next` item 1.
+**Nothing is waiting on After Effects.** The last open Phase 4 question -
+whether `.rbj` ease reproduces AE's own curve - was answered in the host on
+2026-08-21 and the answer is yes, exactly. See "Bezier ease, answered".
 
 **Nuke is not blocked on anyone** - it runs headless from this shell. Both Nuke
 runs pass: Phase 6 open splines, and the AE-to-Nuke crossing.
@@ -429,6 +427,50 @@ keys and 0.2148 px, against 18 and an unremovable 27.0000 px before. Nuke
 measures 0.2143 px on the same shape by a route that carries no feather at all,
 which is about as independent a second opinion as this project can get.
 
+### Bezier ease, answered in the host 2026-08-21
+
+**`.rbj` ease reproduces After Effects' own curve exactly.** This was the last
+open Phase 4 question and the one the crossing test could never reach.
+
+Fixture: `test/golden/ae_static_ease.rbj`, a two-shape export of masks 7 and 8
+of `setup_ae_scene.jsx`, both on `RotoBridge static`, a solid that does not
+move. Exported and reimported in After Effects 25.6x101.
+
+| shape | authored | corrective | worst drift |
+|---|---|---|---|
+| `eased_static` | 3 | **0** | **0.0000 px** |
+| `linear_static` | 2 | **0** | **0.0000 px** |
+
+**What makes 0.0000 px mean something.** `eased_static`'s dense layer bows
+**135.4 px** off the straight chord between its own keys, against a 0.5 px
+tolerance - so if the ease were being dropped, defaulted or mis-scaled, the
+drift pass could not have hidden it. The three authored keys alone rebuilt all
+135 px of that curve. Influence 91.176 in / 33.333 out reached the file as
+`[0.91176, 0]` and `[0.33333, 0]` and came back as the same curve, which
+confirms spec section 10.3's factor of 100 **in both directions on a real
+curve** rather than on a default.
+
+`linear_static` is the calibration and it passes: its dense layer is straight to
+0.0001 px and it reimported with zero corrective keys, so the rig contributes
+nothing and the eased number is readable.
+
+**This retires the last doubt about `eased`'s 20 corrective keys.** That count
+was the baked rotation, exactly as the correction in "AE to Nuke" says, and not
+the cost of a bare `ease`. Two masks with the same interpolation on a layer that
+does not move need **no** corrective keys at all.
+
+**It does not settle the Nuke half.** AE ease to `.rbj` is now measured in both
+directions; `.rbj` ease to Nuke's `lslope` / `rslope` and `la` / `ra` is still
+unmeasured and still Phase 5. `core/interp.to_nuke` is the one function that
+changes.
+
+**A side effect worth remembering.** This file is the first measurement of what
+AE's temporal ease actually does to a mask path - a known influence and speed
+against 25 frames of sampled geometry. `test/ae_mock.js` refuses BEZIER on the
+grounds that nothing had measured it (`prd.md`, "the mock draws one line").
+Something has now. Raising that line is optional and nothing needs it yet, but
+the evidence exists where it did not before.
+
 ### A `hold` can contradict its own dense layer
 
 Found while investigating the above, unrelated to it, and **a Phase 4 problem
@@ -656,40 +698,28 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 
 ## Next
 
-1. **Rebuild the AE scene with eight masks, export, re-import.** Both import
-   bugs are fixed and confirmed in the host, so this is the first run whose
-   point is a measurement rather than a repair. `setup_ae_scene.jsx` now builds
-   masks 7 and 8 on a static solid; the committed `ae_scene.rbj` predates them
-   and has only six.
+1. **DONE 2026-08-21: `.rbj` ease reproduces After Effects' own curve.** See
+   "Bezier ease, answered" below. Nothing outstanding on the AE side.
 
-   Read **`linear_static` first**: it must come back with **zero** corrective
-   keys. If it does not, the rig is wrong and nothing about mask 8 is worth
-   reading. Then `eased_static` answers whether `.rbj` ease reproduces AE's own
-   curve on import - the export half is already settled at a measured factor of
-   100.
-
-   Re-copy `test/probe/setup_ae_scene.jsx` and `ae/*.jsx` to the Desktop folder
-   first. Commit the new export over `test/golden/ae_scene.rbj`, and re-run
-   `test/test_ae_to_nuke.py` afterwards, since that test reads it.
+   Optional and not blocking: the committed `test/golden/ae_scene.rbj` is the
+   **six**-shape export and predates masks 7 and 8. An eight-shape export would
+   fold the static pair into the crossing test rather than leaving them in a
+   separate file. `test/test_ae_to_nuke.py` reads `ae_scene.rbj`, so it would
+   need re-running afterwards.
 
    Then re-run the **six-shape** import to confirm the stale-handle fix in the
    host. Nothing needs rebuilding: the export is committed as
    `test/golden/ae_scene.rbj`. Re-copy `ae/*.jsx` to the Desktop folder after
    any edit.
 
-1b. **Two Phase 4 checklist entries are still unanswered, and the current scene
-   cannot answer either.** Both need a run of the rebuilt scene, whose masks 7
-   and 8 sit on a static layer:
-
-   - **Bezier ease reimported.** The export half is settled - AE ease reaches
-     `.rbj` exactly, factor of 100, measured. Whether the *importer* reproduces
-     AE's own curve is what `eased_static` is for. Read `linear_static` first:
-     it must come back with zero corrective keys or the rig is wrong before ease
-     is reached.
-   - **Ease-then-type ordering.** `setTemporalEaseAtKey` forces a key to BEZIER
-     and the importer sets the types after. The export side of `mixed` proves
-     the ordering works when *reading*. The symptom on import is a hold key that
-     renders smooth.
+1b. **Ease-then-type ordering is the last Phase 4 checklist entry, and a drift
+   number cannot answer it.** `setTemporalEaseAtKey` forces a key to BEZIER and
+   the importer sets the types afterwards. The export side of `mixed` proves the
+   ordering works when *reading*. The symptom on import is a **hold key that
+   renders smooth**, and the drift pass corrects positions either way, so it
+   will not show up as drift. It needs someone to look at the imported `mixed`
+   mask's frame-12 key in the timeline and confirm it is still a hold. Low risk:
+   the code does ease first and types after, which is the documented order.
 
 1a. **The Nuke Phase 6 run PASSED, 2026-08-21.** Report committed at
    `test/golden/nuke_probe/17.1v1/phase6/roundtrip_report.txt`. The new section

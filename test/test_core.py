@@ -37,6 +37,7 @@ GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
 GOLDEN_SQUARE = os.path.join(GOLDEN, "square.rbj")
 GOLDEN_ROUNDTRIP = os.path.join(GOLDEN, "roundtrip.rbj")
 GOLDEN_SPARSE = os.path.join(GOLDEN, "sparse.rbj")
+GOLDEN_STATIC_EASE = os.path.join(GOLDEN, "ae_static_ease.rbj")
 
 COMP_HEIGHT = 1080
 
@@ -1014,6 +1015,87 @@ class TestDriftOverAMonotoneGap(unittest.TestCase):
         host.apply_keys([1, 41])
         additions, _, at = drift._survey(frames, [1, 41], host.measure, 0.5)
         self.assertEqual(additions, [at])
+
+
+class TestGoldenStaticEase(unittest.TestCase):
+    """The run that answered whether `.rbj` ease reproduces AE's own curve.
+
+    Two masks on a solid that does not move, exported and reimported in After
+    Effects on 2026-08-21. The reimport returned **0 corrective keys and
+    0.0000 px** on both, which is the measurement: an `ease` key with real
+    parameters rebuilds its dense layer exactly.
+
+    Every other AE fixture in this project sits on a scaled, rotating layer
+    whose transform is baked into the points, so its corrective-key counts
+    measure the rotation rather than the interpolation - `eased` in
+    `ae_scene.rbj` needed 20 keys and that said nothing about ease at all. This
+    file exists to have no transform to argue about.
+
+    What the tests below protect is the part that makes the host result
+    meaningful. A 0.0000 px reimport is only evidence if the dense layer was
+    genuinely curved and the ease genuinely non-default; a fixture flattened by
+    some later edit would still report 0.0000 px and prove nothing.
+    """
+
+    def setUp(self):
+        handle = open(GOLDEN_STATIC_EASE)
+        try:
+            self.doc = json.loads(handle.read())
+        finally:
+            handle.close()
+        self.shapes = dict((s["name"], s) for s in self.doc["shapes"])
+
+    def test_it_validates(self):
+        self.assertEqual(rbj.validate(self.doc), [])
+
+    def test_it_is_a_version_1_file(self):
+        # Nothing here is open, and the writer emits the lowest version that
+        # expresses the file (spec/rbj-v2-draft.md section 2). A v2-capable
+        # exporter stamping 2 on everything would fail this.
+        self.assertEqual(self.doc["version"], 1)
+
+    def test_the_eased_shape_carries_real_parameters(self):
+        # Not AE's 16.667 default in disguise, which is what a bare `ease`
+        # picks up when it crosses applications.
+        for key in self.shapes["eased_static"]["keys"]:
+            self.assertEqual(key["interp"], {"in": "ease", "out": "ease"})
+            self.assertAlmostEqual(key["ease"]["in"][0], 0.91176, places=5)
+            self.assertAlmostEqual(key["ease"]["out"][0], 0.33333, places=5)
+
+    def test_the_linear_shape_claims_no_ease_parameters(self):
+        for key in self.shapes["linear_static"]["keys"]:
+            self.assertEqual(key["interp"], {"in": "linear", "out": "linear"})
+            self.assertNotIn("ease", key)
+
+    def bow_off_the_chord(self, name):
+        """How far the dense layer departs a straight line between its keys."""
+        shape = self.shapes[name]
+        frames = shape["frames"]
+        keys = [k["frame"] for k in shape["keys"]]
+        worst = 0.0
+        for a, b in zip(keys, keys[1:]):
+            first = [p["c"] for p in frames[str(a)]["points"]]
+            last = [p["c"] for p in frames[str(b)]["points"]]
+            for frame in range(a + 1, b):
+                t = (frame - a) / float(b - a)
+                here = [p["c"] for p in frames[str(frame)]["points"]]
+                for ca, cb, cf in zip(first, last, here):
+                    for axis in (0, 1):
+                        straight = ca[axis] + (cb[axis] - ca[axis]) * t
+                        worst = max(worst, abs(straight - cf[axis]))
+        return worst
+
+    def test_the_eased_dense_layer_is_genuinely_curved(self):
+        # 135 px of signal against a 0.5 px tolerance. Without this the host's
+        # 0.0000 px reimport would be consistent with the ease being ignored.
+        self.assertGreater(self.bow_off_the_chord("eased_static"), 100.0)
+
+    def test_the_linear_dense_layer_is_genuinely_straight(self):
+        # The calibration, and the guard on the fixture: it reimported with
+        # zero corrective keys, which only means anything because a straight
+        # line is what it should be. If a later edit puts these masks back on
+        # the rotating solid, this fails rather than quietly lying.
+        self.assertLess(self.bow_off_the_chord("linear_static"), 0.001)
 
 
 class TestGoldenSparseExport(unittest.TestCase):
