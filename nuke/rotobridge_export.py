@@ -1,0 +1,363 @@
+"""RotoBridge export: Nuke to .rbj (prd.md section 9.2).
+
+Phase 3 writes both layers: the dense per-frame bake that is ground truth, and
+the sparse `keys` structure the artist actually authored (spec sections 7 and
+9). `keys` is never omitted - an absent `keys` means "treat every frame as a
+key", which is a claim about the artist's work, not about the geometry.
+
+Unlike the After Effects export, the loop here is shape-major. Nuke takes the
+frame as an argument to `getPosition`, so there is no per-frame host cost to
+amortise; the frame-major requirement in prd.md section 9.1 is specific to
+`comp.time` and does not apply on this side.
+"""
+
+import nuke
+
+from rotobridge_nuke import (ATTR_BLEND, ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
+                             ATTR_FEATHER_Y, ATTR_INVERTED, ATTR_OPACITY,
+                             attr_value, blend_to_rbj, falloff_to_rbj, geom,
+                             interp, is_closed, iter_shapes, point_members,
+                             rbj, roto_knob, script_range, selected_roto_node,
+                             timing, vec2)
+
+
+def _read_point(cp, frame, matrix):
+    """One control point at one frame, with the shape transform baked in.
+
+    `getPosition` reports pre-transform coordinates - Phase 2 case 70 measured a
+    shape translated +200, +50 still reporting its authored (100, 100) - so the
+    bake in prd.md section 9.2 step 5 is required, not optional.
+
+    Tangents and the feather offset are vertex-relative, so they transform as
+    directions: `apply_matrix_tangent` transforms the displaced point and
+    subtracts the transformed vertex, which keeps translation out of them.
+    """
+    centre = vec2(cp.center.getPosition(frame))
+    left = vec2(cp.leftTangent.getPosition(frame))
+    right = vec2(cp.rightTangent.getPosition(frame))
+    feather = vec2(cp.featherCenter.getPosition(frame))
+
+    if matrix is not None:
+        left = geom.apply_matrix_tangent(matrix, centre, left)
+        right = geom.apply_matrix_tangent(matrix, centre, right)
+        feather = geom.apply_matrix_tangent(matrix, centre, feather)
+        centre = geom.apply_matrix_point(matrix, centre)
+
+    return centre, left, right, feather
+
+
+def _matrix_of(element, frame):
+    """One element's transform at a frame as 16 flat floats, or None.
+
+    `AnimCTransform` has no `getMatrixAt` despite prd.md section 9.2 naming it
+    (Phase 0 case 30). The real path is `evaluate(frame)` to a `CTransform`,
+    then `getMatrix()`.
+
+    Identity is decided by looking at the numbers, not by `isDefault()`, which
+    returns False on a transform that has never been touched (Phase 2 cases 30
+    and 77) and so cannot be used to skip anything.
+    """
+    matrix = list(element.getTransform().evaluate(frame).getMatrix())
+    return None if geom.is_identity_matrix(matrix) else matrix
+
+
+def _chain_matrix(shape, ancestors, frame):
+    """The full transform for a shape at a frame, layers composed in.
+
+    A shape inside a layer is subject to both transforms and neither matrix
+    knows about the other, so flattening the tree means multiplying the chain
+    here. Ancestors arrive outermost first, and each layer's transform applies
+    after the ones inside it.
+
+    Returns `(matrix_or_None, stacked)`, where `stacked` is True when more than
+    one link in the chain is non-identity - the only case where the composition
+    order is observable, and the case Phase 2 could not measure (case 78:
+    `Shape.evaluate` turned out to be pre-transform as well, so there was no
+    oracle). With one transform in the chain the order cannot matter.
+    """
+    parts = []
+    for layer in ancestors:
+        matrix = _matrix_of(layer, frame)
+        if matrix is not None:
+            parts.append(matrix)
+    own = _matrix_of(shape, frame)
+    if own is not None:
+        parts.append(own)
+
+    if not parts:
+        return None, False
+    combined = parts[0]
+    for matrix in parts[1:]:
+        combined = geom.multiply_matrices(combined, matrix)
+    return combined, len(parts) > 1
+
+
+def _keyed_curves(shape):
+    """Every animation curve that can move this shape's geometry, keyed by frame.
+
+    Yields `{frame: AnimCurveKey}` per curve. Four members per control point
+    times `dim` axes each: a tangent can be keyed where the centre is not, and
+    spec section 9 asks for the union across all of them.
+
+    **A curve with fewer than two keys abstains entirely.** It cannot describe
+    an interval, so it has no interpolation to report, and letting it vote
+    would be actively wrong: the constant z axis that Phase 2's importer writes
+    on every control point would outvote the axes that actually move and mark
+    every eased shape as mixed.
+    """
+    for i in range(len(shape)):
+        for member in point_members(shape[i]):
+            for d in range(member.dim):
+                curve = member.getPositionAnimCurve(d)
+                count = curve.getNumberOfKeys()
+                if count < 2:
+                    continue
+                keys = {}
+                for k in range(count):
+                    key = curve.getKey(k)
+                    keys[timing.snap_frame(key.time)] = key
+                yield keys
+
+
+# Every family of key time an AnimCTransform exposes. Case 30 measured all of
+# them on an UNTOUCHED transform, where each reported the same single time, so
+# it never showed whether `getTransformKeyTimes` subsumes the others. Reading
+# all six costs six calls per shape and removes the guess.
+TRANSFORM_KEY_TIMES = ("getTransformKeyTimes", "getTranslationKeyTimes",
+                       "getRotationKeyTimes", "getScaleKeyTimes",
+                       "getSkewXKeyTimes", "getPivotPointKeyTimes")
+
+
+def _transform_key_frames(shape, ancestors):
+    """Key frames on the shape's own transform and on every layer above it.
+
+    The transform is baked into the exported points (case 70), so its keys are
+    real shape animation even when no control point is keyed at all - prd.md
+    section 9.2 step 5. The layer chain counts for the same reason its matrix
+    does (case 77).
+
+    A transform that has never been touched still reports one key time
+    (case 30), so a family is animated when it has more than one. `isDefault`
+    cannot decide this - it returns False on an untouched transform.
+    """
+    frames = set()
+    for element in tuple(ancestors) + (shape,):
+        transform = element.getTransform()
+        for getter in TRANSFORM_KEY_TIMES:
+            times = getattr(transform, getter)()
+            if len(times) > 1:
+                frames.update(timing.snap_frame(t) for t in times)
+    return frames
+
+
+def _sparse_keys(shape, ancestors, frames, warn, name):
+    """The `keys` array for one shape: which frames, and how each interpolates.
+
+    The frame range endpoints are always pinned. A key outside the exported
+    range still drives the values inside it, and the dense layer covers exactly
+    `[first, last]`, so without the endpoints a shape keyed at 60 and 200 and
+    exported over 1 to 100 would claim to be static for its first 59 frames.
+    Pinning both ends costs two keys and makes the sparse layer bracket the
+    truth; the drift pass fills in whatever curves between them.
+    """
+    curves = list(_keyed_curves(shape))
+
+    first, last = frames[0], frames[-1]
+    union = set()
+    for keys in curves:
+        union.update(keys)
+    union.update(_transform_key_frames(shape, ancestors))
+    union = set(f for f in union if first <= f <= last)
+    union.add(first)
+    union.add(last)
+
+    out = []
+    mixed = 0
+    for frame in sorted(union):
+        votes = [interp.sides_from_nuke(keys[frame].interpolationType)
+                 for keys in curves if frame in keys]
+        sides, is_mixed = interp.reduce_sides(votes)
+        mixed += 1 if is_mixed else 0
+        out.append({"frame": frame, "interp": sides})
+
+    if mixed:
+        warn("shape '%s': %d key(s) interpolate differently from one control "
+             "point to the next, which has no single-valued form; they were "
+             "written as 'ease' with no parameters and the importer's drift "
+             "pass carries the geometry (prd.md section 7, tier 2)"
+             % (name, mixed))
+
+    # No `ease` entries, ever, from a Nuke source. Case 63 made asymmetric
+    # lslope/rslope stick but never measured what a slope value renders as, and
+    # nothing on this side calibrates it against After Effects' influence and
+    # speed. Spec section 10.3 defines a bare `ease` as "smooth, parameters
+    # unknown, rely on the drift pass", which is exactly what is known here.
+    return out
+
+
+def export_shape(shape, ancestors, frames, warn):
+    """One Nuke Shape to an .rbj shape object."""
+    name = shape.name
+    if not is_closed(shape):
+        raise ValueError("shape '%s' is an open spline; .rbj v1 carries closed "
+                         "shapes only (prd.md section 11)" % name)
+
+    attrs = shape.getAttributes()
+    if abs(attr_value(attrs, ATTR_INVERTED, frames[0])) > 1e-9:
+        warn("shape '%s': inverted flag dropped; .rbj v1 has no field for it"
+             % name)
+
+    dense = {}
+    count = None
+    any_feather = False
+    off_normal = False
+
+    stacked = False
+    for frame in frames:
+        matrix, frame_stacked = _chain_matrix(shape, ancestors, frame)
+        stacked = stacked or frame_stacked
+        centres, lefts, rights, feathers = [], [], [], []
+        for i in range(len(shape)):
+            centre, left, right, feather = _read_point(shape[i], frame, matrix)
+            centres.append(centre)
+            lefts.append(left)
+            rights.append(right)
+            feathers.append(feather)
+
+        if count is None:
+            count = len(centres)
+        elif len(centres) != count:
+            raise ValueError("shape '%s' has %d points at frame %d but %d "
+                             "earlier; .rbj requires a constant vertex count"
+                             % (name, len(centres), frame, count))
+
+        normals = geom.outward_normals(centres)
+        points = []
+        for i in range(len(centres)):
+            point = {"c": centres[i], "in": lefts[i], "out": rights[i]}
+            if feathers[i][0] != 0.0 or feathers[i][1] != 0.0:
+                any_feather = True
+                if geom.off_normal_angle(feathers[i], normals[i]) > 1.0:
+                    off_normal = True
+            point["_feather_offset"] = feathers[i]
+            point["_normal"] = normals[i]
+            points.append(point)
+
+        dense[str(frame)] = {
+            "opacity": attr_value(attrs, ATTR_OPACITY, frame),
+            "feather_uniform": [attr_value(attrs, ATTR_FEATHER_X, frame),
+                                attr_value(attrs, ATTR_FEATHER_Y, frame)],
+            "points": points,
+        }
+
+    # feather_model describes the per-point layer only, and it is a property of
+    # the whole shape, so it can only be decided once every frame is read. A
+    # shape with zero offsets on every vertex of every frame is "none"; one with
+    # some zeros and some not is "per_point", and the zeros are load-bearing
+    # (prd.md section 9.3).
+    model = "per_point" if any_feather else "none"
+    for record in dense.values():
+        for point in record["points"]:
+            offset = point.pop("_feather_offset")
+            normal = point.pop("_normal")
+            if model == "per_point":
+                point["feather"] = geom.feather_scalar(offset, normal)
+                point["feather_offset"] = offset
+
+    if stacked:
+        warn("shape '%s': a layer transform and a shape transform are both "
+             "active, and their composition order is unverified (Q10). The "
+             "geometry is baked assuming the shape's own transform applies "
+             "first" % name)
+
+    if off_normal:
+        warn("shape '%s': feather offsets depart from the path normal; the "
+             "tangential component survives in feather_offset but is lost to "
+             "adapters other than Nuke" % name)
+
+    return {
+        "name": name,
+        "closed": True,
+        "blend": blend_to_rbj(attr_value(attrs, ATTR_BLEND, frames[0]),
+                              warn, name),
+        "feather_model": model,
+        "feather_falloff": falloff_to_rbj(
+            attr_value(attrs, ATTR_FEATHER_FALLOFF, frames[0])),
+        "frames": dense,
+        "keys": _sparse_keys(shape, ancestors, frames, warn, name),
+    }
+
+
+def export_node(node, first, last, width, height, pixel_aspect, fps):
+    """Build the .rbj document for one Roto/RotoPaint node."""
+    warnings = []
+
+    def warn(message):
+        warnings.append(message)
+
+    frames = list(range(int(first), int(last) + 1))
+    if not frames:
+        raise ValueError("frame range [%s, %s] is empty" % (first, last))
+
+    shapes = [export_shape(shape, ancestors, frames, warn)
+              for shape, ancestors in iter_shapes(roto_knob(node).rootLayer,
+                                                  warn)]
+    if not shapes:
+        raise ValueError("node '%s' has no shapes to export" % node.name())
+
+    return {
+        "format": "rotobridge",
+        "version": 1,
+        "source": {
+            "app": "Nuke",
+            "app_version": nuke.NUKE_VERSION_STRING,
+            "width": int(width),
+            "height": int(height),
+            "pixel_aspect": float(pixel_aspect),
+            "fps": float(fps),
+        },
+        "range": [int(first), int(last)],
+        "shapes": shapes,
+        "warnings": warnings,
+    }
+
+
+def export_to_file(node, path, first, last):
+    """Validate, then write. An invalid document raises and writes nothing."""
+    fmt = node.format()
+    doc = export_node(node, first, last, fmt.width(), fmt.height(),
+                      fmt.pixelAspect(), nuke.root()["fps"].value())
+    text = rbj.dumps(doc)
+    handle = open(path, "w")
+    try:
+        handle.write(text + "\n")
+    finally:
+        handle.close()
+    return doc
+
+
+def main():
+    node = selected_roto_node()
+    first, last = script_range()
+
+    panel = nuke.Panel("RotoBridge export")
+    panel.addFilenameSearch("output .rbj", "")
+    panel.addSingleLineInput("first frame", str(first))
+    panel.addSingleLineInput("last frame", str(last))
+    if not panel.show():
+        return
+
+    path = panel.value("output .rbj")
+    if not path:
+        raise ValueError("no output path given")
+
+    doc = export_to_file(node, path, int(panel.value("first frame")),
+                         int(panel.value("last frame")))
+
+    frames = len(doc["shapes"][0]["frames"]) if doc["shapes"] else 0
+    message = "Wrote %d shape(s), %d frames to %s" % (
+        len(doc["shapes"]), frames, path)
+    if doc["warnings"]:
+        message += "\n\n%d warning(s):\n  %s" % (
+            len(doc["warnings"]), "\n  ".join(doc["warnings"]))
+    nuke.message(message)
