@@ -198,7 +198,7 @@ rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
 | the open spline | arrives open; closed shapes stay closed |
 | key preservation, tolerance inf | the field-by-field diff is **empty** - `closed`, `feather_model`, `feather_falloff`, `blend`, key frames and per-side `interp` all identical, `{in: linear, out: hold}` included |
 | drift, tolerance 0.5 | every shape inside tolerance; worst `mixed` at 0.4616 px |
-| the cost of a bare `ease` | `eased` needed **20 corrective keys on top of 5 authored** to hold 0.0001 px - every frame. Nothing else needed more than 14 |
+| corrective counts | **Do not read these as a verdict on interpolation.** Every mask is on a rotating layer whose transform is baked into the points, so even `linear` bows 13.2 px off the straight chord between its own LINEAR keys and must need corrective keys. Masks 7 and 8, on the static solid, are what answer that |
 | re-export | validates, `version: 2`, carries the open spline back |
 
 **It imports three times and the modes are not interchangeable.** Tolerance 0

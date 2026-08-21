@@ -689,6 +689,10 @@ describe("the scene builder for the host run", function () {
         eq(String(names),
            String(["linear", "eased", "mixed", "feathered", "offgrid",
                    "opened"]));
+        // The control masks live on a second, static solid - see the builder.
+        var flat = host.comp.layer(2)._masks;
+        eq(String([flat[0].name, flat[1].name]),
+           String(["eased_static", "linear_static"]));
         // A failed authoring step is reported rather than thrown, so an alert
         // naming one is the thing that would otherwise pass unnoticed.
         eq(host.alerts.length, 1);

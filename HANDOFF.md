@@ -261,14 +261,99 @@ earlier pass of this test compared it field-by-field and produced a page of
 "losses" that were nothing but dense mode working. The docstring of
 `test_ae_to_nuke.py` exists to stop that being repeated.
 
-**The cost of a bare `ease`, now with a number on it.** At the default tolerance
-0.5 the `eased` mask needed **20 corrective keys on top of its 5 authored** -
-every frame - to hold 0.0001 px. Nothing else needed more than 14. Criterion 3
-still passes, because the 5 authored keys are present and the correctives are
-reported, but an artist opening that mask in Nuke finds 25 keys where After
-Effects showed 5. This is the strongest evidence yet for settling AE ease
-against Nuke `lslope`/`rslope`, and `core/interp.to_nuke` is still the one
-function that changes.
+**The corrective-key counts mean nothing about interpolation, and the fixture is
+why.** `eased` needed 20 corrective keys on top of its 5 authored, in Nuke and
+again in After Effects. That looks like a verdict on `ease` and **is not one.**
+
+Every mask in `setup_ae_scene.jsx` sits on a scaled and **rotating** layer,
+chosen so the derived-affine path is exercised. The transform is baked into the
+exported points, so the canonical geometry never moves the way any key type
+claims. Measured off `test/golden/ae_scene.rbj` directly:
+
+| shape | key sides | bows off its own chord |
+|---|---|---|
+| `linear` | `linear`/`linear` | **13.223 px** at frame 12 |
+| `opened` | `linear`/`linear` | 4.637 px |
+| `eased` | `ease` | 49.175 px |
+| `mixed` | includes `linear`/`hold` | 300.177 px |
+
+**A `linear` key pair whose geometry bows 13 px off the straight chord needs
+corrective keys however perfect the mapping is.** So the counts measure the
+rotation, not the interpolation, and this scene cannot answer the Phase 4 ease
+question at all. Corroborating it: `sparse.rbj`, a Nuke file with no layer
+transform, imports with **0 corrective**.
+
+Masks **7 and 8 were added 2026-08-21** to answer it - `eased_static` and
+`linear_static`, on a second solid, `RotoBridge static`, that does not move.
+`linear_static` is the calibration: it must come back with **zero** corrective
+keys, and if it does not, nothing about 8 is worth reading. `eased_static` is
+then the real test of whether `.rbj` ease reproduces After Effects' own curve.
+**Not yet run.**
+
+**The two hosts agree to a thousandth of a pixel**, which is the result that
+does survive from this run. The same shapes, imported independently by two
+adapters into two applications:
+
+| shape | After Effects | Nuke |
+|---|---|---|
+| `linear` | 0.3733 px @ frame 8 | 0.3723 px @ frame 9 |
+| `mixed` | 0.4615 px @ frame 8 | 0.4616 px @ frame 8 |
+| `opened` | 0.2584 px | 0.2577 px |
+
+Two independent drift passes over two independent geometry pipelines landing on
+the same residual at the same frame is the geometry core being genuinely shared,
+rather than two implementations that merely both look plausible.
+
+### The AE import: one bug fixed, one open, 2026-08-21
+
+Importing each shape on its own isolated it. Five of six converge; **only
+`feathered` fails**, and it is the only mask with per-point feather.
+
+| shape | corrective | worst drift | |
+|---|---|---|---|
+| `linear` | 7 | 0.3733 px @ 8 | ok |
+| `eased` | 20 | converged, every frame keyed | ok |
+| `mixed` | 9 | 0.4615 px @ 8 | ok |
+| `offgrid` | 4 | 0.3957 px @ 17 | ok |
+| `opened` | 3 | 0.2584 px @ 16 | ok |
+| `feathered` | 18 | **27.0000 px @ 15** | **ran out of passes** |
+
+**Bug 1, FIXED: stale mask handles.** Every multi-shape import failed with
+"object invalid"; every single-shape import succeeded. `createMask` returned
+what `addProperty("ADBE Mask Atom")` handed back, and `importShapes` collected
+all of them before writing into any - but After Effects invalidates a handle
+into the mask parade whenever the parade changes, so all but the last were stale
+by the time they were written to. `createMask` now returns the mask's **index**
+and each is re-fetched at the moment it is used. `test/ae_mock.js` now models the
+invalidation (a handle goes stale on `addProperty` and throws "object invalid"),
+and `test/test_ae_import.js` gained a two-shape case that fails on the old code
+with "mask 0 got no keys". Every previous import fixture was single-shape, which
+is exactly why nothing caught it. **Not yet confirmed in the host.**
+
+**Bug 2, OPEN: `deviation` compares `featherRadii` by array index.** That is only
+meaningful if the host returns the array in the order it was given, which nobody
+established. The residual is **exactly 27.0000** and the file's per-vertex
+feather is `[30, -15, 0, 12]`, where `12 - (-15) = 27`.
+
+Hypothesis: After Effects groups feather points by **type**, outer (non-negative)
+first then inner, so `[30, -15, 0, 12]` with types `[0, 1, 0, 0]` returns as
+`[30, 0, 12, -15]`. Index by index against the original that is 0, 15, 12, 27 -
+worst 27, which is the number observed. Two other orderings were checked against
+the arithmetic and neither produces 27: dropping the zero radius gives 12, and
+reversal gives 18.
+
+If that is right the geometry and the feather are both **fine** and the drift
+pass is chasing an artifact of its own comparison - which also explains the 18
+corrective keys, since no number of keys can close a gap that is not really
+there. Nuke never saw it because its importer uses the `feather_offset` vector
+directly and never goes through the per-vertex scalar path.
+
+**`test/probe/probe_ae_feather_order.jsx` settles it** - it writes that exact
+array and reads it straight back, with no import and no drift pass in the way.
+Synced to the Desktop folder. **Do not change `deviation` before running it**:
+matching by anchor position instead of index is the obvious fix, but it fails
+just as silently if After Effects moves the anchors too, and the probe reports
+those as well.
 
 ### A `hold` can contradict its own dense layer
 

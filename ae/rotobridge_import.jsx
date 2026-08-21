@@ -190,11 +190,29 @@
     }
 
     function createMask(layer, spec) {
-        var mask = layer.property(MASK_PARADE).addProperty(MASK_ATOM);
+        /* Returns the mask's INDEX in the parade, not the mask.
+         *
+         * After Effects invalidates a handle into the parade when the parade
+         * changes, and every later `addProperty` changes it - so a script that
+         * creates all its masks and then writes into what `addProperty` handed
+         * back is holding one stale reference per mask by the time it writes.
+         * Measured in the host on 2026-08-21: six shapes failed with "object
+         * invalid" and the same import restricted to one shape succeeded.
+         *
+         * This is the hazard the Nuke side already carries - `append()` copies
+         * into the tree, re-fetch the live child from its parent - in a
+         * different API. An index cannot go stale; only a handle can. */
+        var parade = layer.property(MASK_PARADE);
+        var mask = parade.addProperty(MASK_ATOM);
         mask.name = spec.name;
         mask.maskMode = ae.modeFromBlend(spec.blend);
         mask.maskFeatherFalloff = ae.falloffFromRbj(spec.feather_falloff);
-        return mask;
+        return parade.numProperties;
+    }
+
+    function liveMask(layer, index) {
+        /* A fresh handle to a mask, fetched at the moment it is used. */
+        return layer.property(MASK_PARADE).property(index);
     }
 
     function bakeTargets(comp, layer, specs, frames, offset, warn) {
@@ -460,7 +478,7 @@
     }
 
     function importShapes(comp, layer, doc, specs, offset, tolerance, warn) {
-        var masks = [];
+        var maskIndex = [];
         var s;
         for (s = 0; s < specs.length; s++) {
             /* An open spline round trips exactly within one application; what
@@ -472,7 +490,7 @@
                      + doc.source.app + "; the geometry is exact but what it"
                      + " renders as across applications is unverified");
             }
-            masks[s] = createMask(layer, specs[s]);
+            maskIndex[s] = createMask(layer, specs[s]);
         }
 
         var frames = RB.timing.frameRange(doc.range[0], doc.range[1]);
@@ -480,11 +498,15 @@
 
         var reports = [];
         for (s = 0; s < specs.length; s++) {
-            reports[s] = buildOne(comp, masks[s], specs[s], targets[s], frames,
+            /* Re-fetched here, once per shape, rather than carried down from
+             * the creation loop above: every `addProperty` in that loop
+             * invalidated the handles the ones before it returned. */
+            var mask = liveMask(layer, maskIndex[s]);
+            reports[s] = buildOne(comp, mask, specs[s], targets[s], frames,
                                   offset, tolerance, warn);
-            writeAttributes(comp, masks[s], specs[s], frames, offset);
+            writeAttributes(comp, mask, specs[s], frames, offset);
         }
-        return { masks: masks, frames: frames, reports: reports };
+        return { count: specs.length, frames: frames, reports: reports };
     }
 
     var DEFAULT_TOLERANCE = 0.5;
@@ -581,7 +603,7 @@
         var elapsed = (new Date().getTime() - started) / 1000.0;
 
         var lines = [
-            "Imported " + built.masks.length + " shape(s) from " + file.name,
+            "Imported " + built.count + " shape(s) from " + file.name,
             "",
             "frames " + (doc.range[0] + offset) + " to "
                 + (doc.range[1] + offset)

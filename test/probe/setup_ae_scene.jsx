@@ -174,6 +174,46 @@
         pOpened.setValueAtTime(t(FIRST), line);
     });
 
+    /* 7 and 8. THE CONTROL, on a second solid with a STATIC transform.
+     *
+     *    The masks above all sit on a scaled and rotating layer, which is what
+     *    makes them exercise the derived affine - and which also makes them
+     *    useless for judging interpolation. The layer transform is baked into
+     *    the exported points, so the canonical geometry never moves the way any
+     *    key type says it does: `linear` above bows 13.2 px off the straight
+     *    chord between its own LINEAR keys, and `eased` bows 49.2 px. Every
+     *    mask on that layer therefore needs corrective keys no matter how
+     *    perfect the interpolation mapping is, and a corrective count there
+     *    measures the rotation, not the ease.
+     *
+     *    These two are the same masks with nothing moving underneath them. Here
+     *    a corrective count means what it appears to mean: `eased_static` is
+     *    the real test of whether `.rbj` ease reproduces After Effects' own
+     *    curve, and `linear_static` is the calibration that says the rig is
+     *    sound, because linear-to-linear must come back with ZERO corrective
+     *    keys or something is wrong before ease is even reached. */
+    var flat = comp.layers.addSolid([0.25, 0.2, 0.2], "RotoBridge static",
+                                    comp.width, comp.height, comp.pixelAspect);
+
+    var easedFlat = addMask(flat, "eased_static");
+    var pEasedFlat = easedFlat.property("ADBE Mask Shape");
+    pEasedFlat.setValueAtTime(t(FIRST), square(100, 100, 180, 180));
+    pEasedFlat.setValueAtTime(t(12), square(400, 400, 180, 180));
+    pEasedFlat.setValueAtTime(t(LAST), square(800, 150, 180, 180));
+    tryIt("setTemporalEaseAtKey on the static eased mask", function () {
+        for (var q = 1; q <= pEasedFlat.numKeys; q++) {
+            pEasedFlat.setTemporalEaseAtKey(q, [new KeyframeEase(0, 91.176)],
+                                               [new KeyframeEase(0, 33.333)]);
+        }
+    });
+
+    var linearFlat = addMask(flat, "linear_static");
+    var pLinearFlat = linearFlat.property("ADBE Mask Shape");
+    pLinearFlat.setValueAtTime(t(FIRST), square(1000, 100, 180, 180));
+    pLinearFlat.setValueAtTime(t(LAST), square(1600, 500, 180, 180));
+    pLinearFlat.setInterpolationTypeAtKey(1, KeyframeInterpolationType.LINEAR);
+    pLinearFlat.setInterpolationTypeAtKey(2, KeyframeInterpolationType.LINEAR);
+
     /* The export reads the work area, so the scene has to be inside it or five
      * of these six masks are only half exported. */
     comp.workAreaStart = t(FIRST);
@@ -202,7 +242,16 @@
           + "               and the reimport must come back still open. Then\n"
           + "               LOOK at the matte: whether AE fills an open path,\n"
           + "               and how, is the one thing spec/rbj-v2-draft.md\n"
-          + "               section 5 could not measure.\n\n"
+          + "               section 5 could not measure.\n"
+          + "\nOn the SECOND solid, 'RotoBridge static', which does not move:\n"
+          + "7. linear_static - must reimport with ZERO corrective keys. This\n"
+          + "               is the calibration; if it needs any, stop and read\n"
+          + "               that before looking at 8.\n"
+          + "8. eased_static  - the real ease test. Corrective keys here mean\n"
+          + "               .rbj ease does not reproduce AE's own curve, and\n"
+          + "               spec 10.3 is what to look at. The masks on the\n"
+          + "               moving layer CANNOT answer this: the baked rotation\n"
+          + "               makes even 'linear' bow 13.2 px off its own chord.\n\n"
           + "Also worth reading: any warning naming the layer as not affine.\n"
           + "The layer is scaled and rotating, so that path is live here.");
 })();

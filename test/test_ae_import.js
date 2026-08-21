@@ -273,6 +273,44 @@ describe("import", function () {
 
 /* --- the round trip -------------------------------------------------------- */
 
+describe("more than one shape", function () {
+    /* After Effects invalidates a handle into the mask parade when the parade
+     * changes, so a script that adds every mask up front and then writes into
+     * what `addProperty` gave it is holding six stale references by the time it
+     * writes. Measured in the host 2026-08-21: six shapes failed with "object
+     * invalid", the same import restricted to one shape succeeded.
+     *
+     * Every other import fixture here is single-shape, which is exactly why
+     * nothing caught it. */
+    function twoShapes() {
+        var doc = JSON.parse(exported());
+        var second = JSON.parse(JSON.stringify(doc.shapes[0]));
+        second.name = "Mask 2";
+        doc.shapes[second.name === doc.shapes[0].name ? 0 : 1] = second;
+        doc.shapes[1] = second;
+        return JSON.stringify(doc);
+    }
+
+    it("imports two shapes without touching a stale handle", function () {
+        var host = importInto(twoShapes());
+        ok(host.comp.numLayers > 0,
+           "the import produced nothing: " + host.alerts.join(" | "));
+        eq(host.comp.layer(1)._masks.length, 2);
+        has(host.alerts, "Imported 2 shape(s)");
+    });
+
+    it("builds a path into the FIRST mask, not just the last", function () {
+        // A stale first handle is the failure; a run that silently wrote every
+        // shape into the last mask would pass a count check and fail this.
+        var host = importInto(twoShapes());
+        var masks = host.comp.layer(1)._masks;
+        for (var i = 0; i < masks.length; i++) {
+            ok(masks[i].property("ADBE Mask Shape").numKeys > 0,
+               "mask " + i + " got no keys");
+        }
+    });
+});
+
 describe("open splines", function () {
     /* spec/rbj-v2-draft.md. */
     function openMask() {

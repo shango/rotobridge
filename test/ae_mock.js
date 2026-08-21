@@ -258,9 +258,41 @@ function makeLayer(host, spec) {
     }
 
     var masks = (spec.masks || []).map(makeMask);
+
+    /* Handles into the parade go STALE when the parade changes, and touching a
+     * stale one raises "object invalid". Measured in After Effects 25.6x101 on
+     * 2026-08-21: an import that added six masks and then wrote into the
+     * handles `addProperty` had returned failed, and the same import restricted
+     * to one shape succeeded. The mock modelled none of this and so could not
+     * see the bug - it is the same hazard the Nuke side documented as
+     * "append() copies into the tree, re-fetch the live child".
+     *
+     * `_masks` deliberately exposes the raw objects: a test inspecting the
+     * result afterwards is not a script holding a handle across a mutation. */
+    var generation = 0;
+    function handle(mask) {
+        var issued = generation;
+        return new Proxy(mask, {
+            get: function (target, key) {
+                if (issued !== generation) {
+                    throw new Error("object invalid");
+                }
+                var v = target[key];
+                return typeof v === "function" ? v.bind(target) : v;
+            },
+            set: function (target, key, value) {
+                if (issued !== generation) {
+                    throw new Error("object invalid");
+                }
+                target[key] = value;
+                return true;
+            }
+        });
+    }
+
     var parade = {
         numProperties: masks.length,
-        property: function (i) { return masks[i - 1]; },
+        property: function (i) { return handle(masks[i - 1]); },
         addProperty: function (matchName) {
             if (matchName !== "ADBE Mask Atom") {
                 throw new Error("unexpected addProperty(" + matchName + ")");
@@ -276,7 +308,8 @@ function makeLayer(host, spec) {
             });
             masks.push(made);
             parade.numProperties = masks.length;
-            return made;
+            generation += 1;
+            return handle(made);
         }
     };
 
