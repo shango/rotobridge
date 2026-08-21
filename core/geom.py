@@ -141,13 +141,24 @@ def signed_area(points):
     return total
 
 
-def outward_normals(points):
-    """One unit outward normal per vertex of a closed polygon.
+def outward_normals(points, closed=True):
+    """One unit outward normal per vertex of a polygon or polyline.
 
     The path direction at a vertex is taken from the chord between its
     neighbours, which is stable at corners where one tangent is zero. The
     normal is that direction rotated a quarter turn towards the outside, which
     depends on winding, so the polygon's signed area picks the sign.
+
+    An **open** path has no inside, so two things need saying, and both are
+    spec/rbj-v2-draft.md section 4. An endpoint has no chord between neighbours,
+    so it uses the chord to its single neighbour - the limit of the interior
+    rule, not a new one. And the sign is fixed at +1, a consistent quarter turn
+    from the direction of travel, rather than taken from an area. The area of a
+    path closed implicitly is near zero for a near-straight polyline and its
+    sign flips on a perturbation, which would flip the feather direction from
+    one frame to the next; a fixed sign cannot. The cost is that the side
+    follows point order rather than any notion of outside, which is
+    unverifiable on an open path anyway.
 
     A degenerate vertex - one whose neighbours coincide with it - has no
     defined normal and gets `[0.0, 0.0]`. Callers must treat a zero normal as
@@ -157,11 +168,16 @@ def outward_normals(points):
     if n < 3:
         return [[0.0, 0.0] for _ in range(n)]
 
-    sign = 1.0 if signed_area(points) >= 0.0 else -1.0
+    if closed:
+        sign = 1.0 if signed_area(points) >= 0.0 else -1.0
+    else:
+        sign = 1.0
     normals = []
     for i in range(n):
-        prev = points[(i - 1) % n]
-        nxt = points[(i + 1) % n]
+        if closed:
+            prev, nxt = points[(i - 1) % n], points[(i + 1) % n]
+        else:
+            prev, nxt = points[max(i - 1, 0)], points[min(i + 1, n - 1)]
         dx = float(nxt[0]) - float(prev[0])
         dy = float(nxt[1]) - float(prev[1])
         length = math.hypot(dx, dy)

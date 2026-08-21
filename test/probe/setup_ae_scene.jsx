@@ -158,8 +158,24 @@
         pOffgrid.setInterpolationTypeAtKey(k, KeyframeInterpolationType.LINEAR);
     }
 
-    /* The export reads the work area, so the scene has to be inside it or four
-     * of these five masks are only half exported. */
+    /* 6. An open spline (spec/rbj-v2-draft.md). Nothing in probe runs 1-6 ever
+     *    authored one, so what After Effects RENDERS an open mask path as is
+     *    the single unmeasured thing standing between that draft and a freeze.
+     *    The geometry side is already covered host-free; this mask exists to
+     *    be looked at. */
+    var opened = addMask(layer, "opened");
+    var pOpened = opened.property("ADBE Mask Shape");
+    var line = new Shape();
+    line.vertices = [[200, 700], [400, 820], [700, 760], [900, 900]];
+    line.inTangents = [[0, 0], [-40, 0], [-40, 0], [0, 0]];
+    line.outTangents = [[40, 0], [40, 0], [40, 0], [0, 0]];
+    line.closed = false;
+    tryIt("write an open mask path", function () {
+        pOpened.setValueAtTime(t(FIRST), line);
+    });
+
+    /* The export reads the work area, so the scene has to be inside it or five
+     * of these six masks are only half exported. */
     comp.workAreaStart = t(FIRST);
     comp.workAreaDuration = (LAST - FIRST + 1) / comp.frameRate;
 
@@ -181,7 +197,12 @@
           + "4. feathered - radii [30, -15, 12, 0] with the signs intact, and\n"
           + "               the zero still there rather than dropped.\n"
           + "5. offgrid   - the export must WARN that a key was snapped, and\n"
-          + "               the file must have no key at frame 10.4.\n\n"
+          + "               the file must have no key at frame 10.4.\n"
+          + "6. opened    - the file must say closed: false and version: 2,\n"
+          + "               and the reimport must come back still open. Then\n"
+          + "               LOOK at the matte: whether AE fills an open path,\n"
+          + "               and how, is the one thing spec/rbj-v2-draft.md\n"
+          + "               section 5 could not measure.\n\n"
           + "Also worth reading: any warning naming the layer as not affine.\n"
           + "The layer is scaled and rotating, so that path is live here.");
 })();

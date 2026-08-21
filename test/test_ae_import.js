@@ -273,6 +273,54 @@ describe("import", function () {
 
 /* --- the round trip -------------------------------------------------------- */
 
+describe("open splines", function () {
+    /* spec/rbj-v2-draft.md. */
+    function openMask() {
+        return { mask: { pathAt: function (t) {
+            var path = movingSquare(t);
+            path.closed = false;
+            return path;
+        } } };
+    }
+
+    it("builds a mask path that is still open", function () {
+        var host = importInto(exported(openMask()));
+        var path = host.comp.layer(1)._masks[0]
+                       .property("ADBE Mask Shape").value;
+        eq(path.closed, false);
+    });
+
+    it("survives an export, an import and an export again", function () {
+        var host = importInto(exported(openMask()));
+        host.comp.selectedLayers = [host.comp.layer(1)];
+        host.savePath = "/tmp/again.rbj";
+        host.written = null;
+        var second = runExport(host);
+        eq(second.shapes[0].closed, false);
+        eq(second.version, 2);
+    });
+
+    it("warns when the open spline came from another application", function () {
+        // The geometry is exact either way; what an open path renders as
+        // across two applications is what nobody has measured.
+        var text = exported(openMask());
+        var doc = JSON.parse(text);
+        doc.source.app = "Nuke";
+        var host = importInto(JSON.stringify(doc));
+        has(host.alerts, "is an open spline from Nuke");
+    });
+
+    it("says nothing about crossing when the file is its own", function () {
+        // The exporter's own warning is replayed either way - a .rbj carries
+        // its provenance - so the thing being asserted is the importer's.
+        var host = importInto(exported(openMask()));
+        for (var i = 0; i < host.alerts.length; i++) {
+            ok(host.alerts[i].indexOf("open spline from") === -1,
+               "warned about its own file: " + host.alerts[i]);
+        }
+    });
+});
+
 describe("round trip", function () {
     function roundTrip(over) {
         var first = exported(over);

@@ -34,6 +34,20 @@
 
     rbj.VERSION = 1;
 
+    /* spec/rbj-v2-draft.md section 2: a writer emits the lowest version that
+     * can express the file, not the highest it implements. */
+    rbj.VERSION_OPEN_SPLINES = 2;
+    rbj.MAX_VERSION = 2;
+
+    rbj.versionFor = function (shapes) {
+        for (var i = 0; i < shapes.length; i++) {
+            if (shapes[i]["closed"] === false) {
+                return rbj.VERSION_OPEN_SPLINES;
+            }
+        }
+        return rbj.VERSION;
+    };
+
     rbj.BLENDS = ["union", "difference", "intersection"];
     rbj.FEATHER_MODELS = ["per_point", "none"];
     rbj.FALLOFFS = ["linear", "smooth"];
@@ -157,9 +171,11 @@
         if (!isInt(ver)) {
             errs[errs.length] = "version is " + show(ver)
                 + ", expected an integer";
-        } else if (ver > rbj.VERSION) {
+            ver = null;
+        } else if (ver > rbj.MAX_VERSION) {
             errs[errs.length] = "version " + ver
-                + " is newer than this reader implements (" + rbj.VERSION + ")";
+                + " is newer than this reader implements ("
+                + rbj.MAX_VERSION + ")";
         } else if (ver < 1) {
             errs[errs.length] = "version " + ver + " is not a released version";
         }
@@ -189,7 +205,7 @@
                 "shapes is empty; a file with no shapes is a hard failure";
         } else {
             for (var i = 0; i < shapes.length; i++) {
-                validateShape(errs, i, shapes[i], framesExpected);
+                validateShape(errs, i, shapes[i], framesExpected, ver);
             }
         }
 
@@ -252,7 +268,7 @@
         return expected;
     }
 
-    function validateShape(errs, index, shape, framesExpected) {
+    function validateShape(errs, index, shape, framesExpected, version) {
         var where = "shapes[" + index + "]";
         if (!isObj(shape)) {
             errs[errs.length] = where + " is " + show(shape)
@@ -269,14 +285,14 @@
         }
 
         var closed = shape["closed"];
-        if (closed !== true) {
-            if (closed === false) {
-                errs[errs.length] = where
-                    + ": closed is false; open splines are out of scope for v1";
-            } else {
-                errs[errs.length] = where + ": closed is " + show(closed)
-                    + ", expected true";
-            }
+        if (closed !== true && closed !== false) {
+            errs[errs.length] = where + ": closed is " + show(closed)
+                + ", expected a boolean";
+        } else if (closed === false && version !== null
+                   && version < rbj.VERSION_OPEN_SPLINES) {
+            errs[errs.length] = where + ": closed is false, which needs version "
+                + rbj.VERSION_OPEN_SPLINES + "; this file declares version "
+                + version + " (spec/rbj-v2-draft.md section 3)";
         }
 
         enumOf(errs, where, shape, "blend", rbj.BLENDS);

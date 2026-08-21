@@ -239,7 +239,7 @@ def main():
     path = os.path.join(out, "roundtrip.rbj")
     failures = []
 
-    say("RotoBridge Phase 2 and 3 acceptance - Nuke round trip")
+    say("RotoBridge Phase 2, 3 and 6 acceptance - Nuke round trip")
     say("Nuke %s, frames %d-%d" % (nuke.NUKE_VERSION_STRING, FIRST, LAST))
     say()
 
@@ -526,13 +526,70 @@ def main():
         % "; ".join(w for w in layered["warnings"] if "flatten" in w))
     say()
 
+    say("--- Phase 6: an open spline (spec/rbj-v2-draft.md) ---")
+    say("  Nuke carries open/closed as a shape FLAG (case 72), so the round")
+    say("  trip has to keep it and the file has to declare version 2 to be")
+    say("  allowed to say so at all.")
+    nuke.scriptClear()
+    nuke.root()["first_frame"].setValue(1)
+    nuke.root()["last_frame"].setValue(2)
+    node = nuke.createNode("RotoPaint", inpanel=False)
+    knob = node["curves"]
+
+    open_shape = rp.Shape(knob)
+    line = ((100.0, 100.0), (200.0, 180.0), (320.0, 160.0), (400.0, 260.0))
+    for x, y in line:
+        open_shape.append(rp.ShapeControlPoint(x, y))
+    open_shape.name = "open_spline"
+    open_shape.setFlag(rp.FlagType.eOpenFlag, True)
+    knob.rootLayer.append(open_shape)
+
+    open_doc = rbx.export_node(node, 1, 2, 2048, 858, 1.0, 24.0)
+    say("  exported closed=%s, version=%s"
+        % (open_doc["shapes"][0]["closed"], open_doc["version"]))
+    if open_doc["shapes"][0]["closed"] is not False:
+        failures.append("an open spline exported as closed")
+    if open_doc["version"] != rbj.VERSION_OPEN_SPLINES:
+        failures.append("a file with an open spline declares version %r, "
+                        "wanted %d" % (open_doc["version"],
+                                       rbj.VERSION_OPEN_SPLINES))
+    open_errs = rbj.validate(open_doc)
+    if open_errs:
+        failures.append("the open-spline document is not valid .rbj")
+        for e in open_errs[:5]:
+            say("  INVALID: %s" % e)
+    render_warnings = [w for w in open_doc["warnings"] if "openspline_width" in w]
+    say("  render-settings warning: %s"
+        % (render_warnings[0] if render_warnings else "MISSING"))
+    if not render_warnings:
+        failures.append("no warning that the open-spline render settings are "
+                        "node knobs and were not carried")
+
+    nuke.scriptClear()
+    open_back_node, _, _ = rbi.import_document(open_doc, tolerance=0.0)
+    open_back = open_back_node["curves"].rootLayer[0]
+    still_open = open_back.getFlag(rp.FlagType.eOpenFlag)
+    say("  rebuilt '%s' with %d points, open=%s"
+        % (open_back.name, len(open_back), still_open))
+    if not still_open:
+        failures.append("the open flag did not survive the round trip")
+    open_worst = max(compare(open_doc, open_back))
+    say("  worst deviation %.3e px" % open_worst)
+    if open_worst > FLOAT32_FLOOR:
+        failures.append("open spline drifted %.3e px" % open_worst)
+    say("  The scalar-feather path on an open spline is arithmetic, not host")
+    say("  behaviour, and test_core.py TestOpenSplines covers it. What is")
+    say("  still unmeasured is what an OPEN mask renders as in After Effects")
+    say("  (spec/rbj-v2-draft.md section 5).")
+    say()
+
     say("=== VERDICT ===")
     if failures:
         say("FAIL")
         for f in failures:
             say("  - %s" % f)
     else:
-        say("PASS - Nuke round trips through .rbj, dense and sparse")
+        say("PASS - Nuke round trips through .rbj, dense, sparse and open")
     return failures
 
 

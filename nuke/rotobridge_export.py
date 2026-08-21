@@ -198,9 +198,15 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
 def export_shape(shape, ancestors, frames, warn):
     """One Nuke Shape to an .rbj shape object."""
     name = shape.name
-    if not is_closed(shape):
-        raise ValueError("shape '%s' is an open spline; .rbj v1 carries closed "
-                         "shapes only (prd.md section 11)" % name)
+    closed = is_closed(shape)
+    if not closed:
+        # Nuke renders an open spline as a stroke, and its width and end caps
+        # are NODE knobs - openspline_width and the two end types - not shape
+        # attributes, so nothing per shape can carry them. See
+        # spec/rbj-v2-draft.md section 5.
+        warn("shape '%s': an open spline's render settings are node knobs "
+             "(openspline_width and the end types), not shape attributes, so "
+             "they are not carried in the file" % name)
 
     attrs = shape.getAttributes()
     if abs(attr_value(attrs, ATTR_INVERTED, frames[0])) > 1e-9:
@@ -231,7 +237,7 @@ def export_shape(shape, ancestors, frames, warn):
                              "earlier; .rbj requires a constant vertex count"
                              % (name, len(centres), frame, count))
 
-        normals = geom.outward_normals(centres)
+        normals = geom.outward_normals(centres, closed)
         points = []
         for i in range(len(centres)):
             point = {"c": centres[i], "in": lefts[i], "out": rights[i]}
@@ -277,7 +283,7 @@ def export_shape(shape, ancestors, frames, warn):
 
     return {
         "name": name,
-        "closed": True,
+        "closed": closed,
         "blend": blend_to_rbj(attr_value(attrs, ATTR_BLEND, frames[0]),
                               warn, name),
         "feather_model": model,
@@ -307,7 +313,7 @@ def export_node(node, first, last, width, height, pixel_aspect, fps):
 
     return {
         "format": "rotobridge",
-        "version": 1,
+        "version": rbj.version_for(shapes),
         "source": {
             "app": "Nuke",
             "app_version": nuke.NUKE_VERSION_STRING,

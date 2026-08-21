@@ -132,7 +132,7 @@
         return m;
     }
 
-    function buildShape(record, layer, affine, compHeight, model) {
+    function buildShape(record, layer, affine, compHeight, model, closed) {
         /* One frame of one shape, as the `Shape` object After Effects wants.
          *
          * Canonical space is Y-up with the origin bottom-left, comp space is
@@ -168,7 +168,7 @@
         shape.vertices = vertices;
         shape.inTangents = inTangents;
         shape.outTangents = outTangents;
-        shape.closed = true;
+        shape.closed = closed;
 
         if (model === "per_point") {
             /* One feather point per vertex, pinned to the start of its own
@@ -219,7 +219,8 @@
             for (s = 0; s < specs.length; s++) {
                 targets[s][String(frame)] = buildShape(
                     specs[s]["frames"][String(frame)], layer, affine,
-                    comp.height, specs[s]["feather_model"]);
+                    comp.height, specs[s]["feather_model"],
+                    specs[s]["closed"]);
             }
         }
         return targets;
@@ -462,6 +463,15 @@
         var masks = [];
         var s;
         for (s = 0; s < specs.length; s++) {
+            /* An open spline round trips exactly within one application; what
+             * it *renders* as across two is unmeasured on this side and lives
+             * in node knobs on Nuke's. spec/rbj-v2-draft.md section 5. */
+            if (specs[s]["closed"] === false
+                    && doc.source.app !== ae.SOURCE_APP) {
+                warn("shape '" + specs[s].name + "' is an open spline from "
+                     + doc.source.app + "; the geometry is exact but what it"
+                     + " renders as across applications is unverified");
+            }
             masks[s] = createMask(layer, specs[s]);
         }
 

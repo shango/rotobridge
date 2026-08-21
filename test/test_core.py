@@ -231,7 +231,7 @@ class TestSchemaRejects(unittest.TestCase):
         self.reject(lambda d: d.pop("version"), "version is None")
 
     def test_future_version(self):
-        self.reject(lambda d: d.update(version=2), "newer than this reader")
+        self.reject(lambda d: d.update(version=3), "newer than this reader")
 
     def test_missing_required_source_member(self):
         self.reject(lambda d: d["source"].pop("fps"), "missing fps")
@@ -273,9 +273,15 @@ class TestSchemaRejects(unittest.TestCase):
             d["shapes"][0]["frames"]["11"]["points"].pop()
         self.reject(drop, "vertex count changes")
 
-    def test_open_spline(self):
+    def test_open_spline_in_a_v1_file(self):
+        # spec/rbj-v2-draft.md section 3: v1 forbids open splines, and a file
+        # claiming to be v1 is held to that whatever wrote it.
         self.reject(lambda d: d["shapes"][0].update(closed=False),
-                    "open splines are out of scope")
+                    "needs version 2")
+
+    def test_closed_is_not_a_boolean(self):
+        self.reject(lambda d: d["shapes"][0].update(closed="yes"),
+                    "expected a boolean")
 
     def test_unknown_blend(self):
         self.reject(lambda d: d["shapes"][0].update(blend="darken"), "blend is")
@@ -527,6 +533,93 @@ class TestFeatherNormals(unittest.TestCase):
     def test_a_zero_offset_never_looks_off_normal(self):
         # Otherwise every corner point of an unfeathered shape would warn.
         self.assertEqual(geom.off_normal_angle([0.0, 0.0], [1.0, 0.0]), 0.0)
+
+
+class TestOpenSplines(unittest.TestCase):
+    """spec/rbj-v2-draft.md. v1 is unchanged and still forbids these."""
+
+    def open_doc(self):
+        doc = valid_doc()
+        doc["version"] = rbj.VERSION_OPEN_SPLINES
+        doc["shapes"][0]["closed"] = False
+        return doc
+
+    def test_an_open_shape_validates_at_version_2(self):
+        self.assertEqual(rbj.validate(self.open_doc()), [])
+
+    def test_version_for_stamps_1_when_every_shape_is_closed(self):
+        # The bump is a property of the file, not of the writer: a v2 exporter
+        # with nothing open to say still writes a file a v1 reader can open.
+        self.assertEqual(rbj.version_for(valid_doc()["shapes"]), 1)
+
+    def test_version_for_stamps_2_when_any_shape_is_open(self):
+        shapes = valid_doc()["shapes"] + self.open_doc()["shapes"]
+        self.assertEqual(rbj.version_for(shapes), 2)
+
+    def test_an_open_document_round_trips_through_the_writer(self):
+        doc = self.open_doc()
+        self.assertEqual(rbj.loads(rbj.dumps(doc)), doc)
+
+    def test_the_endpoint_normal_uses_its_one_neighbour(self):
+        # Interior vertices take the chord between neighbours; an endpoint has
+        # no such chord, so it takes the chord to the vertex it does have. On a
+        # horizontal polyline every normal is therefore the same vertical.
+        line = [[0.0, 0.0], [10.0, 0.0], [20.0, 0.0], [30.0, 0.0]]
+        normals = geom.outward_normals(line, closed=False)
+        for n in normals:
+            self.assertAlmostEqual(abs(n[1]), 1.0)
+            self.assertAlmostEqual(n[0], 0.0)
+        self.assertEqual(normals[0], normals[-1])
+
+    def test_closing_the_path_moves_the_endpoint_normals(self):
+        # The wraparound the closed rule uses is wrong for a polyline, which is
+        # the bug this parameter exists to fix rather than a stylistic choice.
+        square = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+        closed = geom.outward_normals(square, closed=True)
+        opened = geom.outward_normals(square, closed=False)
+        self.assertNotEqual(closed[0], opened[0])
+        self.assertNotEqual(closed[-1], opened[-1])
+        self.assertEqual(closed[1:-1], opened[1:-1])
+
+    def test_open_normals_are_unit_length(self):
+        square = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+        for n in geom.outward_normals(square, closed=False):
+            self.assertAlmostEqual(math.hypot(n[0], n[1]), 1.0)
+
+    def test_feather_still_round_trips_on_an_open_path(self):
+        # Whatever "outward" means on a path with no inside, the rule is one
+        # rule and both directions run it, so a Nuke-to-Nuke open spline keeps
+        # its feather exactly. That is the guarantee section 4 of the draft
+        # makes; the sign's meaning across applications is the part it does not.
+        line = [[0.0, 0.0], [10.0, 5.0], [25.0, 5.0], [30.0, 0.0]]
+        normals = geom.outward_normals(line, closed=False)
+        for scalar, normal in zip((3.0, -8.5, 0.0, 12.0), normals):
+            offset = geom.feather_vector(scalar, normal)
+            self.assertAlmostEqual(geom.feather_scalar(offset, normal), scalar)
+
+    def test_the_open_sign_does_not_flip_on_a_perturbation(self):
+        # The reason the open rule does not use the signed area. A near-straight
+        # polyline encloses almost nothing, so the area's sign turns over on a
+        # nudge - and on a moving shape that would flip every feather direction
+        # between one frame and the next.
+        def line(bow):
+            return [[0.0, 0.0], [10.0, bow], [20.0, 0.0], [30.0, -bow]]
+
+        first = geom.outward_normals(line(1e-9), closed=False)
+        second = geom.outward_normals(line(-1e-9), closed=False)
+        for a, b in zip(first, second):
+            self.assertGreater(a[0] * b[0] + a[1] * b[1], 0.0,
+                               "the normal turned over: %r against %r" % (a, b))
+        # And the area really does change sign across those two, so the test is
+        # about the rule rather than about the fixture being too tame.
+        self.assertLess(geom.signed_area(line(1e-9))
+                        * geom.signed_area(line(-1e-9)), 0.0)
+
+    def test_closed_defaults_to_the_closed_rule(self):
+        # Every existing caller passes no flag and must not change behaviour.
+        square = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+        self.assertEqual(geom.outward_normals(square),
+                         geom.outward_normals(square, closed=True))
 
 
 class TestGoldenNukeExport(unittest.TestCase):
@@ -1076,6 +1169,15 @@ class TestEs3CrossCheck(unittest.TestCase):
                 original = rbj.loads(fh.read())
             self.assertEqual(rbj.loads(self.es3_rewrite(original)), original,
                              os.path.basename(path))
+
+    def test_an_open_spline_survives_the_other_implementation(self):
+        # Both readers gate `closed: false` on the version, and both writers
+        # decide the version the same way. A disagreement here is a file one
+        # application writes and the other refuses to open.
+        doc = valid_doc()
+        doc["version"] = rbj.VERSION_OPEN_SPLINES
+        doc["shapes"][0]["closed"] = False
+        self.assertEqual(rbj.loads(self.es3_rewrite(doc)), doc)
 
     def test_field_order_is_preserved(self):
         # The format is meant to be diffable (spec section 2.1). Both writers

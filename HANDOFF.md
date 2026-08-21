@@ -3,12 +3,13 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-20 (Q10 closed; Phase 4 complete, both layers;
-Nuke-to-AE crossing tested host-free)
+Last updated: 2026-08-21 (Phase 6 open splines drafted and implemented
+host-free; Q10 closed; Phase 4 complete, both layers; Nuke-to-AE crossing
+tested host-free)
 
 ## Status
 
-`prd.md` is at **4.8**. Phase 0 is complete on both sides and **every open
+`prd.md` is at **4.10**. Phase 0 is complete on both sides and **every open
 question is closed** (Q6-Q9). **`spec/rbj-v1.md` is FROZEN** (2026-08-20).
 Raw probe output is committed under `test/golden/nuke_probe/17.1v1/` (12 files,
 10/10 cases) and `test/golden/ae_probe/` (6 runs; run 3 is the only one with
@@ -20,9 +21,9 @@ itself. `core/` holds the host-free geometry, timing, schema, interpolation and
 drift code: stdlib only, no host imports, no file access, so it runs unchanged
 under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
 adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
-`test/test_core.py` is **153 passing tests**, run with `python3
+`test/test_core.py` is **165 passing tests**, run with `python3
 test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
-package). `./test/run.sh` runs all five host-free suites: **324 tests**.
+package). `./test/run.sh` runs all five host-free suites: **346 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -65,14 +66,50 @@ nothing here renders a pixel. What it buys is that a Phase 5 mismatch is now
 attributable: the document-level conversion is exact, so a pixel-level
 disagreement is the host or the render, not the geometry core.
 
-Nothing is committed to git - the repo has an initialised `.git` with zero
-commits.
+Everything through Phase 4 and the scene builder is committed on `main`; the
+open-spline work is the working tree on top of it.
 
 ## In flight
 
 Nothing blocking, no phase half-done, and **no open questions** - Q10 closed
 2026-08-20. Phase 4 is complete in code and in the host-free tests; what it has
-not had is a run inside After Effects. See `Next`.
+not had is a run inside After Effects. Phase 6's first extra, open splines, is
+in the same position as of 2026-08-21: written, tested with no host present,
+and waiting on a run. See `Next`.
+
+**Open splines are drafted, not frozen** (`spec/rbj-v2-draft.md`). `closed`
+becomes a real boolean and a file containing an open shape declares
+`version: 2`. Four things worth carrying forward:
+
+- **The bump is per file, not per adapter.** A v2 exporter with nothing open to
+  say still writes `version: 1`. Every file that would have been written before
+  this still is, byte for byte, and still opens in a v1 reader - which is what
+  makes the draft cheap to abandon. `core.rbj.version_for` and
+  `RB.rbj.versionFor` are the one rule, mirrored, because two writers deciding
+  it independently is how they drift apart.
+- **`version` is an integer, so there is no 1.1.** v1 §5 types it that way, and
+  a reader meeting `1.1` rejects it as "not an integer" - loud but misleading.
+  That is the whole reason the draft is v2 and not a minor bump.
+- **`outward_normals` was wrong for a polyline** and now takes `closed`. The
+  wraparound gives an endpoint a neighbour it does not have. Interior vertices
+  are untouched; an endpoint takes the chord to its single neighbour, and the
+  global sign still comes from the implicitly-closed area. That last part is
+  **unverified across applications**, exactly like `ff`: one rule run both ways
+  round trips within a host and is only exposed by a crossing file.
+- **The document round trip is exact; the rendered one is not claimed.** Nuke
+  renders an open spline as a stroke whose width and end caps are **node**
+  knobs (`openspline_width`, the two end types) with no per-shape attribute to
+  carry them, and what After Effects renders an open mask path as has never
+  been measured - no probe run authored one. Both adapters warn, and the
+  importers warn again when the file came from the other application.
+
+The other three Phase 6 extras are deliberately not in the draft. The
+**inverted flag** would be an additive member, and §2.5 requires a v1 reader to
+*ignore* what it does not recognise - so an old reader would render the
+un-inverted matte silently, which is the failure mode `prd.md` §11 exists to
+prevent. It needs its own answer, not a field. **Mask expansion** is After
+Effects-only. **Richer ease fitting** is blocked on the AE-to-Nuke ease
+measurement that Phase 5 owns.
 
 **Q10 is closed, and Phase 2 had it wrong.** Nuke roto has **no boolean shape
 operations at all** - not union, not difference, not intersection. `bm` is an
@@ -105,6 +142,9 @@ which is why it is not a two-line change and is not being guessed at now.
 carry `union` only. The warning now names the mode (`'minus'`) via
 `BLEND_NAMES` instead of printing a bare float, which is what `prd.md` §11 asked
 for and could not deliver while the numbering was unknown.
+
+The open-spline sign convention of `spec/rbj-v2-draft.md` section 4 is in this
+same class and should be settled in the same run.
 
 `ff` (feather falloff) is still unverified in the same class as blend was: it
 defaults to `1.0`, the API never names its values, and the adapters treat
@@ -256,7 +296,8 @@ Both host applications are **Windows-side**; this repo lives in WSL.
   cp ae/*.jsx "/mnt/c/Users/shann/OneDrive/Desktop/rotobridge_ae/"
   ```
 
-  Synced there 2026-08-20. Re-copy after any edit under `ae/`, for the same
+  Synced there 2026-08-21, along with `test/probe/setup_ae_scene.jsx`, which
+  lives in the same folder. Re-copy after any edit under `ae/`, for the same
   reason the probe needs it.
 
 ## Next
@@ -307,9 +348,20 @@ Both host applications are **Windows-side**; this repo lives in WSL.
      `FFO_SMOOTH` 7212). It round trips Nuke to Nuke because the same rule runs
      both ways, so only a crossing file exposes it.
 
-3. **Phase 6 - extras.** Open splines, the inverted flag, mask expansion, richer
-   ease fitting. All three are currently dropped with a warning, which is the
-   correct behaviour for v1 and is tested as such.
+3. **Phase 6 - extras.** Open splines are **done host-free** and drafted as
+   `spec/rbj-v2-draft.md`; what they need is a run, and both checklists already
+   carry it. On the Nuke side that is the new Phase 6 section of
+   `test/test_nuke_roundtrip.py`, which asserts `closed: false`, `version: 2`,
+   the flag surviving the round trip and the geometry holding to the float32
+   floor. On the After Effects side it is **mask 6, `opened`**, of
+   `test/probe/setup_ae_scene.jsx` - and the thing to do there is not to read
+   the file but to **look at the matte**, because whether After Effects fills
+   an open path, and how, is the one unmeasured fact standing between that
+   draft and a freeze (`spec/rbj-v2-draft.md` section 7).
+
+   The inverted flag, mask expansion and richer ease fitting are still dropped
+   with a warning, which is the correct behaviour and is tested as such. See
+   `In flight` for why none of the three followed open splines into the draft.
 
 ## What Phase 4 decided, so it is not relitigated
 

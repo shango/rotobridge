@@ -17,6 +17,12 @@ import re
 
 VERSION = 1
 
+# spec/rbj-v2-draft.md section 2: a writer emits the lowest version that can
+# express the file, not the highest it implements, so a file with no open spline
+# is still a v1 file and still opens in a v1 reader.
+VERSION_OPEN_SPLINES = 2
+MAX_VERSION = 2
+
 BLENDS = ("union", "difference", "intersection")
 FEATHER_MODELS = ("per_point", "none")
 FALLOFFS = ("linear", "smooth")
@@ -106,9 +112,10 @@ def validate(doc):
     ver = doc.get("version")
     if not _is_int(ver):
         errs.append("version is %r, expected an integer" % (ver,))
-    elif ver > VERSION:
+        ver = None
+    elif ver > MAX_VERSION:
         errs.append("version %d is newer than this reader implements (%d)"
-                    % (ver, VERSION))
+                    % (ver, MAX_VERSION))
     elif ver < 1:
         errs.append("version %d is not a released version" % ver)
 
@@ -130,7 +137,7 @@ def validate(doc):
         errs.append("shapes is empty; a file with no shapes is a hard failure")
     else:
         for i, shape in enumerate(shapes):
-            _validate_shape(errs, i, shape, frames_expected)
+            _validate_shape(errs, i, shape, frames_expected, ver)
 
     return errs
 
@@ -169,7 +176,7 @@ def _validate_range(errs, rng):
     return set(str(f) for f in range(first, last + 1))
 
 
-def _validate_shape(errs, index, shape, frames_expected):
+def _validate_shape(errs, index, shape, frames_expected, version):
     where = "shapes[%d]" % index
     if not isinstance(shape, dict):
         errs.append("%s is %r, expected an object" % (where, shape))
@@ -182,12 +189,13 @@ def _validate_shape(errs, index, shape, frames_expected):
         errs.append("%s: name is %r, expected a string" % (where, name))
 
     closed = shape.get("closed")
-    if closed is not True:
-        if closed is False:
-            errs.append("%s: closed is false; open splines are out of scope for v1"
-                        % where)
-        else:
-            errs.append("%s: closed is %r, expected true" % (where, closed))
+    if not isinstance(closed, bool):
+        errs.append("%s: closed is %r, expected a boolean" % (where, closed))
+    elif closed is False and version is not None \
+            and version < VERSION_OPEN_SPLINES:
+        errs.append("%s: closed is false, which needs version %d; this file "
+                    "declares version %d (spec/rbj-v2-draft.md section 3)"
+                    % (where, VERSION_OPEN_SPLINES, version))
 
     _enum(errs, where, shape, "blend", BLENDS)
     model = _enum(errs, where, shape, "feather_model", FEATHER_MODELS)
@@ -365,6 +373,21 @@ def _validate_interp(errs, where, key):
     for side in ease:
         if side not in ("in", "out"):
             errs.append("%s: ease has an unexpected side %r" % (where, side))
+
+
+def version_for(shapes):
+    """The lowest `version` that can express `shapes`.
+
+    Open splines need version 2 (spec/rbj-v2-draft.md section 3); everything
+    else is still a v1 file and must still say so, or every existing reader
+    rejects a file it could have read. One implementation, shared by both
+    exporters, because two writers deciding this independently is how they
+    drift apart.
+    """
+    for shape in shapes:
+        if shape.get("closed") is False:
+            return VERSION_OPEN_SPLINES
+    return VERSION
 
 
 def _reject_constant(name):

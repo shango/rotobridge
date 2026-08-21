@@ -607,6 +607,38 @@ describe("rbj", function () {
         eq(e.errors[0].indexOf("newer than this reader") > -1, true);
     });
 
+    it("accepts an open spline at version 2", function () {
+        // spec/rbj-v2-draft.md section 3. The Python mirror of this is
+        // TestOpenSplines.test_an_open_shape_validates_at_version_2.
+        var doc = minimal();
+        doc.version = 2;
+        doc.shapes[0].closed = false;
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("rejects an open spline in a file that says version 1", function () {
+        var doc = minimal();
+        doc.shapes[0].closed = false;
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("needs version 2") > -1, true, joined(e));
+    });
+
+    it("rejects a closed that is not a boolean", function () {
+        var doc = minimal();
+        doc.shapes[0].closed = "yes";
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("expected a boolean") > -1, true, joined(e));
+    });
+
+    it("versionFor stamps the lowest version that expresses the file",
+       function () {
+        eq(rbj.versionFor(minimal().shapes), 1);
+        var open = minimal().shapes;
+        open[0].closed = false;
+        eq(rbj.versionFor(open), 2);
+        eq(rbj.versionFor(minimal().shapes.concat(open)), 2);
+    });
+
     it("rejects a dense layer that does not cover the range", function () {
         var doc = minimal();
         delete doc.shapes[0].frames["2"];

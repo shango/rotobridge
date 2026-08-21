@@ -1,7 +1,7 @@
 # RotoBridge - Product Requirements Document
 
-**Version:** 4.9
-**Status:** Phases 0-3 complete on the Nuke side, Phase 4 complete on the After Effects side pending a run in the host. `spec/rbj-v1.md` **frozen** 2026-08-20. Q10 closed 2026-08-20; no open questions
+**Version:** 4.10
+**Status:** Phases 0-3 complete on the Nuke side, Phase 4 complete on the After Effects side pending a run in the host. `spec/rbj-v1.md` **frozen** 2026-08-20. Q10 closed 2026-08-20; no open questions. Phase 6 open splines drafted 2026-08-21 in `spec/rbj-v2-draft.md`, host-free tests green, pending a run in either host
 **Phase 0 results:** `test/golden/nuke_probe/17.1v1/`, `test/golden/ae_probe/` (six AE runs; run 3 carries the feather points, run 6 the mixed key interpolation)
 **Verified against:** Nuke 17.1v1 (non-commercial), After Effects 25.6x101
 **Scope:** After Effects ↔ Nuke roto spline interchange via a neutral format, designed for later expansion to Mocha Pro, Flame, and others
@@ -61,7 +61,7 @@ A tool that transfers shapes but destroys their keyframe structure only half-sol
 
 - Adapters for Mocha Pro, Flame, Silhouette, Resolve/Fusion (planned; §16)
 - Full bezier temporal-ease translation (tier-1 and tier-2 mapping only; §7)
-- Open splines, B-splines, X-splines (Bezier only)
+- B-splines, X-splines (Bezier only). Open splines were a v1 non-goal too and are now drafted in `spec/rbj-v2-draft.md`, still behind a version bump, still unrendered in either host
 - Paint strokes, RotoPaint layer hierarchies
 - 3D layers, parented layers, camera-affected transforms in AE
 - Mask expansion, motion blur settings, non-square pixel aspect
@@ -405,7 +405,7 @@ See §15 Q7 for the format question this raises.
 **Hard failures (abort, name the offending shape, write nothing):**
 
 - Variable vertex count across frames within a shape (AE permits this; Nuke does not). Report the frames where the count changes.
-- Open splines.
+- Open splines **in a v1 file**, and a shape that opens or closes partway through its range - the same argument as a changing vertex count, since the file carries one `closed` for the whole shape. An open spline in a file declaring `version: 2` is carried (`spec/rbj-v2-draft.md`).
 - 3D layer, parented layer, or unresolvable transform in AE.
 - No shapes found.
 - `.rbj` with an unrecognized `format` or a `version` newer than the importer.
@@ -420,6 +420,7 @@ See §15 Q7 for the format question this raises.
 - ~~Feather points absent on either side → `uniform` from the mean~~ **Removed by case 62.** Nuke's `fx`/`fy` is 2-D, so AE `maskFeather [x, y]` ↔ Nuke `fx`/`fy` is lossless in both directions. No mean, no anisotropy warning.
 - Divergent per-point interpolation → tier-2 `ease` without params
 - Inverted flag → dropped
+- Open spline → carried at `version: 2`, but its host render settings are not: Nuke's `openspline_width` and end caps are node knobs, and what After Effects renders an open mask as is unmeasured. Warned on export, and again on import when the file came from the other application
 - Paint strokes, nested layers → skipped
 - Non-square pixel aspect → treated as square
 - Resolution mismatch between `.rbj` source and destination project
@@ -463,7 +464,7 @@ Corrective keys are written **linear**, not smooth. A corrective key exists prec
 
 **Phase 4 - AE adapter pair. COMPLETE, both layers.** `ae/rotobridge_export.jsx` and `ae/rotobridge_import.jsx`, sharing `ae/rotobridge_ae.jsx`, over a host-free `ae/rotobridge_core.jsx` (timing, geometry, interpolation, drift) and `ae/rotobridge_rbj.jsx` (the schema). What remains is a run in After Effects itself, against the by-hand checklist in `test/probe/README.md`.
 
-**The ES3 side is tested without After Effects, all of it.** The two core files touch no host and load under plain node, so `node test/test_ae_core.js` runs 70 tests. `test/ae_mock.js` then stands in for the host - `valueAtTime`, `sourcePointToComp` with no time parameter, mask properties by matchName, feather points on the `Shape` object, and an exactly affine layer transform - which lets the adapters themselves run end to end: 48 export tests and 39 import tests, among them an export/import/export round trip that returns every vertex to within 1e-9 px through a layer at scale [150, 220] and 30 degrees, with the whole `shapes` array - `keys` included - comparing byte-equal. `test/run.sh` runs the five host-free suites; 324 tests.
+**The ES3 side is tested without After Effects, all of it.** The two core files touch no host and load under plain node, so `node test/test_ae_core.js` runs 74 tests. `test/ae_mock.js` then stands in for the host - `valueAtTime`, `sourcePointToComp` with no time parameter, mask properties by matchName, feather points on the `Shape` object, and an exactly affine layer transform - which lets the adapters themselves run end to end: 50 export tests and 43 import tests, among them an export/import/export round trip that returns every vertex to within 1e-9 px through a layer at scale [150, 220] and 30 degrees, with the whole `shapes` array - `keys` included - comparing byte-equal. `test/run.sh` runs the five host-free suites; 346 tests.
 
 **The crossing itself is tested, in one direction, with neither application present.** `test/test_ae_crossapp.js` reads a `.rbj` that Nuke really wrote, builds the masks in the mock, exports them straight back out and compares the two documents. This is the one thing a same-app round trip cannot do: a round trip that flipped Y the wrong way, inverted feather's sign or stored ease a factor of 100 out would still return exactly what it was given, which is the same reason Nuke to Nuke does not drift. Four results:
 
@@ -500,6 +501,12 @@ On the import side, `drift.correct` is wired with `applyKeys` on `setValueAtTime
 
 **Phase 6 - Extras.** Open splines, inverted flag, mask expansion, richer ease fitting.
 
+**Open splines are drafted, 2026-08-21.** `spec/rbj-v2-draft.md` is a delta against the frozen v1: `closed` becomes a real boolean, and a file containing an open shape declares `version: 2`. The bump is per **file**, not per adapter - a v2 exporter with nothing open to say still writes `version: 1`, so every file that would have been written before the draft is written byte-identically and still opens in a v1 reader. Both adapter pairs carry it, both schema implementations gate it, and `test/test_nuke_roundtrip.py` gained a section for the next Nuke run. `spec/rbj-v1.md` is untouched and still FROZEN.
+
+Two things the draft does not settle, both in its §7. What After Effects **renders** an open mask path as is unmeasured - no probe run ever authored one - and Nuke's own open-spline width and end caps are node knobs with no per-shape attribute to carry them (probe `q10/93_node_knobs.txt` against `phase2/72_shape_attributes.txt`). So the document round trip is exact in both hosts and the rendered one is only claimed within a host. Mask 6 of `test/probe/setup_ae_scene.jsx` exists to answer the first.
+
+The other three extras are **not** in the draft, and their absence is a decision. The inverted flag is an additive member, which §2.5 says a v1 reader must ignore - so an old reader would render the un-inverted matte silently, the exact failure mode §11 exists to prevent. Mask expansion is After Effects-only. Richer ease fitting is blocked on a measurement nobody has taken (AE ease ↔ Nuke `lslope`/`rslope`, Phase 5).
+
 ---
 
 ## 13. Acceptance criteria
@@ -527,7 +534,8 @@ On the import side, `drift.correct` is wired with `applyKeys` on `setValueAtTime
 ```
 rotobridge/
 ├── spec/
-│   └── rbj-v1.md               # format specification, FROZEN 2026-08-20
+│   ├── rbj-v1.md               # format specification, FROZEN 2026-08-20
+│   └── rbj-v2-draft.md         # open splines, DRAFT 2026-08-21
 ├── core/                       # host-free, stdlib only, no I/O
 │   ├── geom.py                 # canonical-space conversion, per app per direction
 │   ├── timing.py               # frame/second conversion, ranges, offsets

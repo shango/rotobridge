@@ -437,8 +437,11 @@ describe("mapping and failures", function () {
         has(host.alerts, "parented to");
     });
 
-    it("refuses an open spline", function () {
-        var host = mock.install(basic({
+    it("exports an open spline, and stamps the file version 2", function () {
+        // spec/rbj-v2-draft.md section 2: the bump belongs to the file. A
+        // closed export from the same adapter still says 1, which every other
+        // case here asserts by reading a v1 document.
+        var doc = runExport(mock.install(basic({
             mask: {
                 pathAt: function (t) {
                     var s = movingSquare(t);
@@ -446,9 +449,26 @@ describe("mapping and failures", function () {
                     return s;
                 }
             }
+        })));
+        eq(doc.shapes[0].closed, false);
+        eq(doc.version, 2);
+        has(doc.warnings, "is an open spline");
+    });
+
+    it("refuses a spline that opens partway through", function () {
+        // One `closed` for the whole shape, and no correct reading of a path
+        // that changes: the same argument as a changing vertex count.
+        var host = mock.install(basic({
+            mask: {
+                pathAt: function (t) {
+                    var s = movingSquare(t);
+                    s.closed = t < 0.1;
+                    return s;
+                }
+            }
         }));
         eq(runExport(host), null);
-        has(host.alerts, "is open at frame");
+        has(host.alerts, "open/closed state per shape");
     });
 
     it("refuses a vertex count that changes", function () {
@@ -667,7 +687,8 @@ describe("the scene builder for the host run", function () {
         var names = [];
         for (var i = 0; i < masks.length; i++) { names[i] = masks[i].name; }
         eq(String(names),
-           String(["linear", "eased", "mixed", "feathered", "offgrid"]));
+           String(["linear", "eased", "mixed", "feathered", "offgrid",
+                   "opened"]));
         // A failed authoring step is reported rather than thrown, so an alert
         // naming one is the thing that would otherwise pass unnoticed.
         eq(host.alerts.length, 1);
@@ -678,6 +699,14 @@ describe("the scene builder for the host run", function () {
         var host = built();
         var prop = host.comp.layer(1)._masks[4].property("ADBE Mask Shape");
         near(prop.keyTime(2) * 24, 10.4, 6, "the off-grid key");
+    });
+
+    it("authors the open spline open", function () {
+        // The one mask in the scene whose whole point is a boolean, so a
+        // builder that quietly wrote a closed path would look identical.
+        var host = built();
+        var prop = host.comp.layer(1)._masks[5].property("ADBE Mask Shape");
+        eq(prop.value.closed, false);
     });
 
     it("eases nowhere near the default, so a default cannot pass for it",

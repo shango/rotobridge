@@ -191,7 +191,7 @@
         var s;
         for (s = 0; s < shapes.length; s++) {
             headers[s] = shapeHeader(shapes[s], warn);
-            states[s] = { sawFeather: false, vertexCount: null };
+            states[s] = { sawFeather: false, vertexCount: null, closed: null };
         }
 
         for (var f = 0; f < frames.length; f++) {
@@ -212,10 +212,17 @@
 
                 var path = ae.maskProp(entry.mask, ae.MASK_PATH)
                              .valueAtTime(t, false);
-                if (!path.closed) {
-                    throw new Error("mask '" + entry.name + "' is open at frame "
-                                    + frame + "; .rbj v1 carries closed splines"
-                                    + " only (prd.md section 11)");
+                if (states[s].closed === null) {
+                    states[s].closed = path.closed;
+                } else if (states[s].closed !== path.closed) {
+                    /* Same class as a changing vertex count below: the file
+                     * carries one `closed` for the whole shape, and there is no
+                     * correct reading of a path that opens partway through. */
+                    throw new Error("mask '" + entry.name + "' is "
+                        + (path.closed ? "closed" : "open") + " at frame "
+                        + frame + " but " + (states[s].closed ? "closed" : "open")
+                        + " earlier; .rbj carries one open/closed state per"
+                        + " shape");
                 }
 
                 var points = pointsAtFrame(entry, path, affines[layerKey],
@@ -250,6 +257,16 @@
         }
 
         for (s = 0; s < shapes.length; s++) {
+            headers[s]["closed"] = states[s].closed;
+            if (!states[s].closed) {
+                /* What After Effects renders an open mask path as is unmeasured
+                 * - nothing in probe runs 1-6 authored one - and Nuke's own
+                 * open-spline width and end caps are node knobs the file has no
+                 * member for. spec/rbj-v2-draft.md section 5. */
+                warn("mask '" + shapes[s].name + "' is an open spline; the"
+                     + " geometry is carried but what it renders as is not,"
+                     + " and is unverified across applications");
+            }
             finishFeather(headers[s], states[s]);
         }
         return headers;
@@ -465,7 +482,7 @@
         }
         return {
             "format": "rotobridge",
-            "version": RB.rbj.VERSION,
+            "version": RB.rbj.versionFor(headers),
             "source": ae.sourceBlock(comp),
             "range": [range[0], range[1]],
             "warnings": warn.messages,

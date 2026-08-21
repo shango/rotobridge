@@ -30,7 +30,7 @@ from rotobridge_nuke import (ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
 DEFAULT_TOLERANCE = 0.5
 
 
-def _feather_offsets(record, warn, shape_name, model):
+def _feather_offsets(record, warn, shape_name, model, closed):
     """The per-point feather offset for one frame, in Nuke's vector form.
 
     spec section 11.1: `feather_offset` is Nuke's own representation and wins
@@ -45,7 +45,7 @@ def _feather_offsets(record, warn, shape_name, model):
     if all("feather_offset" in p for p in points):
         return [list(p["feather_offset"]) for p in points]
 
-    normals = geom.outward_normals([p["c"] for p in points])
+    normals = geom.outward_normals([p["c"] for p in points], closed)
     offsets = []
     for point, normal in zip(points, normals):
         scalar = float(point.get("feather", 0.0))
@@ -158,7 +158,8 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
     # Once per frame, not once per drift pass: rebuilding the outward normals
     # inside `measure` would recompute them on every pass, and `_feather_offsets`
     # warns, which would repeat the warning once per pass as well.
-    offsets = dict((f, _feather_offsets(dense[str(f)], warn, name, model))
+    offsets = dict((f, _feather_offsets(dense[str(f)], warn, name, model,
+                                        spec["closed"]))
                    for f in frames)
 
     key_frames, types = _key_plan(spec, frames, offset, warn)
@@ -275,6 +276,16 @@ def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
             warn("shape '%s' was requested but is not in the file" % name)
         if not shapes:
             raise ValueError("no shapes matched the requested subset")
+
+    # An open spline round trips exactly within one application; what it
+    # *renders* as across two is unmeasured on the After Effects side and lives
+    # in node knobs on this one (spec/rbj-v2-draft.md section 5).
+    if doc["source"]["app"] != "Nuke":
+        for spec in shapes:
+            if not spec["closed"]:
+                warn("shape '%s' is an open spline from %s; the geometry is "
+                     "exact but what it renders as across applications is "
+                     "unverified" % (spec["name"], doc["source"]["app"]))
 
     node = nuke.createNode("Roto", inpanel=False)
     knob = roto_knob(node)

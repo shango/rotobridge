@@ -110,7 +110,7 @@ the whole `ae/` directory rather than one script.
 Unlike the Nuke pair, most of this is testable with no application present:
 
 ```bash
-./test/run.sh          # 324 tests, no host needed
+./test/run.sh          # 346 tests, no host needed
 ```
 
 `test/ae_mock.js` stands in for After Effects - `valueAtTime`,
@@ -147,7 +147,7 @@ every frame and is exact but uneditable, `inf` keeps only the authored keys, and
 the `0.5` default lands corrective keys where the mismatch would show.
 
 **Build the scene with `test/probe/setup_ae_scene.jsx`** rather than by hand.
-It adds one solid carrying five masks, one per row below that needs something
+It adds one solid carrying six masks, one per row below that needs something
 authored, on a layer that is both scaled and rotating so the derived-affine path
 is live. Everything is inside one undo group, and it ends in an alert saying
 what to look for in each mask. A hand-drawn mask differs run to run, and a
@@ -171,6 +171,7 @@ What still has to be run by hand, and what to look for:
 | `addProperty("ADBE Mask Atom")` on a real layer | Probe section E2 exercised it, so this is corroboration rather than a first run |
 | `maskFeatherFalloff` on a shape from Nuke | The last mapping resting on a guess. Nuke's `ff` defaults to 1.0 and its API never names the values; After Effects names both of its. A file crossing from Nuke is where the two get compared |
 | Timing against acceptance criterion 11 | Ten shapes, 150 frames, under 10 s. The loop shape that makes it reachable is asserted; the constant is not |
+| **An open mask path, exported and looked at** | `spec/rbj-v2-draft.md` section 5. The document side is covered host-free - `closed: false`, `version: 2`, and it comes back open. What no probe run has ever authored is an open mask *at all*, so what After Effects renders one as is unmeasured, and it is the last thing between that draft and a freeze. Mask 6, `opened` |
 
 ## Known gaps
 
