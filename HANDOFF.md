@@ -1048,45 +1048,59 @@ half of the defect was not reproducible host-free. Key times and transform
 geometry stay independent on purpose: a mismatch between them is a state a real
 comp can be in.
 
-**Still outstanding, and it needs the host.**
-`test/golden/ae_scene.rbj` was exported by the old code and still carries the
-old labels. Until it is re-exported the golden files disagree with the exporter,
-and the Nuke crossing report (`ae_to_nuke_report.txt`, `mixed` 5 authored + 15
-corrective) is measured against the stale file. Expect roughly 15 corrective
-keys to become 3.
+**Done, 2026-08-21.** `test/golden/ae_scene.rbj` was re-exported and the diff
+was the one predicted: `mixed` key 12 out `hold -> ease`, key 18 out
+`ease -> hold`, the new `mask 'mixed'` warning, and geometry **bit-identical**
+rather than merely within tolerance. `mixed` holds its mask path from frame 12
+to 24, but the layer's rotation is keyed at 6 and 18, so the composite only
+stops moving at 18, which is where the hold now sits.
 
-The procedure is written down at `test/probe/README.md`, "Re-exporting the scene
-golden". The part worth knowing before starting: **the re-export is only
-believable if its diff is the one predicted here** - geometry identical, and
-exactly three label changes, `mixed` key 12 out `hold -> ease`, key 18 out
-`ease -> hold`, and the new `mask 'mixed'` warning that says the same thing in
-prose. Anything else means the fixture moved rather than the exporter, and the
-two are indistinguishable in the committed file afterwards.
+The crossing was re-run against the fresh file and
+`test/golden/nuke_probe/17.1v1/phase6/ae_to_nuke_report.txt` updated. `mixed`
+went from 5 authored + 15 corrective to 5 + 11, which puts it in line with every
+other moving shape (11 to 13) instead of being the outlier. **The prediction
+written here beforehand said "roughly 3" and that was wrong** - the reasoning
+behind it only ever accounted for the false hold over 12 to 18, and the drift
+pass still has to fit a cubic to a real After Effects curve over that segment
+like it does on every other shape. What the fix actually bought is the 19 to 23
+block, now exactly flat and needing nothing. Worst error rose from 0.1000 px to
+0.4503 px, still inside the 0.5 tolerance: fewer corrective keys means more
+residual, and that is the trade the tolerance exists to make.
 
-`test/probe/diff_rbj.py` is what makes that check possible. A plain `diff` on a
-thousand lines of pretty-printed floats cannot separate a one-ulp wobble in the
-bake from a flipped `interp` label, so the tool reports geometry as a worst-case
-pixel distance and labels one at a time. It was verified against a synthetic
-copy of the golden carrying exactly the predicted change, and against one with a
-key dropped and a vertex moved 0.75 px, so both halves are known to report.
+**How the first attempt failed, because the procedure was blind to it.**
+The scene rebuilt and re-exported cleanly, the alert read 6 shapes / 600 points
+/ 4 warnings, and the diff came back with no key changes at all - which reads
+exactly like "the exporter change did nothing". It had not run. The scripts on
+the Windows side were a copy taken before `0c1b3af`, and nothing in the
+procedure looked at them. That is the arrangement's structural blind spot: the
+code under test lives on one machine and the acceptance check on another, and a
+stale deployment produces a plausible file, a plausible alert, and a
+wrong-shaped diff whose natural reading is that the *fixture* moved. The
+procedure at `test/probe/README.md`, "Re-exporting the scene golden", now opens
+by copying the scripts and `diff`-ing them, and the alert's warning count is
+part of the check - four instead of five is the fingerprint of a pre-`0c1b3af`
+build.
 
-**The first attempt at this failed, and it is worth knowing how.**
-2026-08-21: the scene was rebuilt and re-exported cleanly, the alert read 6
-shapes / 600 points / 4 warnings, and the diff came back with no key changes at
-all - which reads exactly like "the exporter change did nothing". It had not
-run. The scripts on the Windows side were a copy taken before `0c1b3af`, and
-nothing in the procedure looks at them. That is the failure mode this whole
-arrangement is blind to: the code under test lives on one machine and the
-acceptance check on another, and a stale deployment produces a plausible file, a
-plausible alert, and a wrong-shaped diff whose natural reading is that the
-*fixture* moved. So the procedure now opens by copying the scripts and
-`diff`-ing them, and the alert's warning count is part of the check - four
-warnings instead of five is the specific fingerprint of a pre-`0c1b3af` build.
+That run still paid for itself. Its geometry was bit-identical to the committed
+golden, so `setup_ae_scene.jsx` plus the exporter reproduce the bake exactly
+across a fresh project, and any geometry line in a future diff is signal rather
+than host noise.
 
-That run was not wasted. Its geometry was **bit-identical** to the committed
-golden, which is a fact worth having on its own: `setup_ae_scene.jsx` plus the
-exporter reproduce the bake exactly across a fresh project, so any geometry line
-in a future diff is signal rather than host noise.
+The prediction was also wrong by omission, and the fix for that generalises: it
+was written from the two label changes alone and missed that the new code emits
+a warning, so the real diff is three lines and the alert reads five. It was
+caught by simulating the exporter's `segmentVerdict` in Python over the bake
+from the failed run before asking for the re-export, which is worth doing
+whenever a host artefact is about to be regenerated - the bake is already in
+hand, and a prediction derived from it is cheaper than a second host round.
+
+`test/probe/diff_rbj.py` is what makes the check possible at all. A plain `diff`
+on a thousand lines of pretty-printed floats cannot separate a one-ulp wobble in
+the bake from a flipped `interp` label, so the tool reports geometry as a
+worst-case pixel distance and labels one at a time. It was verified against a
+synthetic copy of the golden carrying exactly the predicted change, and against
+one with a key dropped and a vertex moved 0.75 px, so both halves are known to
+report.
 
 ## Next
 

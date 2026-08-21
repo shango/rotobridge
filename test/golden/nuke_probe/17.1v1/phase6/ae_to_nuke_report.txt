@@ -20,9 +20,12 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
     opened     4 authored, 21 corrective
   warning: mask 'feathered': 3 feather point(s) sat mid-segment and were snapped to the nearer vertex; Nuke can only anchor feather at a vertex
   warning: mask 'feathered': two feather points resolved to vertex 3; kept radius 12 and dropped 0
-  warning: mask 'opened' is an open spline; the geometry is carried but what it renders as is not, and is unverified across applications
+  warning: mask 'opened' is an open spline, which produces no alpha as an After Effects mask; the geometry is carried but no stroke width or end caps are
+  warning: mask 'mixed': 1 key(s) hold the mask path while the layer moves under it, so the shape is not flat there and the hold is not carried as one. Geometry is unaffected; what is lost is a held key the artist could edit
   warning: mask 'offgrid': a key sat 0.400 of a frame off the grid and was snapped to frame 10; .rbj keys are whole frames
   warning: shape 'opened' is an open spline from After Effects; the geometry is exact but what it renders as across applications is unverified
+  warning: shape 'eased': 3 key(s) carry authored ease. Nuke's roto curves cannot hold it, so the shape arrives as a dense bake and the keyframe timing is not editable downstream. Geometry is unaffected
+  warning: shape 'mixed': 1 key(s) carry a different interpolation on each side, which a Nuke key cannot hold - one type governs the whole key. They were set smooth and the drift pass corrected the positions
 
 --- did the open spline arrive open? ---
   linear     open=False
@@ -42,14 +45,15 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
   the one that can expose a sparse layer the dense layer contradicts.
     linear     4 authored, 13 corrective; worst 0.3723 px at frame 9
     eased      5 authored, 20 corrective
-    mixed      5 authored, 15 corrective; worst 0.1000 px at frame 16
+    mixed      5 authored, 11 corrective; worst 0.4503 px at frame 10
     feathered  4 authored, 12 corrective; worst 0.2143 px at frame 12
     offgrid    5 authored, 11 corrective; worst 0.3665 px at frame 9
     opened     4 authored, 11 corrective; worst 0.2577 px at frame 12
+  warning: shape 'mixed': 1 key(s) carry a different interpolation on each side, which a Nuke key cannot hold - one type governs the whole key. They were set smooth and the drift pass corrected the positions
   measured against the dense layer:
     linear     worst 0.3723 px at frame 9
     eased      worst 0.0001 px at frame 19
-    mixed      worst 0.1000 px at frame 16
+    mixed      worst 0.4503 px at frame 10
     feathered  worst 0.2143 px at frame 12
     offgrid    worst 0.3665 px at frame 9
     opened     worst 0.2577 px at frame 12
@@ -77,6 +81,8 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
   warning: shape 'opened': an open spline's render settings are node knobs (openspline_width and the end types), not shape attributes, so they are not carried in the file
 
 --- what the crossing changed, field by field ---
+  mixed      frame 12  interp {'in': 'linear', 'out': 'ease'} -> {'in': 'ease', 'out': 'ease'}
+  mixed      frame 18  interp {'in': 'ease', 'out': 'hold'} -> {'in': 'linear', 'out': 'hold'}
 
 === VERDICT ===
 PASS - an After Effects .rbj opens in Nuke and comes back out

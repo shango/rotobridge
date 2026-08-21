@@ -233,9 +233,14 @@ until that is explained. Geometry drifting by a float epsilon is fine and worth
 recording; geometry drifting by a pixel is a different scene.
 
 Then re-run the crossing, because `ae_to_nuke_report.txt` is measured against
-this file. `mixed` currently reports 5 authored + 15 corrective at tolerance
-0.5; with the hold in the right place the drift pass has a flat segment to
-agree with, so expect roughly 3.
+this file. Run 2026-08-21: `mixed` went from 5 authored + 15 corrective at
+tolerance 0.5 to 5 + 11, which is in line with every other moving shape rather
+than an outlier. The prediction beforehand was "roughly 3" and was wrong; it
+counted only the false hold and forgot that segment 12 to 18 still needs a cubic
+fitted to a real After Effects curve, same as everywhere else. What the fix
+bought is frames 19 to 23, now exactly flat and needing nothing. Worst error
+rose from 0.1000 px to 0.4503 px and stayed inside the 0.5 tolerance - fewer
+corrective keys means more residual, which is the trade the tolerance is for.
 
 What still has to be run by hand, and what to look for:
 
