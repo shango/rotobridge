@@ -110,7 +110,7 @@ the whole `ae/` directory rather than one script.
 Unlike the Nuke pair, most of this is testable with no application present:
 
 ```bash
-./test/run.sh          # 368 tests, no host needed
+./test/run.sh          # 369 tests, no host needed
 ```
 
 `test/ae_mock.js` stands in for After Effects - `valueAtTime`,

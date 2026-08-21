@@ -3,11 +3,13 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-21 (**both After Effects import bugs fixed and confirmed
-in the host** - stale mask handles, and feather compared by array index; the
-drift pass now splits a monotone gap instead of walking back from its end, which
-closes the `hold`-over-a-moving-ancestor question; Phase 6 open splines drafted
-and implemented host-free; Q10 closed)
+Last updated: 2026-08-21. **Phase 4 is complete and has met both hosts.** This
+session: both After Effects import bugs found, fixed and confirmed in the host
+(stale mask handles; feather compared by array index); the drift pass now splits
+a monotone gap instead of walking back from its end, which closed the
+`hold`-over-a-moving-ancestor question; bezier ease measured and exact; and open
+splines settled as a **permanent draft** after After Effects turned out to
+produce no alpha from an open mask path at all. **Phase 5 is the frontier.**
 
 ## Status
 
@@ -20,13 +22,13 @@ load-bearing evidence).
 
 **Phases 1, 2, 3 and 4 are complete**, and Phase 4 has now met both hosts: the
 export and the six-shape import both pass in After Effects, and both Nuke
-acceptance tests pass. `core/` holds the host-free geometry, timing, schema, interpolation and
-drift code: stdlib only, no host imports, no file access, so it runs unchanged
-under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
+acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
+interpolation and drift code: stdlib only, no host imports, no file access, so
+it runs unchanged under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
 adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
 `test/test_core.py` is **176 passing tests**, run with `python3
 test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
-package). `./test/run.sh` runs all five host-free suites: **368 tests**.
+package). `./test/run.sh` runs all five host-free suites: **369 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -110,15 +112,19 @@ becomes a real boolean and a file containing an open shape declares
 - **`outward_normals` was wrong for a polyline** and now takes `closed`. The
   wraparound gives an endpoint a neighbour it does not have. Interior vertices
   are untouched; an endpoint takes the chord to its single neighbour, and the
-  global sign still comes from the implicitly-closed area. That last part is
-  **unverified across applications**, exactly like `ff`: one rule run both ways
-  round trips within a host and is only exposed by a crossing file.
-- **The document round trip is exact; the rendered one is not claimed.** Nuke
-  renders an open spline as a stroke whose width and end caps are **node**
-  knobs (`openspline_width`, the two end types) with no per-shape attribute to
-  carry them, and what After Effects renders an open mask path as has never
-  been measured - no probe run authored one. Both adapters warn, and the
-  importers warn again when the file came from the other application.
+  global sign is a **fixed** quarter turn rather than area-derived, because the
+  area of a near-straight polyline flips on a perturbation and would flip the
+  feather frame to frame. It stays a stated convention rather than a measured
+  one, and that got cheap: the sign only ever mattered for what an open path
+  renders as, and the only host that renders one at all is Nuke.
+- **The document round trip is exact; the rendered one does not exist.** This
+  is now measured on both sides and is why v2 is a permanent draft. After
+  Effects produces **no alpha at all** from an open mask path. Nuke renders one
+  as a stroke, but its width and end caps are **node** knobs
+  (`openspline_width` 10.0, both end types `rounded`) with no per-shape
+  attribute to carry them, so even Nuke to Nuke arrives at defaults. Both
+  adapters warn, and the AE importer warns on **every** open spline rather than
+  only on a crossing one.
 
 The other three Phase 6 extras are deliberately not in the draft. The
 **inverted flag** would be an additive member, and §2.5 requires a v1 reader to
@@ -296,10 +302,9 @@ transform, imports with **0 corrective**.
 
 Masks **7 and 8 were added 2026-08-21** to answer it - `eased_static` and
 `linear_static`, on a second solid, `RotoBridge static`, that does not move.
-`linear_static` is the calibration: it must come back with **zero** corrective
-keys, and if it does not, nothing about 8 is worth reading. `eased_static` is
-then the real test of whether `.rbj` ease reproduces After Effects' own curve.
-**Not yet run.**
+**They ran, and the answer is that `.rbj` ease reproduces AE's own curve
+exactly**: both came back with 0 corrective keys and 0.0000 px. See "Bezier
+ease, answered in the host".
 
 **The two hosts agree to a thousandth of a pixel**, which is the result that
 does survive from this run. The same shapes, imported independently by two
@@ -759,59 +764,43 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 
 ## Next
 
-1. **DONE 2026-08-21: `.rbj` ease reproduces After Effects' own curve.** See
-   "Bezier ease, answered" below. Nothing outstanding on the AE side.
+**Phase 5 is the frontier.** Everything before it is done and measured in both
+hosts. What is listed as 1 below is the only Phase 4 loose end, and it is a
+two-second look rather than work.
 
-   Optional and not blocking: the committed `test/golden/ae_scene.rbj` is the
-   **six**-shape export and predates masks 7 and 8. An eight-shape export would
-   fold the static pair into the crossing test rather than leaving them in a
-   separate file. `test/test_ae_to_nuke.py` reads `ae_scene.rbj`, so it would
-   need re-running afterwards.
-
-   Then re-run the **six-shape** import to confirm the stale-handle fix in the
-   host. Nothing needs rebuilding: the export is committed as
-   `test/golden/ae_scene.rbj`. Re-copy `ae/*.jsx` to the Desktop folder after
-   any edit.
-
-1b. **Ease-then-type ordering is the last Phase 4 checklist entry, and a drift
+1. **Ease-then-type ordering, the last Phase 4 checklist entry - and a drift
    number cannot answer it.** `setTemporalEaseAtKey` forces a key to BEZIER and
    the importer sets the types afterwards. The export side of `mixed` proves the
    ordering works when *reading*. The symptom on import is a **hold key that
    renders smooth**, and the drift pass corrects positions either way, so it
-   will not show up as drift. It needs someone to look at the imported `mixed`
+   will never show up as drift. Someone has to look at the imported `mixed`
    mask's frame-12 key in the timeline and confirm it is still a hold. Low risk:
    the code does ease first and types after, which is the documented order.
 
-1a. **The Nuke Phase 6 run PASSED, 2026-08-21.** Report committed at
-   `test/golden/nuke_probe/17.1v1/phase6/roundtrip_report.txt`. The new section
-   read `exported closed=False, version=2`, the render-settings warning present,
-   `rebuilt 'open_spline' with 4 points, open=True`, and worst deviation
-   **0.000e+00 px** - exact, not merely inside the float32 floor, because the
-   fixture is static so nothing re-evaluates through an interpolation. Every
-   Phase 2 and 3 stage still passes unchanged and `roundtrip.rbj` / `sparse.rbj`
-   regenerate **byte-identical** to the committed goldens, so open splines cost
-   the existing paths nothing.
+   Optional and not blocking: `test/golden/ae_scene.rbj` is the **six**-shape
+   export and predates masks 7 and 8, whose export is a separate golden
+   (`ae_static_ease.rbj`). An eight-shape export would fold the static pair into
+   the crossing test. `test/test_ae_to_nuke.py` reads `ae_scene.rbj`, so it
+   would need re-running afterwards.
 
-   To re-run it:
+**Both Nuke acceptance tests pass and are re-runnable without anyone**, most
+recently 2026-08-21 after the drift-gap change. Reports at
+`test/golden/nuke_probe/17.1v1/phase6/`. `test_nuke_roundtrip.py` covers Phases
+2, 3 and 6; `test_ae_to_nuke.py` is the AE-to-Nuke crossing. Sync, then run
+either:
 
-   ```bash
-   rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
-     && mkdir -p "/mnt/c/Users/shann/rotobridge/rb" \
-     && cp -r core nuke test "/mnt/c/Users/shann/rotobridge/rb/"
-   "/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
-       "C:\Users\shann\rotobridge\rb\test\test_nuke_roundtrip.py" \
-       "C:\Users\shann\rotobridge\out\phase6"
-   ```
+```bash
+rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
+  && mkdir -p "/mnt/c/Users/shann/rotobridge/rb" \
+  && cp -r core nuke test "/mnt/c/Users/shann/rotobridge/rb/"
+mkdir -p "/mnt/c/Users/shann/rotobridge/out/run"
+"/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
+    "C:\Users\shann\rotobridge\rb\test\test_nuke_roundtrip.py" \
+    "C:\Users\shann\rotobridge\out\run"
+```
 
-   It writes `phase6/roundtrip_report.txt` whether it passes or fails. Wanted
-   from the new Phase 6 section: `exported closed=False, version=2`, the shape
-   rebuilt `open=True`, deviation at the float32 floor, the render-settings
-   warning present rather than `MISSING`, and the verdict line ending "dense,
-   sparse and open".
-
-1c. **A `hold` over an animated ancestor transform is RESOLVED**, 2026-08-21 -
-   in the drift pass, not the exporter. See the section above for the mechanism
-   and for why the exporter is the wrong place. Nothing is outstanding.
+The output directory must exist first - `test_ae_to_nuke.py` does not create it
+and fails at the end if it is missing.
 
 2. **Phase 5 - verify across both applications.** Same plate in both, comp AE's
    matte against Nuke's at each import mode, confirm the tolerance bounds hold.
@@ -821,26 +810,24 @@ Both host applications are **Windows-side**; this repo lives in WSL.
    direction. Two questions are waiting on exactly this and should not be
    guessed at before it:
 
-   - **AE ease ↔ Nuke `lslope` / `rslope` and `la` / `ra`.** Narrowed by Phase 4
-     rather than answered: AE ↔ `.rbj` ease is now a measured factor of 100 in
-     both directions, so what is left is specifically the Nuke half.
+   - **AE ease ↔ Nuke `lslope` / `rslope` and `la` / `ra`.** Narrowed hard by
+     Phase 4 rather than answered. AE ease to `.rbj` and back is not merely a
+     measured factor of 100 now: `ae_static_ease.rbj` proved the whole curve
+     reconstructs, 135 px of bow rebuilt from three keys to 0.0000 px. So the AE
+     half is **exact and closed**, and everything unknown is on Nuke's side.
      `core/interp.to_nuke` is the one function that changes, and it should not
-     change until a file has actually crossed.
+     change until a file has actually crossed and been rendered.
    - **`ff`, Nuke's feather falloff.** Nuke defaults it to 1.0 and its API never
      names the values; After Effects names both of its (`FFO_LINEAR` 7213,
      `FFO_SMOOTH` 7212). It round trips Nuke to Nuke because the same rule runs
      both ways, so only a crossing file exposes it.
 
-3. **Phase 6 - extras.** Open splines are **done host-free** and drafted as
-   `spec/rbj-v2-draft.md`; what they need is a run, and both checklists already
-   carry it. On the Nuke side that is the new Phase 6 section of
-   `test/test_nuke_roundtrip.py`, which asserts `closed: false`, `version: 2`,
-   the flag surviving the round trip and the geometry holding to the float32
-   floor. On the After Effects side it is **mask 6, `opened`**, of
-   `test/probe/setup_ae_scene.jsx` - and the thing to do there is not to read
-   the file but to **look at the matte**, because whether After Effects fills
-   an open path, and how, is the one unmeasured fact standing between that
-   draft and a freeze (`spec/rbj-v2-draft.md` section 7).
+3. **Phase 6 - extras. CLOSED, and open splines are done.** Both hosts have run
+   them: the Phase 6 section of `test/test_nuke_roundtrip.py` passes, and After
+   Effects carries one as data. `spec/rbj-v2-draft.md` is a **permanent draft**
+   by decision, not a document awaiting a freeze - see "Open splines may not be
+   worth a version number". Nothing here is outstanding, and no file should be
+   written with `version: 2` on purpose.
 
    The inverted flag, mask expansion and richer ease fitting are still dropped
    with a warning, which is the correct behaviour and is tested as such. See
