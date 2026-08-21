@@ -1143,8 +1143,11 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    ordering works when *reading*. The symptom on import is a **hold key that
    renders smooth**, and the drift pass corrects positions either way, so it
    will never show up as drift. Someone has to look at the imported `mixed`
-   mask's frame-12 key in the AE timeline and confirm it is still a hold. Low
-   risk: the code does ease first and types after, the documented order.
+   mask's key in the AE timeline and confirm it is still a hold. **That key is
+   now frame 18, not frame 12** - the re-export moved the hold to where the
+   composite actually stands still, so a check aimed at 12 would fail on
+   correct behaviour. Low risk: the code does ease first and types after,
+   which is the documented order.
 
    Optional, not blocking: `test/golden/ae_scene.rbj` is the **six**-shape
    export and predates masks 7 and 8, whose export is a separate golden
