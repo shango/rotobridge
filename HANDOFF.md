@@ -3,9 +3,9 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-21 (Phase 6 open splines drafted and implemented
-host-free; Q10 closed; Phase 4 complete, both layers; Nuke-to-AE crossing
-tested host-free)
+Last updated: 2026-08-21 (first real After Effects host run: **export passed,
+import FAILED**; Phase 6 open splines drafted and implemented host-free; Q10
+closed; Nuke-to-AE crossing tested host-free)
 
 ## Status
 
@@ -34,8 +34,11 @@ against 0.465 px at tolerance 0.5. Report committed at
 `test/golden/nuke_probe/17.1v1/phase3/roundtrip_report.txt`.
 
 Golden files: `test/golden/square.rbj` (hand-built), `test/golden/roundtrip.rbj`
-(a real Nuke export carrying every v1 field) and `test/golden/sparse.rbj` (a
-real export of a shape keyed on 5 frames of 41). All three are validated with no
+(a real Nuke export carrying every v1 field), `test/golden/sparse.rbj` (a real
+export of a shape keyed on 5 frames of 41), **`test/golden/ae_scene.rbj`** (the
+first real After Effects export, 6 shapes, `version: 2`, 2026-08-21) and
+**`test/golden/held_over_moving_layer.rbj`** (hand-built: a `hold` the dense
+layer contradicts - see below). All three are validated with no
 Nuke present by `test/test_core.py`, and the latter two are **run through the
 After Effects adapters** by `test/test_ae_crossapp.js` - see below.
 
@@ -71,8 +74,11 @@ open-spline work is the working tree on top of it.
 
 ## In flight
 
-Nothing blocking, no phase half-done, and **no open questions** - Q10 closed
-2026-08-20. Phase 4 is complete in code and in the host-free tests; what it has
+**STOP HERE FIRST: the After Effects import fails in the host, and the next
+step is one experiment.** See "The first After Effects host run" below. The
+Nuke Phase 6 run has not been done at all and is staged ready to paste.
+
+Nothing else blocking, and **no open questions** - Q10 closed 2026-08-20. Phase 4 is complete in code and in the host-free tests; what it has
 not had is a run inside After Effects. Phase 6's first extra, open splines, is
 in the same position as of 2026-08-21: written, tested with no host present,
 and waiting on a run. See `Next`.
@@ -153,6 +159,111 @@ ways, so it is only exposed once a file actually crosses between the two
 applications. That is Phase 5, not Phase 4: the AE adapters name their falloff
 values (`FFO_LINEAR` 7213, `FFO_SMOOTH` 7212) and carry them faithfully, which
 narrows the question to Nuke's half but does not answer it.
+
+## The first After Effects host run, 2026-08-21
+
+Phase 4 finally met the host. **The export passed. The import did not.** Neither
+result has anything to do with open splines; Phase 6 rode along and was fine.
+
+Fixture: `test/probe/setup_ae_scene.jsx` on a 1920x1080 24 fps comp, After
+Effects 25.6x101. The exported file is committed as **`test/golden/ae_scene.rbj`**
+- the first real After Effects export in the project, and the only artefact of
+this run that survived the session.
+
+### The export passed, and settled two things
+
+6 shapes, 600 points baked, 0.29 s, 27 authored keys, 4 warnings - and all four
+warnings are ones the design predicted, none is a surprise:
+
+- `feathered`: 3 feather points mid-segment, snapped to the nearer vertex
+- `feathered`: two points resolved to vertex 3, kept radius 12 and dropped 0
+  (the collision rule, and the zero competing on equal terms, both as specified)
+- `opened`: the open-spline render-settings warning
+- `offgrid`: a key 0.400 of a frame off the grid, snapped
+
+The file **validates against `core/rbj.py`** and stamps **`version: 2`**, purely
+because one of six shapes is open. Two findings worth keeping:
+
+- **AE ease survives to `.rbj` exactly.** Keys 0, 12, 24 of `eased` came back
+  `in: [0.91176, 0]`, `out: [0.33333, 0]` - influence 91.176 / 33.333 over 100,
+  nowhere near the 16.667 default, so it cannot be a default in disguise. The
+  factor of 100 in spec section 10.3 is now measured in the host, not just the
+  mock.
+- **The asymmetric key survives the export.** `mixed` frame 12 exported
+  `{in: linear, out: hold}` - the exact key run 6 produced and the one the v4.2
+  single-valued schema could not represent. It also means
+  `setInterpolationTypeAtKey` after `setTemporalEaseAtKey` took, on the export
+  side. Whether it survives the *import* is still unanswered, because the
+  import failed.
+
+**`feather_falloff: smooth` on all six masks is correct, not a bug.** Only
+`feathered` had falloff set. AE's default `maskFeatherFalloff` is 7212 = SMOOTH,
+measured in probe runs 4, 5 and 6. Checked before flagging; do not re-flag it.
+
+### The import failed: "object invalid"
+
+The alert read `RotoBridge import failed: ... object invalid`. **The exact line
+number was never captured - get it.** The catch block at the foot of
+`ae/rotobridge_import.jsx` appends `(line N)` when After Effects supplies one.
+
+**Hypothesis, not a diagnosis.** `importShapes` creates all six masks up front
+and then goes back and writes into them:
+
+```js
+for (s = 0; s < specs.length; s++) { masks[s] = createMask(layer, specs[s]); }
+var targets = bakeTargets(comp, layer, specs, frames, offset, warn);
+for (s = 0; s < specs.length; s++) { buildOne(comp, masks[s], ...); }
+```
+
+`createMask` keeps what `addProperty("ADBE Mask Atom")` returned. If adding
+masks 2-6 invalidates the reference to mask 1, every held reference is stale by
+the second loop - and "object invalid" is what After Effects says about a stale
+one. This is the **same hazard the Nuke side already documented**: `append()`
+copies into the tree, the object you passed goes stale, re-fetch the live child
+from its parent. Different API, same shape. The mock cannot see it because its
+`addProperty` returns a plain object that never goes stale, and this is the
+**first multi-shape After Effects import that has ever run**, so nothing earlier
+could have caught it.
+
+**The one experiment that decides it:** re-run the import and type a single
+name - `opened` - at the shape-subset prompt. One shape succeeding where six
+failed confirms the stale reference, and the fix is to re-fetch each mask from
+the parade by index rather than hold what `addProperty` returned. Failing
+identically on one shape means the hypothesis is wrong and the line number is
+the only lead.
+
+Ruled out already: the open-spline import path itself. Driving a version-2 open
+spline from a Nuke source through the real importer under the mock builds the
+mask, reports 2 authored keys and 0 corrective, and raises the cross-host
+warning. That path is clean.
+
+### A `hold` can contradict its own dense layer
+
+Found while investigating the above, unrelated to it, and **a Phase 4 problem
+rather than a Phase 6 one**.
+
+`mixed` exported `out: hold` at frame 12. The layer rotates from frame 6 to 18,
+so the geometry genuinely moves through 12-18 while the sparse layer says it is
+frozen. `hold` is a claim about **layer** space; `.rbj` keys describe
+**canonical** space with the transform baked in, where the claim is false.
+
+Reproduced host-free - `test/golden/held_over_moving_layer.rbj`, a steadily
+moving dense layer under `out: hold` at frame 12. Run it through the AE importer
+under the mock and the drift pass cannot converge:
+
+```
+held: 3 authored key(s), 8 corrective; worst drift 60.0000 px at frame 15
+  - the drift pass ran out of passes with 60.0000 px still unaccounted for
+```
+
+It burns all eight passes and gives up. A hold-out side freezes the segment
+after key 12 whatever corrective key lands next, so the pass can never repair
+the one segment nearest the hold - it is structurally unable to, not merely
+short of passes. **It fails loudly rather than deforming silently**, which is
+the policy working as intended. But the artist gets a warning and a wrong matte,
+and neither adapter explains why. Undecided: whether the exporter should refuse
+to write `hold` when an ancestor transform animates across that interval, or
+warn, or whether the drift pass should skip held gaps and say so. Not started.
 
 ## Decisions made, so they are not relitigated
 
@@ -302,33 +413,56 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 
 ## Next
 
-1. **Phase 4 needs a run in After Effects.** Everything else about it is done
-   and tested with no host present. The by-hand checklist is in
-   `test/probe/README.md` under "After Effects adapters" and names what the mock
-   cannot reach.
+1. **Fix the After Effects import.** It failed in the host on 2026-08-21 with
+   "object invalid" and the whole account is above, under "The first After
+   Effects host run". Two things unblock it and both are cheap:
 
-   **Run `test/probe/setup_ae_scene.jsx` first.** It authors the whole scene -
-   five masks, one per checklist row that needs something built, on a scaled and
-   rotating layer - so the run is the same every time and a difference in the
-   fixture cannot be mistaken for a difference in the adapters. It ends in an
-   alert saying what to look for in each mask. Its own final line is worth
-   reading too: an authoring step that failed is reported rather than thrown,
-   and `setTemporalEaseAtKey` is the one call in it that no probe run has ever
-   made in the host.
+   - Re-run the import typing `opened` at the shape-subset prompt. One shape
+     working where six failed confirms the stale-mask-reference hypothesis.
+   - Capture the **full alert text**, including the `(line N)` the catch block
+     appends.
 
-   The two entries that matter most:
+   The scene is already built and its export is committed as
+   `test/golden/ae_scene.rbj`, so the import can be retried without rebuilding
+   anything. The Desktop copy under `rotobridge_ae/` was in sync with the repo
+   as of this run - re-copy after any edit under `ae/`.
 
-   - **A mask keyed with bezier ease, exported and reimported.** This is the one
-     interpolation `test/ae_mock.js` refuses to guess at. The question is
-     whether the drift pass reports a near-zero residual on a file that came out
-     of After Effects in the first place. If it does not, the ease values `.rbj`
-     carries are not reproducing AE's own curve, and spec §10.3 needs looking at
-     rather than the adapter.
-   - **Ease-then-type ordering.** `setTemporalEaseAtKey` is documented to force
-     a key to BEZIER, so the importer sets the ease first and the per-side types
-     after. The mock reproduces the forcing and a test pins the outcome, but
-     whether the ease *survives* that second call is the host's answer. The
-     symptom to look for is a hold key that renders smooth.
+   Still unanswered because the import never completed, both from the Phase 4
+   checklist:
+
+   - **Bezier ease reimported.** The export half is now settled - AE ease
+     reaches `.rbj` exactly, factor of 100, measured. What is still open is
+     whether the *importer* reproduces AE's own curve: the drift pass should
+     report a near-zero residual on a file After Effects wrote itself. If it
+     does not, spec §10.3 is what to look at, not the adapter.
+   - **Ease-then-type ordering.** `setTemporalEaseAtKey` forces a key to BEZIER,
+     so the importer sets the ease first and the per-side types after. The
+     export side of `mixed` proves the ordering works when *reading*. The
+     symptom to look for on import is a hold key that renders smooth.
+
+1a. **The Nuke Phase 6 run has not been done.** Fully staged, nothing to
+   prepare - `/mnt/c/Users/shann/rotobridge/rb/` was synced from the repo and
+   `out/phase6` created. **Re-sync before running** if anything under `core/`,
+   `nuke/` or `test/` changed since:
+
+   ```bash
+   rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
+     && mkdir -p "/mnt/c/Users/shann/rotobridge/rb" \
+     && cp -r core nuke test "/mnt/c/Users/shann/rotobridge/rb/"
+   "/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
+       "C:\Users\shann\rotobridge\rb\test\test_nuke_roundtrip.py" \
+       "C:\Users\shann\rotobridge\out\phase6"
+   ```
+
+   It writes `phase6/roundtrip_report.txt` whether it passes or fails. Wanted
+   from the new Phase 6 section: `exported closed=False, version=2`, the shape
+   rebuilt `open=True`, deviation at the float32 floor, the render-settings
+   warning present rather than `MISSING`, and the verdict line ending "dense,
+   sparse and open".
+
+1b. **Decide what to do about a `hold` over an animated ancestor transform.**
+   Described above. Not started, and it is a Phase 4 correctness question rather
+   than anything to do with open splines.
 
 2. **Phase 5 - verify across both applications.** Same plate in both, comp AE's
    matte against Nuke's at each import mode, confirm the tolerance bounds hold.
