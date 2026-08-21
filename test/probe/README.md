@@ -173,6 +173,39 @@ What still has to be run by hand, and what to look for:
 | Timing against acceptance criterion 11 | Ten shapes, 150 frames, under 10 s. The loop shape that makes it reachable is asserted; the constant is not |
 | **An open mask path, exported and looked at** | `spec/rbj-v2-draft.md` section 5. The document side is covered host-free - `closed: false`, `version: 2`, and it comes back open. What no probe run has ever authored is an open mask *at all*, so what After Effects renders one as is unmeasured, and it is the last thing between that draft and a freeze. Mask 6, `opened` |
 
+## AE to Nuke crossing
+
+`test/test_ae_to_nuke.py` takes the real `test/golden/ae_scene.rbj` - what After
+Effects actually wrote from `setup_ae_scene.jsx` - into Nuke and back out. It is
+the only test in the project that crosses applications **with a host running**,
+so it is what acceptance criterion 10 rests on.
+
+```bash
+rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
+  && mkdir -p "/mnt/c/Users/shann/rotobridge/rb" \
+  && cp -r core nuke test "/mnt/c/Users/shann/rotobridge/rb/"
+"/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
+    "C:\Users\shann\rotobridge\rb\test\test_ae_to_nuke.py" \
+    "C:\Users\shann\rotobridge\out\phase6"
+```
+
+**Status: PASS on 17.1v1**, 2026-08-21. Report at
+`test/golden/nuke_probe/17.1v1/phase6/ae_to_nuke_report.txt`.
+
+| Stage | Result |
+|---|---|
+| geometry, tolerance 0 | worst **6.1e-05 px** over 6 shapes and 25 frames - the float32 storage floor |
+| the open spline | arrives open; closed shapes stay closed |
+| key preservation, tolerance inf | the field-by-field diff is **empty** - `closed`, `feather_model`, `feather_falloff`, `blend`, key frames and per-side `interp` all identical, `{in: linear, out: hold}` included |
+| drift, tolerance 0.5 | every shape inside tolerance; worst `mixed` at 0.4616 px |
+| the cost of a bare `ease` | `eased` needed **20 corrective keys on top of 5 authored** to hold 0.0001 px - every frame. Nothing else needed more than 14 |
+| re-export | validates, `version: 2`, carries the open spline back |
+
+**It imports three times and the modes are not interchangeable.** Tolerance 0
+keys every frame by definition (`prd.md` §8), so its key list says nothing about
+key preservation; reading one off it produces a page of "losses" that are only
+dense mode working. Tolerance inf is the one that speaks to criterion 3.
+
 ## Known gaps
 
 Everything Phase 0 set out to answer is answered. Two findings that were open

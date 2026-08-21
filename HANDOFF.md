@@ -237,6 +237,39 @@ spline from a Nuke source through the real importer under the mock builds the
 mask, reports 2 authored keys and 0 corrective, and raises the cross-host
 warning. That path is clean.
 
+### AE to Nuke: the crossing works, measured in the host
+
+`test/test_ae_to_nuke.py`, run 2026-08-21, report committed at
+`test/golden/nuke_probe/17.1v1/phase6/ae_to_nuke_report.txt`. It takes the real
+`test/golden/ae_scene.rbj` into Nuke and back out. **PASS.** This is the
+direction nothing had ever tested with a host: `test_ae_crossapp.js` goes Nuke
+to AE with no application present, and a Nuke round trip returns what it was
+given even if a convention were wrong at both ends.
+
+- **Geometry survives to 6.1e-05 px** worst over all six shapes, all 25 frames -
+  the float32 storage floor, not accumulated error.
+- **The open spline arrives open** and a closed one stays closed.
+- **At tolerance inf the field-by-field comparison is empty.** Every shape's
+  `closed`, `feather_model`, `feather_falloff`, `blend`, key frames and per-side
+  `interp` came back identical, `{in: linear, out: hold}` included. That is
+  acceptance criteria 3, 6, 6a and 10 met on a real crossing.
+- The re-export **validates and is `version: 2`**, carrying the open spline back.
+
+**Read the three imports as three different questions.** Tolerance 0 keys every
+frame by definition, so its key list says nothing about key preservation - an
+earlier pass of this test compared it field-by-field and produced a page of
+"losses" that were nothing but dense mode working. The docstring of
+`test_ae_to_nuke.py` exists to stop that being repeated.
+
+**The cost of a bare `ease`, now with a number on it.** At the default tolerance
+0.5 the `eased` mask needed **20 corrective keys on top of its 5 authored** -
+every frame - to hold 0.0001 px. Nothing else needed more than 14. Criterion 3
+still passes, because the 5 authored keys are present and the correctives are
+reported, but an artist opening that mask in Nuke finds 25 keys where After
+Effects showed 5. This is the strongest evidence yet for settling AE ease
+against Nuke `lslope`/`rslope`, and `core/interp.to_nuke` is still the one
+function that changes.
+
 ### A `hold` can contradict its own dense layer
 
 Found while investigating the above, unrelated to it, and **a Phase 4 problem
@@ -256,14 +289,24 @@ held: 3 authored key(s), 8 corrective; worst drift 60.0000 px at frame 15
   - the drift pass ran out of passes with 60.0000 px still unaccounted for
 ```
 
-It burns all eight passes and gives up. A hold-out side freezes the segment
-after key 12 whatever corrective key lands next, so the pass can never repair
-the one segment nearest the hold - it is structurally unable to, not merely
-short of passes. **It fails loudly rather than deforming silently**, which is
-the policy working as intended. But the artist gets a warning and a wrong matte,
-and neither adapter explains why. Undecided: whether the exporter should refuse
-to write `hold` when an ancestor transform animates across that interval, or
-warn, or whether the drift pass should skip held gaps and say so. Not started.
+It burns all eight passes and gives up. **It fails loudly rather than deforming
+silently**, which is the policy working as intended.
+
+**But "structurally cannot converge" was too strong, and the host says so.**
+That claim was made from this synthetic case alone, before the crossing test
+ran. In Nuke, at the default tolerance, the real `mixed` mask converges to
+**0.4616 px with 14 corrective keys**, and its worst frame is 8 - *before* the
+hold, not inside it. So this is a severity question, not a categorical one: the
+pass copes when the ancestor moves the geometry mildly across the held interval,
+as a 12-degree rotation does, and fails when it moves it a long way, as the
+synthetic 20 px per frame does. Two things are still genuinely unknown: where
+the boundary between those is, and whether After Effects behaves like Nuke here
+at all, since the AE import has never completed. Do not restate the strong claim
+without measuring it.
+
+Undecided: whether the exporter should refuse to write `hold` when an ancestor
+transform animates across that interval, or warn, or whether the drift pass
+should skip held gaps and say so. Not started.
 
 ## Decisions made, so they are not relitigated
 

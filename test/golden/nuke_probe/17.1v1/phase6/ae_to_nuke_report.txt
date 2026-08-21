@@ -1,0 +1,82 @@
+AE -> Nuke crossing, 17.1v1
+source: C:\Users\shann\rotobridge\rb\ae_scene.rbj
+
+--- the file ---
+  version 2 from After Effects 25.6x101, 6 shape(s), frames 0-24
+  linear     closed=True  feather=none      falloff=smooth
+  eased      closed=True  feather=none      falloff=smooth
+  mixed      closed=True  feather=none      falloff=smooth
+  feathered  closed=True  feather=per_point falloff=smooth
+  offgrid    closed=True  feather=none      falloff=smooth
+  opened     closed=False feather=none      falloff=smooth
+
+--- import at tolerance 0 (dense: the ground truth mode) ---
+  built 6 shape(s)
+    linear     4 authored, 21 corrective
+    eased      5 authored, 20 corrective
+    mixed      5 authored, 20 corrective
+    feathered  4 authored, 21 corrective
+    offgrid    5 authored, 20 corrective
+    opened     4 authored, 21 corrective
+  warning: mask 'feathered': 3 feather point(s) sat mid-segment and were snapped to the nearer vertex; Nuke can only anchor feather at a vertex
+  warning: mask 'feathered': two feather points resolved to vertex 3; kept radius 12 and dropped 0
+  warning: mask 'opened' is an open spline; the geometry is carried but what it renders as is not, and is unverified across applications
+  warning: mask 'offgrid': a key sat 0.400 of a frame off the grid and was snapped to frame 10; .rbj keys are whole frames
+  warning: shape 'opened' is an open spline from After Effects; the geometry is exact but what it renders as across applications is unverified
+
+--- did the open spline arrive open? ---
+  linear     open=False
+  opened     open=True
+
+--- geometry: every point of every shape on every frame ---
+  linear     worst 2.9755e-05 px
+  eased      worst 6.0934e-05 px
+  mixed      worst 2.4414e-05 px
+  feathered  worst 6.1035e-05 px
+  offgrid    worst 6.1035e-05 px
+  opened     worst 3.0518e-05 px
+  worst overall 6.1035e-05 px (feathered)
+
+--- import at tolerance 0.5: the default, what an artist gets ---
+  This is the only mode where the drift pass actually runs, so it is
+  the one that can expose a sparse layer the dense layer contradicts.
+    linear     4 authored, 11 corrective; worst 0.3723 px at frame 9
+    eased      5 authored, 20 corrective
+    mixed      5 authored, 14 corrective; worst 0.4616 px at frame 8
+    feathered  4 authored, 10 corrective; worst 0.2143 px at frame 12
+    offgrid    5 authored, 10 corrective; worst 0.3665 px at frame 9
+    opened     4 authored, 10 corrective; worst 0.2577 px at frame 12
+  measured against the dense layer:
+    linear     worst 0.3723 px at frame 9
+    eased      worst 0.0001 px at frame 19
+    mixed      worst 0.4616 px at frame 8
+    feathered  worst 0.2143 px at frame 12
+    offgrid    worst 0.3665 px at frame 9
+    opened     worst 0.2577 px at frame 12
+
+--- import at tolerance inf: what the SPARSE layer preserves ---
+  Tolerance 0 above keys every frame by definition (prd.md section 8),
+  so it says nothing about key preservation. This keeps only the
+  authored keys, which is acceptance criterion 3.
+    linear     4 authored, 0 corrective
+    eased      5 authored, 0 corrective
+    mixed      5 authored, 0 corrective
+    feathered  4 authored, 0 corrective
+    offgrid    5 authored, 0 corrective
+    opened     4 authored, 0 corrective
+
+--- back out again: Nuke's export of an AE-sourced file ---
+  version 2, 6 shape(s)
+  the re-export validates
+    linear     closed=True  feather=none      falloff=smooth
+    eased      closed=True  feather=none      falloff=smooth
+    mixed      closed=True  feather=none      falloff=smooth
+    feathered  closed=True  feather=per_point falloff=smooth
+    offgrid    closed=True  feather=none      falloff=smooth
+    opened     closed=False feather=none      falloff=smooth
+  warning: shape 'opened': an open spline's render settings are node knobs (openspline_width and the end types), not shape attributes, so they are not carried in the file
+
+--- what the crossing changed, field by field ---
+
+=== VERDICT ===
+PASS - an After Effects .rbj opens in Nuke and comes back out
