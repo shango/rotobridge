@@ -3,13 +3,19 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-21. **Phase 4 is complete and has met both hosts.** This
-session: both After Effects import bugs found, fixed and confirmed in the host
-(stale mask handles; feather compared by array index); the drift pass now splits
-a monotone gap instead of walking back from its end, which closed the
-`hold`-over-a-moving-ancestor question; bezier ease measured and exact; and open
-splines settled as a **permanent draft** after After Effects turned out to
-produce no alpha from an open mask path at all. **Phase 5 is the frontier.**
+Last updated: 2026-08-21. **Phase 4 is complete and has met both hosts.**
+
+Earlier this session: both After Effects import bugs found, fixed and confirmed
+in the host (stale mask handles; feather compared by array index); the drift
+pass now splits a monotone gap instead of walking back from its end, which
+closed the `hold`-over-a-moving-ancestor question; bezier ease measured and
+exact; and open splines settled as a **permanent draft** after After Effects
+turned out to produce no alpha from an open mask path at all.
+
+Then the project got a use case, and it reordered the work. **Nuke is the hub**
+and **the format has to be falsifiable** - see the two sections under Status.
+The AE ease question is closed as a "cannot", not a "not yet". **The frontier is
+now feather anchoring, then Phase 5 rendered pixels.**
 
 ## Status
 
@@ -843,22 +849,127 @@ died when `ae_static_ease.rbj` closed the AE half, and the answer is now above.
 the static-ease file can be crossed without disturbing the six-shape run. Report
 names are derived from it.
 
+## The format has to be falsifiable, 2026-08-21
+
+The failure the user named, in their words: an artist does a super tight, clean,
+approved roto in After Effects and hands the `.rbj` to the Nuke artist who will
+finalise the shot. There is a complaint about the roto. Someone opens the AE
+file, it is perfect, and **the `.rbj` gets the blame.**
+
+That is a trust requirement, not an accuracy one, and "be accurate" does not
+cover it. The format is the only link in the chain nobody can inspect, so it
+takes the blame by default unless a complaint can be settled with a number in
+about thirty seconds.
+
+**`.rbj` is already built for this and the project has not been exploiting it.**
+The file carries the dense layer, which is the source application's own answer
+for every vertex on every frame, so an importer can always measure what it
+produced against what the source said. That number already exists - it is the
+drift residual, and it is per shape and names its worst frame. No coordinate
+claim in this project needs to be believed; it can be checked against the file.
+
+**The hole in that argument, and it is the whole reason Phase 5 matters.** The
+dense layer is what the source reported *through its API*, not what the source
+*rendered*. A mis-sampling exporter produces a wrong reference that every
+downstream check agrees with, reporting 0.0000 px while looking wrong. Rendered
+pixels are the only thing that validates the reference the other checks depend
+on.
+
+### Where the blame would actually land
+
+**Not on the ease bake.** It converges to the float32 storage floor, 3e-05 px.
+It costs editability, not quality. Say so plainly when it comes up, so it does
+not get blamed for something else's fault.
+
+The three that can, none of which are vertex positions - which is where all of
+the current verification lives:
+
+1. **Feather anchor snapping. The most likely complaint by some distance.** A
+   tight AE roto with feather points mid-segment has them moved to the nearest
+   vertex, because Nuke can only anchor feather at a vertex. Geometry is
+   bit-perfect and the softness edge is subtly different: exactly the scenario
+   above. Measured on the real crossing - `feathered` logged **3 feather points
+   snapped** from mid-segment, plus a collision on vertex 3 that kept radius 12
+   and dropped a radius-0 point (that half is benign).
+2. **`ff`, the feather falloff profile.** Same signature: geometry identical,
+   edge softness wrong, invisible to every check that exists.
+3. **Motion blur.** Off-grid keys snap to whole frames. At whole frames that is
+   harmless - the dense layer is baked from the source's own evaluation, so the
+   rendered frame is right wherever the keys sat. But motion-blurred roto
+   samples *between* frames, where Nuke interpolates linearly between baked
+   frames and the source had a sub-frame shape. "The roto chatters under blur"
+   is a plausible complaint and nothing here would catch it.
+
+### The feather fix that may be available
+
+Snapping is currently unrecoverable. It may not have to be: **split the bezier
+segment at the feather anchor's parameter with de Casteljau and insert a vertex
+there.** Subdivision reproduces the original curve exactly, so the geometry does
+not move, and Nuke then has a vertex to anchor the feather on - carried exactly
+rather than snapped. The cost is extra vertices the compositor sees.
+
+**The one fact that decides whether this is available: are After Effects feather
+anchor positions static per shape, or do they animate per frame?** If they
+animate, the split point moves and the topology changes frame to frame, which
+breaks it. This is answerable from `test/golden/ae_scene.rbj` with no host -
+`feathered` is the shape that carries per-point feather - and it is the next
+thing to do.
+
+### A policy worth adopting, cheap
+
+On a shape whose keys carry ease, tolerance 0.5 is the worst of both worlds:
+
+    tolerance 0.5   3 authored + 22 corrective = 25 keys   0.5 px bound
+    tolerance 0     25 keys (every frame)                  3e-05 px
+
+**Identical key count.** The drift pass converged to dense on its own, so the
+sparse mode paid every key of a full bake and accepted a four-orders-of-
+magnitude worse bound for it. `_key_plan` already knows whether a key carries an
+`ease` block, so a shape whose source shaped the curve could simply go dense.
+Same keys, far better accuracy. Shapes with linear or hold keys keep the sparse
+path, where it is genuinely exact and cheap (`linear_static`: 0 corrective).
+
+The user's standing decision on the trade: **accuracy first, keys are an
+acceptable cost.** "If that means more keyframes, we need to do it. If we later
+find a way to more closely translate between systems, we can start to reduce
+the additional keyframes." Do not optimise key counts at the expense of
+fidelity; for ease specifically, plan on the bake being permanent rather than
+temporary.
+
 ## Next
 
-**Phase 5 is the frontier.** Everything before it is done and measured in both
-hosts. What is listed as 1 below is the only Phase 4 loose end, and it is a
-two-second look rather than work.
+**The frontier is feather anchoring, then Phase 5.** The AE ease question that
+used to sit here is closed - see "Nuke is the hub" above. It is a "cannot", not
+a "not yet", and it is recorded in `core/interp.to_nuke`.
 
-1. **Ease-then-type ordering, the last Phase 4 checklist entry - and a drift
-   number cannot answer it.** `setTemporalEaseAtKey` forces a key to BEZIER and
-   the importer sets the types afterwards. The export side of `mixed` proves the
+1. **Do AE feather anchors animate?** Host-free, answerable now, and it decides
+   whether the de Casteljau vertex-insertion fix above is available at all. Read
+   `featherSegLocs` / `featherRelSegLocs` per frame out of `feathered` in
+   `test/golden/ae_scene.rbj`: constant across frames means the fix is on the
+   table, moving means it is not. **This is the next thing to do.**
+
+2. **Phase 5, one direction.** AE to Nuke, rendered in Nuke, same plate. It was
+   written as a symmetric comparison; it is not one any more. The Nuke-to-AE
+   half is already exact at the document level (`test/test_ae_crossapp.js`) and
+   can stay there. Phase 5 is what validates the dense layer itself, and it is
+   the only thing that can catch `ff` and the motion-blur gap.
+
+3. **A durable per-shape verification record.** Small, and outsized value for
+   the blame scenario. The import already computes everything needed - source
+   contents, what arrived, measured deviation per shape, anything that could not
+   be carried - and then puts it in console warnings that scroll away. Written
+   next to the comp instead, the argument happens over evidence.
+
+4. **Ease-then-type ordering, the last Phase 4 loose end, and a drift number
+   cannot answer it.** `setTemporalEaseAtKey` forces a key to BEZIER and the
+   importer sets the types afterwards. The export side of `mixed` proves the
    ordering works when *reading*. The symptom on import is a **hold key that
    renders smooth**, and the drift pass corrects positions either way, so it
    will never show up as drift. Someone has to look at the imported `mixed`
-   mask's frame-12 key in the timeline and confirm it is still a hold. Low risk:
-   the code does ease first and types after, which is the documented order.
+   mask's frame-12 key in the AE timeline and confirm it is still a hold. Low
+   risk: the code does ease first and types after, the documented order.
 
-   Optional and not blocking: `test/golden/ae_scene.rbj` is the **six**-shape
+   Optional, not blocking: `test/golden/ae_scene.rbj` is the **six**-shape
    export and predates masks 7 and 8, whose export is a separate golden
    (`ae_static_ease.rbj`). An eight-shape export would fold the static pair into
    the crossing test. `test/test_ae_to_nuke.py` reads `ae_scene.rbj`, so it

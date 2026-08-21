@@ -173,6 +173,37 @@ What still has to be run by hand, and what to look for:
 | Timing against acceptance criterion 11 | Ten shapes, 150 frames, under 10 s. The loop shape that makes it reachable is asserted; the constant is not |
 | **An open mask path, exported and looked at** | `spec/rbj-v2-draft.md` section 5. The document side is covered host-free - `closed: false`, `version: 2`, and it comes back open. What no probe run has ever authored is an open mask *at all*, so what After Effects renders one as is unmeasured, and it is the last thing between that draft and a freeze. Mask 6, `opened` |
 
+## What Nuke's roto curves can and cannot be told
+
+`test/probe/probe_nuke_ease.py` needs Nuke and nothing else - no scene, no
+authored file. It answers what `lslope` / `rslope` / `la` / `ra` on a roto
+`AnimCurve` actually do, which `core/interp.to_nuke` had been deferring since
+Phase 3.
+
+```bash
+mkdir -p "/mnt/c/Users/shann/rotobridge/out/ease"
+"/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
+    "C:\Users\shann\rotobridge\rb\test\probe\probe_nuke_ease.py" \
+    "C:\Users\shann\rotobridge\out\ease"
+```
+
+Output in `test/golden/nuke_probe/17.1v1/ease/`. Four findings:
+
+| Case | Finding |
+|---|---|
+| 109 | A **two-key** roto AnimCurve is exactly the chord whatever is written on it - except step, which holds. Any tangent measurement on two keys is degenerate; use three |
+| 108 | On a three-key curve that demonstrably bends, `interpolationType` moves it and the four tangent fields do not |
+| 115 | Under the cubic types Nuke **recomputes** a written slope: write 5.0, evaluate, read back 1.0101. And `interpolationType` **5 is a user-tangent mode** - case 63 labelled it "other" and never identified it |
+| 117 | Only **interior** keys honour an authored tangent. Every value of the first key's outgoing slope and accel changes nothing |
+
+An ease describes a segment from both ends, so the outgoing half is unreachable
+by construction. Best fit to a real AE curve is 0.11 in unit terms, about 77 px
+on that shape against a 0.5 px tolerance, at parameters that look nothing like
+After Effects'.
+
+**Do not sweep `curveType`.** It crashes Nuke outright, which is why the probe
+does not.
+
 ## AE to Nuke crossing
 
 `test/test_ae_to_nuke.py` takes the real `test/golden/ae_scene.rbj` - what After
@@ -188,6 +219,29 @@ rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
     "C:\Users\shann\rotobridge\rb\test\test_ae_to_nuke.py" \
     "C:\Users\shann\rotobridge\out\phase6"
 ```
+
+The output directory must exist first; the test does not create it. An optional
+**second argument names a different source `.rbj`**, and report names are
+derived from it so one run does not overwrite another's. That is how
+`ae_static_ease.rbj` is crossed - the file whose layer does not move, so nothing
+it measures can be blamed on a baked ancestor transform:
+
+```bash
+mkdir -p "/mnt/c/Users/shann/rotobridge/out/hub"
+"/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
+    "C:\Users\shann\rotobridge\rb\test\test_ae_to_nuke.py" \
+    "C:\Users\shann\rotobridge\out\hub" \
+    "C:\Users\shann\rotobridge\rb\test\golden\ae_static_ease.rbj"
+```
+
+What that run measured, and it is the number the roadmap turns on:
+
+    eased_static    3 authored, 22 corrective   <- 25-frame range, fully dense
+    linear_static   2 authored,  0 corrective   <- exact, free
+
+An After Effects ease costs a key on every frame in Nuke; linear costs nothing.
+Report at `test/golden/nuke_probe/17.1v1/hub/`. See `HANDOFF.md`, "Nuke is the
+hub", for why that is a "cannot" rather than a bug.
 
 **Status: PASS on 17.1v1**, 2026-08-21. Report at
 `test/golden/nuke_probe/17.1v1/phase6/ae_to_nuke_report.txt`.
