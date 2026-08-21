@@ -1,0 +1,18 @@
+Every interpolationType, with tangents left alone and driven hard.
+
+  type   tangents at 0       slope 5 accel 1     verdict
+  -1     f25  9.7959 f75 60.0000  f25 10.9434 f75 60.0000  HONOURS TANGENTS
+  0      f25  4.3055 f75 54.4697  f25  4.3055 f75 54.4697  ignores them
+  1      f25  0.0000 f75 20.0000  f25  0.0000 f75 20.0000  ignores them
+  2      f25  9.7959 f75 60.0000  f25  9.7959 f75 60.0000  ignores them
+  3      f25  4.3055 f75 54.4697  f25  4.3055 f75 54.4697  ignores them
+  4      f25  4.4153 f75 54.3568  f25  4.4153 f75 54.3568  ignores them
+  5      f25 11.2414 f75 54.2548  f25 -32.0871 f75 91.8750  HONOURS TANGENTS
+  256    f25  4.3055 f75 54.4697  f25  4.3055 f75 54.4697  ignores them
+
+Are the values clobbered, or merely ignored? Set, evaluate,
+then read back:
+  wrote slope 5.0 accel 1.0 -> after evaluate reads lslope=1.0101009607315063 rslope=1.0101009607315063 la=1.0 ra=1.0
+  Values that survive are ignored by the evaluator, not
+  recomputed by it. Those are different bugs to work around
+  and only the second could be beaten by writing later.

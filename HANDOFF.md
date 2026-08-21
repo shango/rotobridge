@@ -24,9 +24,9 @@ load-bearing evidence).
 export and the six-shape import both pass in After Effects, and both Nuke
 acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
 interpolation and drift code: stdlib only, no host imports, no file access, so
-it runs unchanged under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
-adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
-`test/test_core.py` is **176 passing tests**, run with `python3
+it runs unchanged under plain Python and under Nuke's embedded Python. `nuke/`
+holds the Nuke adapter pair and `ae/` the After Effects one, over an ES3 mirror
+of `core/`. `test/test_core.py` is **176 passing tests**, run with `python3
 test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
 package). `./test/run.sh` runs all five host-free suites: **369 tests**.
 
@@ -761,6 +761,87 @@ Both host applications are **Windows-side**; this repo lives in WSL.
   Synced there 2026-08-21, along with `test/probe/setup_ae_scene.jsx`, which
   lives in the same folder. Re-copy after any edit under `ae/`, for the same
   reason the probe needs it.
+
+## Nuke is the hub, and that reorders everything, 2026-08-21
+
+Stated by the user this session: every roto application on the team - After
+Effects included, and Mocha, Silhouette and Flame later - ultimately feeds a
+final Nuke comp. Interop should be as complete as possible in all directions,
+but **X to Nuke is the product** and Nuke to X is convenience.
+
+Two things follow, and they are not small.
+
+**The Nuke importer is the most load-bearing file in the project.** Every
+future adapter is another source pointed at it. Its warnings are what an artist
+has to trust, which is why the silent-loss bug below was worth fixing the
+moment it was found rather than after Phase 5.
+
+**Phase 5 is no longer symmetric.** It was written as "comp AE's matte against
+Nuke's". What matters is the AE-to-Nuke direction rendered in Nuke. The
+Nuke-to-AE half of `test/test_ae_crossapp.js` is already exact at the document
+level and can stay where it is.
+
+### After Effects ease does not survive the crossing, and now says so
+
+**Measured, `test/golden/ae_static_ease.rbj` through the Nuke importer:**
+
+    eased_static    3 authored, 22 corrective   <- 25-frame range, fully dense
+    linear_static   2 authored,  0 corrective   <- exact, free
+
+AE linear to Nuke linear is perfect and costs nothing. An AE ease costs a key on
+every frame. This file is the one that can say so: its layer does not move, so
+nothing can be blamed on a baked ancestor transform. It also retro-explains
+`ae_scene.rbj`, where `linear` needed 13 corrective keys - that was the layer
+rotation, not an interpolation failure.
+
+**The 22 keys are not waste.** A greedy optimal piecewise-linear fit of that
+curve needs all 25 frames at 0.5 px over its 700 px of travel. The drift pass
+used exactly 25. It is already doing the best available thing, and corrective
+keys were already LINEAR by design for exactly the right reason
+(`_apply_key_types`). Do not "optimise" this.
+
+**What was actually broken was the silence.** `interp.to_nuke` reports an
+ease/ease pair as `exact`, so `_key_plan` counted nothing and warned nothing.
+For a Nuke-sourced file that is correct - Nuke writes no ease parameters, so
+there are none to lose. For an AE-sourced file it meant a compositor opened a
+shape keyed on every frame with no idea why. `_key_plan` now warns on the
+presence of an `ease` block rather than on the interp pair, so it fires on
+After Effects files and stays quiet on Nuke ones. Confirmed both ways.
+
+### Why Nuke cannot hold it: probe `test/probe/probe_nuke_ease.py`
+
+Output in `test/golden/nuke_probe/17.1v1/ease/`. Run it with no host setup;
+it needs only Nuke. Four things it measured, two of which reversed an earlier
+conclusion in this file:
+
+- **A two-key roto AnimCurve is exactly the chord**, whatever interpolation
+  type, slope or accel is written - except step, which holds. Case 109. Any
+  measurement on two keys says nothing about tangents; use three.
+- **Under the cubic types Nuke recomputes the slope** out from under whatever
+  was written. Case 115 reads back `lslope=1.0101` after writing 5.0. So
+  "stored and ignored" was the wrong description; it is stored and overwritten.
+- **interpolationType 5 is a user-tangent mode.** Case 63 labelled 4, 5 and -1
+  "other" and never identified them. Under 5, `lslope`/`rslope`/`la`/`ra`
+  genuinely drive the curve. This reopened the question and then closed it the
+  other way.
+- **Only INTERIOR keys honour an authored tangent.** Case 117: every value of
+  the first key's outgoing `rslope`/`ra` changes nothing, while the interior
+  key's incoming `lslope`/`la` moves the segment hard. An After Effects ease
+  needs both endpoints of a segment, so half of it is unreachable by
+  construction. Best achievable fit to the real AE curve is 0.11 in unit terms,
+  about 77 px on that shape against a 0.5 px tolerance, at parameters
+  (`ra=-3.06`) that look nothing like AE's.
+
+So `core/interp.to_nuke` dropping the ease parameters is not a deferral waiting
+on Phase 5. It is the whole available vocabulary. **The dense layer is not
+belt-and-braces for the hub direction - it is the mechanism.** `to_nuke`'s
+docstring still says the question is deferred to Phase 4 because "After Effects
+is the only place both sides of the mapping are observable at once"; that reason
+died when `ae_static_ease.rbj` closed the AE half, and the answer is now above.
+
+`test/test_ae_to_nuke.py` takes an optional second argument, a source `.rbj`, so
+the static-ease file can be crossed without disturbing the six-shape run. Report
+names are derived from it.
 
 ## Next
 

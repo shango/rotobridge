@@ -1,0 +1,27 @@
+AnimCurveKey surface:
+  getFlag, interpolationType, kDefaultAnimCurveKeyInterpolation, kDefaultAnimCurveKeyTime, kDefaultAnimCurveKeyValue, la, lslope, ra, reset, rslope, setFlag, time, value
+
+AnimCurve surface:
+  addKey, constantValue, curveTension, curveType, evaluate, evaluateY, expressionString, getFlag, getKey, getNumberOfKeys, isDefault, kDefaultConstantValue, kDefaultCurveFlag, kDefaultCurveTension, kDefaultCurveType, name, removeAllKeys, removeKey, reset, setFlag, useExpression
+
+curveType=0 curveTension=0.5
+getFlag(i): 0=False 1=False 2=False 3=True 4=True 5=False 6=True 7=False
+
+Two keys, 0@f0 and 12@f12. The straight line reads 6.0 at
+the midpoint; anything else is a bend.
+
+  type -1   slope 5 accel 1 -> midpoint 6.0000
+  type 0    slope 5 accel 1 -> midpoint 6.0000
+  type 1    slope 5 accel 1 -> midpoint 0.0000
+  type 2    slope 5 accel 1 -> midpoint 6.0000
+  type 3    slope 5 accel 1 -> midpoint 6.0000
+  type 4    slope 5 accel 1 -> midpoint 6.0000
+  type 5    slope 5 accel 1 -> midpoint 6.0000
+  type 256  slope 5 accel 1 -> midpoint 6.0000
+
+Every one straight except the step type, which holds its
+value here as it does on a three-key curve. So the
+degeneracy is specific to the types that SHAPE a segment:
+with no third key to derive a tangent from, and endpoint
+tangents ignored (case 117), there is nothing left for a
+cubic to be but the chord. Use three keys.

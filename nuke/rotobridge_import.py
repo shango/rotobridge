@@ -75,18 +75,38 @@ def _key_plan(spec, frames, offset, warn):
     key_frames = []
     types = {}
     collapsed = 0
+    shaped = 0
     for key in keys:
         frame = int(key["frame"])
         key_type, exact = interp.to_nuke(key["interp"])
         key_frames.append(frame)
         types[frame + offset] = key_type
         collapsed += 0 if exact else 1
+        shaped += 1 if key.get("ease") else 0
 
     if collapsed:
         warn("shape '%s': %d key(s) carry a different interpolation on each "
              "side, which a Nuke key cannot hold - one type governs the whole "
              "key. They were set smooth and the drift pass corrected the "
              "positions" % (spec["name"], collapsed))
+
+    if shaped:
+        # `to_nuke` reports an ease/ease pair as exact, and for a Nuke-sourced
+        # file it is: Nuke writes no parameters, so there are none to lose.
+        # A key that carries an `ease` block came from an application that
+        # shapes the curve itself, and none of that shaping survives. Nuke
+        # honours an authored tangent only on an interior key - measured, 17.1v1
+        # probe case 117 - so the outgoing side of a segment's first key is
+        # dropped whatever is written, and even the half that lands is not
+        # parameterised the way After Effects parameterises an ease. The
+        # positions still arrive: the drift pass bakes them. What the artist
+        # loses is the keyframes, and that is worth saying out loud, because
+        # the alternative is a compositor opening a shape that looks keyed on
+        # every frame with no idea why.
+        warn("shape '%s': %d key(s) carry authored ease. Nuke's roto curves "
+             "cannot hold it, so the shape arrives as a dense bake and the "
+             "keyframe timing is not editable downstream. Geometry is "
+             "unaffected" % (spec["name"], shaped))
 
     return key_frames, types
 

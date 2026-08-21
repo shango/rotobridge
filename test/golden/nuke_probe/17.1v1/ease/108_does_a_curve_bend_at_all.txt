@@ -1,0 +1,21 @@
+Case 21's three-key curve, rebuilt:
+
+  frame           1       12       25       37       50       62       75       87      100
+  evaluate   0.0000   1.3460   4.3055   9.7074  20.0000  34.4657  54.4697  75.6249 100.0000
+  phase 0    0.0000   1.3460   4.3055   9.7074  20.0000  34.4657  54.4697  75.6249 100.0000
+
+  matches Phase 0: yes
+
+Now move the middle key's tangents and see if the shape
+follows. Sampled either side of that key, at frames 25 and
+75, where case 21 read 4.3055 and 54.4697.
+
+  lslope             = 5.0    -> f25   4.3055  f75  54.4697  no effect
+  rslope             = 5.0    -> f25   4.3055  f75  54.4697  no effect
+  la                 = 1.0    -> f25   4.3055  f75  54.4697  no effect
+  ra                 = 1.0    -> f25   4.3055  f75  54.4697  no effect
+  interpolationType  = 2      -> f25   9.7959  f75  60.0000  MOVES
+
+Anything reading 'no effect' here is stored by the API and
+ignored by the evaluator, which would mean `to_nuke` cannot
+place a tangent from Python however it spells it.

@@ -39,13 +39,24 @@ import rotobridge_import as rbi
 import rotobridge_export as rbx
 
 out = sys.argv[1] if len(sys.argv) > 1 else HERE
+
+def tag():
+    """Report name, so a second source does not overwrite the first's."""
+    if len(sys.argv) > 2:
+        return "ae_to_nuke_" + os.path.splitext(
+            os.path.basename(sys.argv[2]))[0]
+    return "ae_to_nuke"
 lines = []
 def say(t=""):
     lines.append(t)
     sys.stdout.write(t + "\n")
 
 def main():
-    src = os.path.join(REPO, "test", "golden", "ae_scene.rbj")
+    # A second golden can be named on the command line. `ae_static_ease.rbj`
+    # is the one that isolates ease: its layer does not move, so nothing the
+    # drift pass does can be blamed on a baked ancestor transform.
+    src = (sys.argv[2] if len(sys.argv) > 2
+           else os.path.join(REPO, "test", "golden", "ae_scene.rbj"))
     say("AE -> Nuke crossing, %s" % nuke.NUKE_VERSION_STRING)
     say("source: %s" % src)
     say()
@@ -199,7 +210,7 @@ def main():
             % (s["name"], s["closed"], s["feather_model"], s["feather_falloff"]))
     for w in back["warnings"]:
         say("  warning: %s" % w)
-    handle = open(os.path.join(out, "ae_to_nuke_back.rbj"), "w")
+    handle = open(os.path.join(out, "%s_back.rbj" % tag()), "w")
     handle.write(rbj.dumps(back) + "\n")
     handle.close()
     say()
@@ -243,6 +254,6 @@ except Exception:
     say("EXCEPTION")
     say(traceback.format_exc())
 
-handle = open(os.path.join(out, "ae_to_nuke_report.txt"), "w")
+handle = open(os.path.join(out, "%s_report.txt" % tag()), "w")
 handle.write("\n".join(lines) + "\n")
 handle.close()

@@ -1,0 +1,25 @@
+Target, from test/golden/ae_static_ease.rbj:
+
+  AE rendered             0.0000  0.0272  0.1514  0.4047  0.6160  0.7500  0.8386  0.8993  0.9412  0.9695  0.9874  0.9970  1.0000
+
+The obvious reading: accel IS influence, slope IS speed, and
+both speeds here are 0.
+  ra=0.33333 la=0.91176   0.0000  0.0833  0.1667  0.2500  0.3333  0.4167  0.5000  0.5833  0.6667  0.7500  0.8333  0.9167  1.0000
+  worst |Nuke - AE| = 0.33861
+
+Swapped, in case la/ra are the other way round:
+  ra=0.91176 la=0.33333   0.0000  0.0833  0.1667  0.2500  0.3333  0.4167  0.5000  0.5833  0.6667  0.7500  0.8333  0.9167  1.0000
+  worst |Nuke - AE| = 0.33861
+
+And the same influences read as a fraction of the interval
+in frames rather than as a unit fraction:
+  ra=4.0000 la=10.9411 -> worst 0.33861
+
+Best fit with both slopes held at 0, searching ra and la:
+  ra=0.00000 la=0.00000  worst 0.33861
+  best fit                0.0000  0.0833  0.1667  0.2500  0.3333  0.4167  0.5000  0.5833  0.6667  0.7500  0.8333  0.9167  1.0000
+  ratios against the stored influences: 0.0000 and 0.0000
+
+A worst near 0 means an AE ease crosses into Nuke as three
+keys rather than as the 22 corrective keys the drift pass
+currently needs, and `to_nuke` should write type 5.
