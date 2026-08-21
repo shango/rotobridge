@@ -3,11 +3,11 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-21 (both After Effects import bugs fixed host-free - stale
-mask handles, and feather compared by array index; the drift pass now splits a
-monotone gap instead of walking back from its end, which closes the
-`hold`-over-a-moving-ancestor question; Phase 6 open splines drafted and
-implemented host-free; Q10 closed)
+Last updated: 2026-08-21 (**both After Effects import bugs fixed and confirmed
+in the host** - stale mask handles, and feather compared by array index; the
+drift pass now splits a monotone gap instead of walking back from its end, which
+closes the `hold`-over-a-moving-ancestor question; Phase 6 open splines drafted
+and implemented host-free; Q10 closed)
 
 ## Status
 
@@ -18,8 +18,9 @@ Raw probe output is committed under `test/golden/nuke_probe/17.1v1/` (12 files,
 feather points, run 6 the only one with mixed key interpolation - both are
 load-bearing evidence).
 
-**Phases 1, 2, 3 and 4 are complete**, Phase 4 pending a run in After Effects
-itself. `core/` holds the host-free geometry, timing, schema, interpolation and
+**Phases 1, 2, 3 and 4 are complete**, and Phase 4 has now met both hosts: the
+export and the six-shape import both pass in After Effects, and both Nuke
+acceptance tests pass. `core/` holds the host-free geometry, timing, schema, interpolation and
 drift code: stdlib only, no host imports, no file access, so it runs unchanged
 under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
 adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
@@ -75,19 +76,19 @@ Everything is committed on `main`, working tree clean.
 
 ## In flight
 
-**STOP HERE FIRST. One thing is waiting on After Effects.**
+**Phase 4 is now clean in both hosts.** Both After Effects import bugs are
+fixed and **confirmed in After Effects itself**: six shapes import in one pass,
+and `feathered` converges at 0.2148 px with 3 corrective keys where it used to
+burn every pass on a phantom 27.0000. Both Nuke runs pass. Nothing is blocked on
+a bug.
 
-**Re-run the six-shape import with the subset prompt blank.** Both import bugs
-are now fixed and tested host-free, and neither has ever run in After Effects.
-It confirms two things at once:
-
-- the **stale mask handle** fix - six shapes importing at all, rather than
-  failing with "object invalid";
-- the **feather anchor** fix - `feathered` converging, rather than warning that
-  27.0000 px is unaccounted for at frame 15.
-
-Re-copy `ae/*.jsx` to the Desktop folder first; both fixes are in there. Both
-probes have run and both are described in full under "The AE import".
+**The one thing still waiting on After Effects is a scene rebuild**, and it
+answers a question rather than fixing a defect. `test/golden/ae_scene.rbj` has
+**six** shapes; `test/probe/setup_ae_scene.jsx` now builds **eight**. Masks 7
+and 8 - `eased_static` and `linear_static`, on a solid that does not move - are
+the only way to answer whether the importer reproduces After Effects' own ease
+curve, because every mask in the six sits on a rotating layer whose transform is
+baked into the points. See `Next` item 1.
 
 **Nuke is not blocked on anyone** - it runs headless from this shell. Both Nuke
 runs pass: Phase 6 open splines, and the AE-to-Nuke crossing.
@@ -307,28 +308,57 @@ adapters into two applications:
 
 | shape | After Effects | Nuke |
 |---|---|---|
-| `linear` | 0.3733 px @ frame 8 | 0.3723 px @ frame 9 |
-| `mixed` | 0.4615 px @ frame 8 | 0.4616 px @ frame 8 |
-| `opened` | 0.2584 px | 0.2577 px |
+| `mixed` | **0.1000 px @ frame 16** | **0.1000 px @ frame 16** |
+| `feathered` | 0.2148 px @ 8 | 0.2143 px @ 12 |
+| `opened` | 0.2584 px @ 16 | 0.2577 px @ 12 |
 
 Two independent drift passes over two independent geometry pipelines landing on
 the same residual at the same frame is the geometry core being genuinely shared,
-rather than two implementations that merely both look plausible.
+rather than two implementations that merely both look plausible. `mixed` is the
+sharpest version of it: before the gap-splitting fix the two read 0.4615 and
+0.4616 at frame 8, and afterwards **both** moved to 0.1000 at frame 16. A change
+in shared arithmetic showed up identically on both sides of the project.
 
-### The AE import: two bugs, both fixed host-free, 2026-08-21
+`feathered` is the second-sharpest, and by a stranger route: After Effects
+carries its per-vertex feather and Nuke carries none at all, since
+`feather_offset` is Nuke-only. The two agree to 0.0005 px anyway, which is the
+geometry agreeing while the feather is not even in the comparison on one side.
 
-Importing each shape on its own isolated it. Five of six converged; **only
+### The AE import: two bugs, both fixed and CONFIRMED IN THE HOST, 2026-08-21
+
+Importing each shape on its own isolated them. Five of six converged; **only
 `feathered` failed**, and it is the only mask with per-point feather. Both bugs
-are now fixed host-free and neither has been confirmed in the host.
+are now fixed and **a six-shape import has run in After Effects and passed**.
 
-| shape | corrective | worst drift | |
-|---|---|---|---|
-| `linear` | 7 | 0.3733 px @ 8 | ok |
-| `eased` | 20 | converged, every frame keyed | ok |
-| `mixed` | 9 | 0.4615 px @ 8 | ok |
-| `offgrid` | 4 | 0.3957 px @ 17 | ok |
-| `opened` | 3 | 0.2584 px @ 16 | ok |
-| `feathered` | 18 | **27.0000 px @ 15** | **ran out of passes**, fixed below |
+| shape | corrective, before | worst drift, before | corrective, after | worst drift, after |
+|---|---|---|---|---|
+| `linear` | 7 | 0.3733 px @ 8 | 11 | **0.0002 px @ 19** |
+| `eased` | 20 | converged, every frame keyed | 20 | converged, every frame keyed |
+| `mixed` | 9 | 0.4615 px @ 8 | 11 | **0.1000 px @ 16** |
+| `feathered` | 18 | **27.0000 px @ 15** | **3** | **0.2148 px @ 8** |
+| `offgrid` | 4 | 0.3957 px @ 17 | 4 | 0.3809 px @ 13 |
+| `opened` | 3 | 0.2584 px @ 16 | 3 | 0.2584 px @ 16 |
+
+"Before" is six separate single-shape imports, because six at once could not run
+at all. "After" is one import of all six, which is itself the confirmation of
+bug 1. Three things in that table are worth reading twice:
+
+- **`feathered` went from 18 corrective keys and a residual nothing could
+  remove, to 3 and the second-cheapest shape in the file.** It was never
+  drifting. Every one of those 18 keys was chasing the host's array order.
+- **`mixed` lands on 0.1000 px at frame 16, which is Nuke's number to four
+  decimals and the same frame.** Two independent importers, two applications,
+  two drift passes over the shared core, same residual at the same frame - and
+  both moved there together when the gap-splitting fix landed, from 0.4615 (AE)
+  and 0.4616 (Nuke).
+- **`linear` reaches 0.0002 px.** Its worst frame moved from 8 to 19 as well,
+  so the residual it used to report was partly the same phantom.
+
+The four warnings replayed are the export's own, recorded in the file when it
+was written, and all four are the ones the design predicts: three feather points
+mid-segment on `feathered`, the vertex-3 collision keeping radius 12 and
+dropping 0, `opened` being an open spline, and `offgrid`'s key 0.400 of a frame
+off the grid. None is a new finding.
 
 **Bug 1, FIXED: stale mask handles.** Every multi-shape import failed with
 "object invalid"; every single-shape import succeeded. `createMask` returned
@@ -340,7 +370,8 @@ and each is re-fetched at the moment it is used. `test/ae_mock.js` now models th
 invalidation (a handle goes stale on `addProperty` and throws "object invalid"),
 and `test/test_ae_import.js` gained a two-shape case that fails on the old code
 with "mask 0 got no keys". Every previous import fixture was single-shape, which
-is exactly why nothing caught it. **Not yet confirmed in the host.**
+is exactly why nothing caught it. **Confirmed in the host**, 2026-08-21: all six
+shapes imported in one pass, where every previous attempt died on the second.
 
 **Bug 2, FIXED 2026-08-21: `deviation` compared `featherRadii` by array
 index.** The residual was **exactly 27.0000** against a file whose per-vertex
@@ -393,8 +424,10 @@ the frame-major bake - which reads mostly in-between frames - was never
 affected. `test/test_ae_export.js` gained a keyed-path feather test to keep it
 that way, since index-by-index would look like a simplification.
 
-**Not yet confirmed in the host.** The six-shape import is the confirmation, and
-`feathered` should now converge instead of warning.
+**Confirmed in the host**, 2026-08-21: `feathered` came back with 3 corrective
+keys and 0.2148 px, against 18 and an unremovable 27.0000 px before. Nuke
+measures 0.2143 px on the same shape by a route that carries no feather at all,
+which is about as independent a second opinion as this project can get.
 
 ### A `hold` can contradict its own dense layer
 
@@ -623,11 +656,21 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 
 ## Next
 
-1. **Confirm both import fixes in the host.** Both probes have run, both bugs
-   are fixed, and the reasoning is above. What is left is a six-shape import
-   with the subset prompt blank. Nothing needs rebuilding: the export is
-   committed as `test/golden/ae_scene.rbj`. Re-copy `ae/*.jsx` to the Desktop
-   folder first.
+1. **Rebuild the AE scene with eight masks, export, re-import.** Both import
+   bugs are fixed and confirmed in the host, so this is the first run whose
+   point is a measurement rather than a repair. `setup_ae_scene.jsx` now builds
+   masks 7 and 8 on a static solid; the committed `ae_scene.rbj` predates them
+   and has only six.
+
+   Read **`linear_static` first**: it must come back with **zero** corrective
+   keys. If it does not, the rig is wrong and nothing about mask 8 is worth
+   reading. Then `eased_static` answers whether `.rbj` ease reproduces AE's own
+   curve on import - the export half is already settled at a measured factor of
+   100.
+
+   Re-copy `test/probe/setup_ae_scene.jsx` and `ae/*.jsx` to the Desktop folder
+   first. Commit the new export over `test/golden/ae_scene.rbj`, and re-run
+   `test/test_ae_to_nuke.py` afterwards, since that test reads it.
 
    Then re-run the **six-shape** import to confirm the stale-handle fix in the
    host. Nothing needs rebuilding: the export is committed as
