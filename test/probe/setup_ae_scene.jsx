@@ -4,7 +4,7 @@
  * Run: File > Scripts > Run Script File...
  * Requires: an open comp, at least 25 frames long.
  *
- * Adds one solid, "RotoBridge test", carrying five masks - one per row of the
+ * Adds one solid, "RotoBridge test", carrying six masks - one per row of the
  * checklist in `test/probe/README.md` that needs something authored. Then run
  * the exporter over it, run the importer on what it wrote, and compare. The
  * point of scripting it is that the same scene comes back every time: a
