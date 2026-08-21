@@ -1,7 +1,7 @@
 # RotoBridge - Product Requirements Document
 
 **Version:** 4.10
-**Status:** Phases 0-3 complete on the Nuke side, Phase 4 complete on the After Effects side pending a run in the host. `spec/rbj-v1.md` **frozen** 2026-08-20. Q10 closed 2026-08-20; no open questions. Phase 6 open splines implemented and tested 2026-08-21, and `spec/rbj-v2-draft.md` is a **permanent draft**: they carry geometry correctly and cannot render anywhere the format reaches (After Effects produces no alpha from an open mask path; Nuke strokes them through node knobs `.rbj` has no member for), so v1 remains the format
+**Status:** Phases 0-3 complete on the Nuke side, Phase 4 complete on the After Effects side pending a run in the host. `spec/rbj-v1.md` **frozen** 2026-08-20. Q10 closed 2026-08-20; no open questions. Phase 6 open splines implemented and tested 2026-08-21, and that half of `spec/rbj-v2-draft.md` is a **permanent draft**: they carry geometry correctly and cannot render anywhere the format reaches (After Effects produces no alpha from an open mask path; Nuke strokes them through node knobs `.rbj` has no member for), so v1 remains the format. **The draft gained a second delta 2026-08-21 - feather anchors, §6 - and that one is the reverse case: a measured defect in the AE → Nuke direction with no other available fix, and nothing implemented yet**
 **Phase 0 results:** `test/golden/nuke_probe/17.1v1/`, `test/golden/ae_probe/` (six AE runs; run 3 carries the feather points, run 6 the mixed key interpolation)
 **Verified against:** Nuke 17.1v1 (non-commercial), After Effects 25.6x101
 **Scope:** After Effects ↔ Nuke roto spline interchange via a neutral format, designed for later expansion to Mocha Pro, Flame, and others
@@ -370,7 +370,7 @@ The v1 rule is to map what aligns and warn about the rest. Both directions use t
 
 - **Nuke to AE.** For each vertex compute `d = featherCenter · n`. Emit a feather point at `featherRelSegLocs = 0` on that vertex's segment with `featherRadii = d`, signed, and `featherTypes = 0` when `d >= 0`, `1` when `d < 0`. Warn per shape when any offset departs from the normal by more than a degree, since the tangential component is dropped.
 - **AE to Nuke.** Set `featherCenter = n * featherRadii` directly - one rule for both types, because the radius is already signed. Ignore `featherTypes` on read.
-- **AE to Nuke, mid-segment points.** Snap to the nearer of the segment's two vertices and warn. **When two AE points snap to the same vertex, keep the one with the larger `|featherRadii|` and warn that the other was dropped** - run 3's real data hits this case, so it is not hypothetical. A `featherRadii` of exactly 0 is a real point and competes on equal terms; it is not treated as absent.
+- **AE to Nuke, mid-segment points.** Snap to the nearer of the segment's two vertices and warn. **This is v1 behaviour and it is lossy: `spec/rbj-v2-draft.md` §6 drafts the fix** - carry the anchor in the file and split the segment with de Casteljau on the way into Nuke, so the anchor arrives exact and the cost is extra vertices instead of moved feather. Nothing below changes until that is implemented. **When two AE points snap to the same vertex, keep the one with the larger `|featherRadii|` and warn that the other was dropped** - run 3's real data hits this case, so it is not hypothetical. A `featherRadii` of exactly 0 is a real point and competes on equal terms; it is not treated as absent.
 - **Either direction, the uniform layer is independent.** `maskFeather` ↔ `fx`/`fy` is a 1:1 2-D mapping (case 62, run 6) that applies whether or not feather points exist. No mean, no anisotropy warning; the two layers compose (§11).
 
 A Nuke shape with zero feather offsets on **every** vertex is `feather_model: "none"`. A shape with some zero and some non-zero offsets is `per_point`, and the zeros are preserved.
@@ -504,6 +504,8 @@ On the import side, `drift.correct` is wired with `applyKeys` on `setValueAtTime
 
 **Phase 6 - Extras.** Open splines, inverted flag, mask expansion, richer ease fitting.
 
+**Feather anchors are drafted, 2026-08-21.** `spec/rbj-v2-draft.md` §6 adds `feather_model: anchored` and a per-frame `feather_points` list, each entry anchored by a single `t` in segment units (`segment + fraction`, the invariant AE's rename and regroup both preserve). A v2 import into Nuke splits the segment at `t` with de Casteljau and inserts a vertex, so a mid-segment anchor arrives exact instead of snapped; the price is extra vertices, warned per shape. `per_point` is untouched, so Nuke files stay v1. An AE file goes v2 **only** when an anchor is genuinely mid-segment or two share a vertex - which is exactly the set of files v1 was damaging. Not implemented; §8 conditions 4-6 say what is left, and 4 is a Phase 5 measurement.
+
 **Open splines are drafted, 2026-08-21.** `spec/rbj-v2-draft.md` is a delta against the frozen v1: `closed` becomes a real boolean, and a file containing an open shape declares `version: 2`. The bump is per **file**, not per adapter - a v2 exporter with nothing open to say still writes `version: 1`, so every file that would have been written before the draft is written byte-identically and still opens in a v1 reader. Both adapter pairs carry it, both schema implementations gate it, and `test/test_nuke_roundtrip.py` gained a section for the next Nuke run. `spec/rbj-v1.md` is untouched and still FROZEN.
 
 Two things the draft does not settle, both in its §7. What After Effects **renders** an open mask path as is unmeasured - no probe run ever authored one - and Nuke's own open-spline width and end caps are node knobs with no per-shape attribute to carry them (probe `q10/93_node_knobs.txt` against `phase2/72_shape_attributes.txt`). So the document round trip is exact in both hosts and the rendered one is only claimed within a host. Mask 6 of `test/probe/setup_ae_scene.jsx` exists to answer the first.
@@ -524,7 +526,7 @@ The other three extras are **not** in the draft, and their absence is a decision
 7. A shape on an AE layer with animated scale, rotation, and position exports correctly to comp space.
 8. A Nuke shape with per-point feather, **including offsets with a tangential component**, exports to `.rbj` with `feather_model: "per_point"` intact and re-imports into Nuke within 0.1 px, measured on the **feather offset vector**. Nuke has no edge-width scalar (§9.3); the `feather_offset` field of Q7 is what makes this reachable.
 8a. A Nuke shape whose feather offsets lie along the path normal survives Nuke → AE → Nuke within 1 px of the original signed offset, sign preserved, and raises no more than one warning per shape.
-8b. An AE mask with four feather points, at least one inward and one mid-segment, survives AE → Nuke → AE with each surviving point within 1 px of its original signed radius, and warns once per dropped or snapped point. Two points snapping to the same vertex is an expected loss, not a failure.
+8b. An AE mask with four feather points, at least one inward and one mid-segment, survives AE → Nuke → AE with each surviving point within 1 px of its original signed radius, and warns once per dropped or snapped point. Two points snapping to the same vertex is an expected loss, not a failure. **Measured 2026-08-21 and the loss is larger than "expected" suggests:** on `feathered` the radius-12 anchor moved 150 px along the path and overwrote an authored radius-0 point, so a corner pinned to zero feather width arrives 12 px soft. `spec/rbj-v2-draft.md` §8 condition 6 restates this criterion as a pass rather than an accepted loss.
 9. Variable vertex count aborts with the shape name in the message and writes no file.
 10. A `.rbj` written by either adapter is readable by the other with no manual editing.
 11. Export of a 20-point, 150-frame shape completes in under 10 seconds in both applications, and a **ten**-shape 150-frame export also completes in under 10 seconds - the frame-major loop of §9.1 step 4 is what makes the second bound reachable. Import with drift pass completes in under 30 seconds. Phase 0 measured the real costs as 5.75-20.89 ms per `comp.time` assignment against 0.02-1.52 ms per `valueAtTime`, so the export loop, not the drift pass, is the bottleneck.
@@ -538,7 +540,7 @@ The other three extras are **not** in the draft, and their absence is a decision
 rotobridge/
 ├── spec/
 │   ├── rbj-v1.md               # format specification, FROZEN 2026-08-20
-│   └── rbj-v2-draft.md         # open splines, PERMANENT DRAFT 2026-08-21
+│   └── rbj-v2-draft.md         # open splines + feather anchors, DRAFT 2026-08-21
 ├── core/                       # host-free, stdlib only, no I/O
 │   ├── geom.py                 # canonical-space conversion, per app per direction
 │   ├── timing.py               # frame/second conversion, ranges, offsets

@@ -482,7 +482,7 @@ So the format moves an open spline's **geometry** faithfully and cannot make it
 render correctly anywhere: nothing in AE, and a default-width stroke in Nuke.
 Even the Nuke-to-Nuke case loses the stroke, because the importer builds a new
 node. What Phase 6 built is a data-carrying feature wearing a matte feature's
-clothes, and `spec/rbj-v2-draft.md` section 7 now says so.
+clothes, and `spec/rbj-v2-draft.md` section 8 now says so.
 
 **DECIDED 2026-08-21, by the user: v2 stays a PERMANENT draft.** Not a document
 waiting to be frozen - a record of a feature that works and has no demonstrated
@@ -1004,13 +1004,22 @@ temporary.
 used to sit here is closed - see "Nuke is the hub" above. It is a "cannot", not
 a "not yet", and it is recorded in `core/interp.to_nuke`.
 
-1. **Decide whether feather anchors go into `.rbj` v2.** Done as far as it can
-   go without the user: see "Where the fix has to live" above. The anchor is
-   destroyed in the AE exporter, so no importer change can recover it and no
-   golden file can be interrogated for it. Carrying it is a v2 format decision,
-   and it is the highest-value one available, because the snap is the top-ranked
-   blame risk and it is currently unrecoverable. Blocked on a product call, not
-   on a measurement.
+1. **Implement `spec/rbj-v2-draft.md` section 6, feather anchors.** The format
+   decision is taken - the user said yes on 2026-08-21 and the delta is written:
+   `feather_model: anchored`, a per-frame `feather_points` list keyed by a
+   single `t` in segment units, and a de Casteljau split in the Nuke importer.
+   **Nothing of it is implemented.** `FEATHER_MODELS` in `core/rbj.py` is still
+   `("per_point", "none")`, `version_for` knows only the `closed` clause, the AE
+   exporter still calls `geom.snapFeatherPoints` unconditionally, and there is
+   no split. Order: schema in both implementations, then `version_for`, then the
+   AE exporter, then the Nuke importer.
+
+   **One thing is unmeasured and it gates exactness, not the work.** Is AE's
+   `featherRelSegLocs` a bezier parameter or an arc-length fraction? Section 6.4
+   picks the parameter and pushes any conversion into the AE adapter, so the
+   implementation is not blocked - but on curved segments the two differ, and
+   until Phase 5 renders a comparison the result is "better than the snap",
+   not "exact". Do not claim exact.
 
 2. **Phase 5, one direction.** AE to Nuke, rendered in Nuke, same plate. It was
    written as a symmetric comparison; it is not one any more. The Nuke-to-AE
