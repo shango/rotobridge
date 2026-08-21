@@ -1,0 +1,12 @@
+wrote tangents L=(-60.0, -0.0) R=(60.0, 0.0) on every point
+  pt0  before c=(100.0, 100.0) L=(-60.0, 0.0) R=(60.0, 0.0)
+       after  c=(100.0, 100.0) L=(-60.0, 0.0) R=(60.0, 0.0)   OK
+  pt1  before c=(500.0, 100.0) L=(-60.0, 0.0) R=(60.0, 0.0)
+       after  c=(500.0, 100.0) L=(-60.0, 0.0) R=(60.0, 0.0)   OK
+  pt2  before c=(500.0, 400.0) L=(-60.0, 0.0) R=(60.0, 0.0)
+       after  c=(500.0, 400.0) L=(-60.0, 0.0) R=(60.0, 0.0)   OK
+  pt3  before c=(100.0, 400.0) L=(-60.0, 0.0) R=(60.0, 0.0)
+       after  c=(100.0, 400.0) L=(-60.0, 0.0) R=(60.0, 0.0)   OK
+
+VERDICT: PASS - tangents survived the save/reload round trip
+unchanged. The Nuke importer can write beziers through this path.

@@ -1,0 +1,53 @@
+defaults at frame 1:
+  fo (feather on     ) = 1.0
+  fx (feather x      ) = 0.0
+  fy (feather y      ) = 0.0
+  ff (feather falloff) = 1.0
+  ft (feather type   ) = 0.0
+
+anisotropic write - fx=20, fy=5, ff=1, fo=1:
+  fo = 1.0
+  fx = 20.0
+  fy = 5.0
+  ff = 1.0
+  ft = 0.0
+
+If fx and fy read back 20 and 5 independently, Nuke has a
+2-D uniform feather and AE maskFeather [x,y] maps 1:1 -
+no mean, no anisotropy warning, one less lossy path.
+
+is it animatable? (AE maskFeather is a Property, so it is there)
+NOTE: AnimAttributes.addKey introspects as (time, name, value,
+view) but the binding takes 2 args. Go via getCurve instead -
+AnimCurve.addKey(time, value) is the signature that works.
+  fx: 2 keys, curveType=0; evaluate @1=5.0 @25=22.14285659790039 @50=40.0
+     attrs.getValue @1=20.0 @25=20.0 @50=20.0
+     re-fetched curve keys = 2  (LIVE)
+     isDefault=False constantValue=0.0
+     getValue(t, name, view) FAILED: argument 3 must be str, not int
+  ff: 2 keys, curveType=0; evaluate @1=5.0 @25=22.14285659790039 @50=40.0
+     attrs.getValue @1=1.0 @25=1.0 @50=1.0
+     re-fetched curve keys = 2  (LIVE)
+     isDefault=False constantValue=1.0
+     getValue(t, name, view) FAILED: argument 3 must be str, not int
+
+A midpoint that is neither 5 nor 40 means uniform feather
+animates, and prd.md 9.1 step 6 reading it ONCE per shape
+silently freezes it. That would be a spec bug, not a gap.
+
+clean shape, curve only, no add() call:
+  curve.evaluate  @1=5.0 @25=22.14285659790039 @50=40.0
+  attrs.getValue  @1=5.0 @25=22.14285659790039 @50=40.0
+  nuke.views() = ['main']
+  getValue(25, 'fx', 'main') = 22.14285659790039
+
+  If getValue now tracks the curve, add() was shadowing it
+  and the importer must write keys OR a constant, never
+  both. If it still returns a constant, getValue is not
+  the read path and evaluate() is.
+
+does uniform feather compose with per-point featherCenter,
+or does one win? set both and record featherCenter:
+  featherCenter@1 = (12.0, 7.0)  (fx/fy still 20.0/5.0)
+  Both readable at once => they are independent layers,
+  and .rbj must carry both, not pick one.

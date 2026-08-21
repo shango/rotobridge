@@ -1,0 +1,55 @@
+RotoBridge Phase 2 acceptance - Nuke round trip at tolerance 0
+Nuke 17.1v1, frames 1001-1020
+
+--- core.geom matrix vs Nuke's matrix * vector ---
+  worst disagreement over 9 samples: 3.052e-05
+  OK
+
+--- export ---
+  1 shape(s), 20 frames, 4 points
+  feather_model = per_point, blend = union, falloff = smooth
+  took 0.009 s
+  warning: shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
+
+--- schema ---
+  the exported document validates against the frozen v1 schema
+
+--- keys absent means dense (spec section 9) ---
+  keys present: False  (Phase 2 writes the dense layer only)
+
+--- import ---
+  rebuilt 'round_trip' with 4 points, closed=True
+  took 0.020 s
+
+--- geometry, every point on every frame ---
+  worst centre deviation:  3.052e-05 px
+  worst tangent deviation: 0.000e+00 px
+  worst feather deviation: 0.000e+00 px
+  Criterion 1 wants corners within 0.1 px, criterion 2 wants
+  tolerance 0 exact. The residual here is float32 epsilon at these
+  magnitudes - Nuke stores point positions as float32 (case 73's
+  serialised x42c80000 is 100.0f) - so it is the storage floor, not
+  accumulated error. Tangents and feather land exactly because they
+  are small numbers where float32 still resolves the float64 value.
+
+--- attributes ---
+  worst opacity / uniform feather deviation: 0.000e+00
+
+--- frame offset ---
+  imported at offset -1000; worst centre deviation 3.052e-05 px
+
+--- acceptance criterion 11, 20 points over 150 frames ---
+  export: 0.32 s  (budget 10 s)
+  import: 0.04 s  (budget 30 s)
+
+--- a shape inside a transformed layer ---
+  Nuke keeps a transform per layer AND per shape, neither aware of
+  the other (case 77). Flattening without composing the chain moves
+  the geometry, so check the layer translation actually lands.
+  authored [100.0, 100.0], layer translation (500, 25)
+  exported [600.0, 125.0], expected [600.0, 125.0]
+  deviation 0.000e+00 px
+  flatten warnings: layer 'moved' flattened to the root
+
+=== VERDICT ===
+PASS - Nuke round trips through .rbj at tolerance 0

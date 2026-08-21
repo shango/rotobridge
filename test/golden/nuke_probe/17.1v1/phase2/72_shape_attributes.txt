@@ -1,0 +1,53 @@
+Shape attribute values .rbj has to map (blend, opacity, closed).
+
+defaults on a fresh shape, read with getValue(t, name, view):
+  getValue(1, 'opc', 'main')                     -> 1.0
+  getValue(1, 'bm', 'main')                      -> 0.0
+  getValue(1, 'inv', 'main')                     -> 0.0
+  getValue(1, 'fo', 'main')                      -> 1.0
+  getValue(1, 'fx', 'main')                      -> 0.0
+  getValue(1, 'fy', 'main')                      -> 0.0
+  getValue(1, 'ff', 'main')                      -> 1.0
+  getValue(1, 'ft', 'main')                      -> 0.0
+  getValue(1, 'ltt', 'main')                     -> 0.0
+  getValue(1, 'ltn', 'main')                     -> 1.0
+  getValue(1, 'ltm', 'main')                     -> 1.0
+  getValue(1, 'vis', 'main')                     -> 1.0
+
+blend mode: .rbj needs union | difference | intersection, and
+`bm` is an undocumented number. Sweep it and record what the
+node reports, so the mapping is measured and not guessed:
+  set bm=0 then getValue                         -> 0.0
+  set bm=1 then getValue                         -> 1.0
+  set bm=2 then getValue                         -> 2.0
+  set bm=3 then getValue                         -> 3.0
+  set bm=4 then getValue                         -> 4.0
+  set bm=5 then getValue                         -> 5.0
+  set bm=6 then getValue                         -> 6.0
+  set bm=7 then getValue                         -> 7.0
+  set bm=8 then getValue                         -> 8.0
+  set bm=9 then getValue                         -> 9.0
+  set bm=10 then getValue                        -> 10.0
+  set bm=11 then getValue                        -> 11.0
+
+Compare against the RotoPaint UI's blend dropdown order.
+
+opacity, animated via getCurve + addKey (case 62's working route):
+  opc curve addKey(1, 1.0)                       -> <_nuke.Hash object at 0x0000021877175070>
+  opc curve addKey(20, 0.25)                     -> <_nuke.Hash object at 0x0000021877175FB0>
+  getValue(1, 'opc', 'main')                     -> 1.0
+  getValue(10, 'opc', 'main')                    -> 0.6447368264198303
+  getValue(20, 'opc', 'main')                    -> 0.25
+
+A frame-10 value between 1.0 and 0.25 confirms opacity animates
+and belongs in the dense layer, as spec section 6 assumes.
+
+closed flag - FlagType has eOpenFlag, so closed is its inverse:
+  FlagType: eActiveFlag=7, eBreakFlag=0, eKeySelectedFlag=2, eLeftTangentSelectedFlag=3, eLockedFlag=10, eMaxFlag=14, eNukeAnimCurveEvalFlag=12, eOpenFlag=5, ePressureInZFlag=11, eRelativeTangentFlag=13, eRenderableFlag=9, eRightTangentSelectedFlag=4, eSelectedFlag=6, eTangentLengthLockFlag=1, eUndefineFlag=-1, eVisibleFlag=8
+  shape.getFlag(eOpenFlag)                       -> False
+  setFlag(eOpenFlag, True) then getFlag          -> True
+  setFlag(eOpenFlag, False) then getFlag         -> False
+
+shape name round trip:
+  shape.name                                     -> 'Shape1'
+  set name then read                             -> 'arm_L'

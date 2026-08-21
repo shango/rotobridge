@@ -1,0 +1,38 @@
+Setting `blending_mode` with a SHAPE selected.
+
+Two overlapping squares, B above A. If any value renders the
+overlap at 0 while A stays at 1, that is difference, and prd.md
+section 10 has a Nuke mapping after all.
+
+  union        -> A 1, overlap 1, B 1
+  difference   -> A 1, overlap 0, B 0
+  intersection -> A 0, overlap 1, B 0
+
+A covers (100,100)-(300,300), B covers (200,200)-(400,400).
+B is the selected element; `bm` column is B's.
+
+  blending_mode    bm           A only     overlap    B only   
+  -------------------------------------------------------------
+  color-burn		3    0.0          1.0000     1.0000     1.0000   
+  color-dodge		6   0.0          1.0000     1.0000     1.0000   
+  difference		13   0.0          1.0000     1.0000     1.0000   
+  exclusion		14    0.0          1.0000     1.0000     1.0000   
+  from		11         0.0          1.0000     1.0000     1.0000   
+  hard-light		10   0.0          1.0000     1.0000     1.0000   
+  max		1           0.0          1.0000     1.0000     1.0000   
+  min		4           0.0          1.0000     1.0000     1.0000   
+  minus		12        0.0          1.0000     1.0000     1.0000   
+  multiply		2      0.0          1.0000     1.0000     1.0000   
+  over		0          0.0          1.0000     1.0000     1.0000   
+  overlay		8       0.0          1.0000     1.0000     1.0000   
+  plus		7          0.0          1.0000     1.0000     1.0000   
+  screen		5        0.0          1.0000     1.0000     1.0000   
+  soft-light		9    0.0          1.0000     1.0000     1.0000   
+
+A's bm after the sweep: 0.0 (it was never selected)
+
+distinct rendered results: 1 of 15 values
+  (1.0, 1.0, 1.0)  <- color-burn		3, color-dodge		6, difference		13, exclusion		14, from		11, hard-light		10, max		1, min		4, minus		12, multiply		2, over		0, overlay		8, plus		7, screen		5, soft-light		9
+
+B serialised at the end, so the stored form is on record:
+  b.serialise()                                  -> '{curvegroup B 512 bezier\n  {{cc\n    {f 8192}\n    {p\n     {}\n     {x43480000 x43480000 1}\n     {}\n     {}\n     {x43c80000 x43480000 1}\n     {}\n     {}\n     {x43c80000 x43c80000 1}\n     {}\n     {}\n     {x43480000 x43c80000 1}\n     {}}}\n   {cc\n    {f 8192}\n    {p\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}}}}\n  {tx 0 0}\n  {a osw x41200000 osf 0 str 1 sf x40000000 ltn 0 ltm 0}}'

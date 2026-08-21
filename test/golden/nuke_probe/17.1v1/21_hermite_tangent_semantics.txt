@@ -1,0 +1,13 @@
+Keys: f1=0, f50=20, f100=100 (deliberately non-collinear).
+Piecewise-linear predicts the 'linear' column exactly.
+Overshoot or smoothing means the default is a curve, not linear.
+
+  f=  1  x=   0.0000   linear would be    0.0000   delta  +0.0000
+  f= 12  x=   1.3460   linear would be    4.4898   delta  -3.1438
+  f= 25  x=   4.3055   linear would be    9.7959   delta  -5.4904
+  f= 37  x=   9.7074   linear would be   14.6939   delta  -4.9865
+  f= 50  x=  20.0000   linear would be   20.0000   delta  +0.0000
+  f= 62  x=  34.4657   linear would be   39.2000   delta  -4.7343
+  f= 75  x=  54.4697   linear would be   60.0000   delta  -5.5303
+  f= 87  x=  75.6249   linear would be   79.2000   delta  -3.5751
+  f=100  x= 100.0000   linear would be  100.0000   delta  +0.0000

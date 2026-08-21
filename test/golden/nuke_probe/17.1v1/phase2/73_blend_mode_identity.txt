@@ -1,0 +1,49 @@
+What `bm` numbers actually mean (case 72 could only echo them back).
+
+Nuke roto shapes do not have a union/difference/intersection
+enum the way .rbj assumes; the per-shape blending mode is drawn
+from the Merge operation list. Dump that list so the mapping in
+prd.md 10 is measured rather than assumed:
+    0  atop
+    1  average
+    2  color-burn
+    3  color-dodge
+    4  conjoint-over
+    5  copy
+    6  difference
+    7  disjoint-over
+    8  divide
+    9  exclusion
+   10  from
+   11  geometric
+   12  hard-light
+   13  hypot			diagonal
+   14  in
+   15  mask
+   16  matte
+   17  max
+   18  min
+   19  minus
+   20  multiply
+   21  out
+   22  over
+   23  overlay
+   24  plus
+   25  screen
+   26  soft-light
+   27  stencil
+   28  under
+   29  xor
+
+  count = 30
+
+serialise() the shape at several bm values - the saved form
+names things the Python API does not:
+  bm=0.0 -> {curvegroup Shape1 512 bezier |   {{cc |     {f 8192} |     {p |      {} |      {x42c80000 x42c80000 1} |      {} |      {} |      {x43fa0000 x42c80000 1} |      {} |      {} |      {x43fa0000 x43c80000 1} |      {} |      {} |      {x42c80000 x43c80000 1} |      {}}} |    {cc |     {f 8192} |     {p |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {}}}} |   {tx 1 0} |   {a bm |    {{1 0}}  osw 
+  bm=1.0 -> {curvegroup Shape1 512 bezier |   {{cc |     {f 8192} |     {p |      {} |      {x42c80000 x42c80000 1} |      {} |      {} |      {x43fa0000 x42c80000 1} |      {} |      {} |      {x43fa0000 x43c80000 1} |      {} |      {} |      {x42c80000 x43c80000 1} |      {}}} |    {cc |     {f 8192} |     {p |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {}}}} |   {tx 1 0} |   {a bm |    {{1 1}}  osw 
+  bm=2.0 -> {curvegroup Shape1 512 bezier |   {{cc |     {f 8192} |     {p |      {} |      {x42c80000 x42c80000 1} |      {} |      {} |      {x43fa0000 x42c80000 1} |      {} |      {} |      {x43fa0000 x43c80000 1} |      {} |      {} |      {x42c80000 x43c80000 1} |      {}}} |    {cc |     {f 8192} |     {p |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {}}}} |   {tx 1 0} |   {a bm |    {{1 x40000000
+  bm=3.0 -> {curvegroup Shape1 512 bezier |   {{cc |     {f 8192} |     {p |      {} |      {x42c80000 x42c80000 1} |      {} |      {} |      {x43fa0000 x42c80000 1} |      {} |      {} |      {x43fa0000 x43c80000 1} |      {} |      {} |      {x42c80000 x43c80000 1} |      {}}} |    {cc |     {f 8192} |     {p |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {} |      {}}}} |   {tx 1 0} |   {a bm |    {{1 x40400000
+
+If the serialised form carries a name next to bm, that name is
+the mapping. If it carries only the number, .rbj cannot express
+Nuke blending faithfully and prd.md 10 needs revisiting.

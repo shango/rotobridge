@@ -1,0 +1,58 @@
+attribute count: 48
+  [ 0] vis    = 1.0
+  [ 1] r      = 1.0
+  [ 2] g      = 1.0
+  [ 3] b      = 1.0
+  [ 4] a      = 1.0
+  [ 5] ro     = 0.0
+  [ 6] go     = 0.0
+  [ 7] bo     = 0.0
+  [ 8] ao     = 0.0
+  [ 9] opc    = 1.0
+  [10] bm     = 0.0
+  [11] inv    = 0.0
+  [12] mbo    = 0.0
+  [13] mb     = 1.0
+  [14] mbs    = 0.5
+  [15] mbsot  = 0.0
+  [16] mbso   = 0.0
+  [17] fo     = 1.0
+  [18] fx     = 0.0
+  [19] fy     = 0.0
+  [20] ff     = 1.0
+  [21] ft     = 0.0
+  [22] osw    = 10.0
+  [23] osf    = 0.0
+  [24] src    = 0.0
+  [25] stx    = 0.0
+  [26] sty    = 0.0
+  [27] str    = 1.0
+  [28] sr     = 0.0
+  [29] ssx    = 1.0
+  [30] ssy    = 1.0
+  [31] sskx   = 0.0
+  [32] ssky   = 0.0
+  [33] sso    = 0.0
+  [34] spx    = 320.0
+  [35] spy    = 240.0
+  [36] stot   = 0.0
+  [37] sto    = 0.0
+  [38] sv     = 0.0
+  [39] sf     = 2.0
+  [40] sb     = 0.0
+  [41] nv     = 1.0
+  [42] view1  = 1.0
+  [43] ltn    = 1.0
+  [44] ltm    = 1.0
+  [45] ltt    = 0.0
+  [46] tt     = 0.0
+  [47] pt     = 0.0
+
+lifetime attrs: ltt=0.0 ltn=1.0 ltm=1.0
+
+visibility sampled across frames:
+  f=1    getVisible=True
+  f=25   getVisible=True
+  f=50   getVisible=True
+  f=100  getVisible=True
+  f=500  getVisible=True

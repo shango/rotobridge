@@ -1,0 +1,24 @@
+The tree the UI wrote, and every attribute that is off default.
+
+Script: C:\Users\shann\rotobridge\probe\layer_minus.nknc
+
+node: RotoPaint1 (RotoPaint)
+
+tree:
+  Root  (Layer)
+    Root/Layer2  (Layer)
+    Root/Layer1  (Layer)
+
+attributes, compared against a fresh element of the same
+type. `bm` on a Shape defaults to 0.0; case 76 found a Layer
+reports no `bm` at all. If the UI wrote one anyway it appears
+here as an attribute the fresh element does not have.
+
+Root  (Layer)
+  attribute read FAILED: AttributeError: '_curvelib.AnimAttributes' object has no attribute 'numAttributes'
+
+Root/Layer2  (Layer)
+  attribute read FAILED: AttributeError: '_curvelib.AnimAttributes' object has no attribute 'numAttributes'
+
+Root/Layer1  (Layer)
+  attribute read FAILED: AttributeError: '_curvelib.AnimAttributes' object has no attribute 'numAttributes'

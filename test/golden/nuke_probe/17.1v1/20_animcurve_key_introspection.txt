@@ -1,0 +1,16 @@
+center is AnimControlPoint
+dim: 3
+getControlPointKeyTimes(): [1.0, 50.0, 100.0]
+
+This is the key-time source for the prd.md 9.2 step 3 union.
+
+--- dim 0: AnimCurve ---
+  dir: addKey, constantValue, curveTension, curveType, evaluate, evaluateY, expressionString, getFlag, getKey, getNumberOfKeys, isDefault, kDefaultConstantValue, kDefaultCurveFlag, kDefaultCurveTension, kDefaultCurveType, name, removeAllKeys, removeKey, reset, setFlag, useExpression
+  getNumberOfKeys() -> 3
+  getKeyTimes() -> FAILED: '_curvelib.AnimCurve' object has no attribute 'getKeyTimes'
+  keys() -> FAILED: '_curvelib.AnimCurve' object has no attribute 'keys'
+--- dim 1: AnimCurve ---
+  dir: addKey, constantValue, curveTension, curveType, evaluate, evaluateY, expressionString, getFlag, getKey, getNumberOfKeys, isDefault, kDefaultConstantValue, kDefaultCurveFlag, kDefaultCurveTension, kDefaultCurveType, name, removeAllKeys, removeKey, reset, setFlag, useExpression
+  getNumberOfKeys() -> 3
+  getKeyTimes() -> FAILED: '_curvelib.AnimCurve' object has no attribute 'getKeyTimes'
+  keys() -> FAILED: '_curvelib.AnimCurve' object has no attribute 'keys'

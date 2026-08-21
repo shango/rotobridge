@@ -1,0 +1,50 @@
+How to apply a shape transform to a point (prd.md 9.2 step 5).
+
+CTransform.getMatrix() -> CMatrix4
+
+full dir(CMatrix4), dunders included - the public surface in
+00_api_surface.txt has no multiply, so if one exists it is an
+operator:
+  __add__, __class__, __delattr__, __delitem__, __dir__, __doc__, __eq__, __format__, __ge__, __getattribute__, __getitem__, __getstate__, __gt__, __hash__, __iadd__, __imul__, __init__, __init_subclass__, __isub__, __le__, __len__, __lt__, __mul__, __ne__, __new__, __radd__, __reduce__, __reduce_ex__, __repr__, __rmul__, __rsub__, __setattr__, __setitem__, __sizeof__, __str__, __sub__, __subclasshook__, makeIdentity, rotateX, rotateY, rotateZ, scale, skew, translate, translation, transpose
+
+candidate ways to read the matrix out:
+  str(mat)                                       -> '{ { 1, 0, 0, 200 }, { 0, 1, 0, 50 }, { 0, 0, 1, 0 }, { 0, 0, 0, 1 }'
+  mat[0]                                         -> 1.0
+  mat[0][0]                                      -> FAILED: TypeError: 'float' object is not subscriptable
+  mat[0, 0]                                      -> FAILED: TypeError: sequence index must be integer, not 'tuple'
+  list(mat)                                      -> [1.0, 0.0, 0.0, 200.0, 0.0, 1.0, 0.0, 50.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+candidate ways to apply it to CVec3(10, 20, 1):
+  mat * vec                                      -> { 210, 70, 1 }
+  vec * mat                                      -> { 0.00333222, 0.00666445, 0.000333222 }
+  mat.transform(vec)                             -> FAILED: AttributeError: '_curvelib.CMatrix4' object has no attribute 'transform'
+  mat.multVecMatrix(vec)                         -> FAILED: AttributeError: '_curvelib.CMatrix4' object has no attribute 'multVecMatrix'
+
+fallback path - compose the affine from CTransform components,
+which are documented and readable:
+  ct.translation                                 -> { 200, 50, 0 }
+  ct.rotation                                    -> { 0, 0, 0 }
+  ct.scale                                       -> { 1, 1, 1 }
+  ct.skew                                        -> { 0, 0, 0 }
+  ct.pivotPoint                                  -> { 0, 0, 0 }
+  ct.rotationOrder                               -> 0
+  ct.transformOrder                              -> 0
+
+CVec2 / CVec3 component access - the Phase 0 probe parsed the
+repr with a regex, which is not something an adapter should do:
+  dir(CVec3): x, y, z
+  vec.x                                          -> 10.0
+  vec[0]                                         -> 10.0
+  vec.getX()                                     -> FAILED: AttributeError: '_curvelib.CVec3' object has no attribute 'getX'
+  tuple(vec)                                     -> (10.0, 20.0, 1.0)
+
+does an animated transform move the points getPosition reports,
+or is getPosition pre-transform? This decides whether the export
+has to bake at all:
+  isDefault()          -> False
+  cp0 getPosition(1)   -> { 100, 100, 1 }
+  (translation key was +200, +50 at frame 1; SQUARE[0] is (100.0, 100.0))
+
+If getPosition still reports (100, 100) the transform is a
+separate layer the export must bake. If it reports (300, 150)
+the bake is already done and step 5 is unnecessary.

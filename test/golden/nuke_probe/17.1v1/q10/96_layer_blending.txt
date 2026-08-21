@@ -1,0 +1,38 @@
+Setting `blending_mode` with a LAYER selected.
+
+The saved script this probe read has its blending mode on a
+layer, and case 76 found a Layer carries no `bm` attribute. So
+either the knob writes somewhere else, or it writes through to
+the shapes inside.
+
+A is on layer 'lower', B on layer 'upper'.
+'upper' is the selected element; `bm` column is the layer's.
+
+  blending_mode    bm           A only     overlap    B only   
+  -------------------------------------------------------------
+  color-burn		3    0.0          1.0000     1.0000     1.0000   
+  color-dodge		6   0.0          1.0000     1.0000     1.0000   
+  difference		13   0.0          1.0000     1.0000     1.0000   
+  exclusion		14    0.0          1.0000     1.0000     1.0000   
+  from		11         0.0          1.0000     1.0000     1.0000   
+  hard-light		10   0.0          1.0000     1.0000     1.0000   
+  max		1           0.0          1.0000     1.0000     1.0000   
+  min		4           0.0          1.0000     1.0000     1.0000   
+  minus		12        0.0          1.0000     1.0000     1.0000   
+  multiply		2      0.0          1.0000     1.0000     1.0000   
+  over		0          0.0          1.0000     1.0000     1.0000   
+  overlay		8       0.0          1.0000     1.0000     1.0000   
+  plus		7          0.0          1.0000     1.0000     1.0000   
+  screen		5        0.0          1.0000     1.0000     1.0000   
+  soft-light		9    0.0          1.0000     1.0000     1.0000   
+
+after the sweep:
+  upper layer bm : 0.0
+  shape B bm     : 0.0
+  shape A bm     : 0.0
+
+distinct rendered results: 1 of 15 values
+  (1.0, 1.0, 1.0)  <- color-burn		3, color-dodge		6, difference		13, exclusion		14, from		11, hard-light		10, max		1, min		4, minus		12, multiply		2, over		0, overlay		8, plus		7, screen		5, soft-light		9
+
+the layer serialised at the end:
+  upper.serialise()                              -> '{layer upper\n  {f 0}\n  {t 0}\n  {a pt1x 0 pt1y 0 pt2x 0 pt2y 0 pt3x 0 pt3y 0 pt4x 0 pt4y 0 ptex00 0 ptex01 0 ptex02 0 ptex03 0 ptex10 0 ptex11 0 ptex12 0 ptex13 0 ptex20 0 ptex21 0 ptex22 0 ptex23 0 ptex30 0 ptex31 0 ptex32 0 ptex33 0 ptof1x 0 ptof1y 0 ptof2x 0 ptof2y 0 ptof3x 0 ptof3y 0 ptof4x 0 ptof4y 0 pterr 0 ptrefset 0 ptmot x40800000 ptref 0}\n  {curvegroup B 512 bezier\n   {{cc\n     {f 8192}\n     {p\n      {}\n      {x43480000 x43480000 1}\n      {}\n      {}\n      {x43c80000 x43480000 1}\n      {}\n      {}\n      {x43c80000 x43c80000 1}\n      {}\n      {}\n      {x43480000 x43c80000 1}\n      {}}}\n    {cc\n     {f 8192}\n     {p\n      {}\n      {}\n      {}\n      {}\n      {}\n      {}\n      {}\n      {}\n      {}\n      {}\n      {}\n      {}}}}\n   {tx 1 0}\n   {a osw x41200000 osf 0 str 1 sf x40000000}}}'

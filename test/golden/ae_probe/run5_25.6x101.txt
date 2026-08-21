@@ -1,0 +1,139 @@
+RotoBridge Phase 0 probe - After Effects
+
+=== A. Environment ===
+AE version:        25.6x101
+comp:              Comp 1
+size:              1920 x 1080
+pixelAspect:       1
+frameRate:         24
+displayStartTime:  0
+duration (s):      83.3333333333333
+workArea (s):      0 -> 83.3333333333333
+layer:             Black Solid 1
+layer.threeDLayer: false
+layer.parent:      none
+
+=== B. maskPath value structure ===
+mask name:         Mask 1
+maskMode:          6813
+inverted:          false
+closed:            true
+vertex count:      7
+inTangents count:  7
+outTangents count: 7
+
+first 3 vertices (layer space, Y-down):
+  v0 c=[875.103, 303.021] in=[15.673, 0] out=[-15.673, 0]
+  v1 c=[655.674, 378.776] in=[13.061, -5.224] out=[-13.061, 5.224]
+  v2 c=[621.715, 710.531] in=[-49.633, -33.959] out=[49.633, 33.959]
+
+Confirm: are tangents vertex-RELATIVE (small numbers) or absolute?
+
+=== C. Reading keyframes off maskPath (prd.md 5.4, 9.1 step 3) ===
+numKeys:           3
+  key 1  t=0s  frame=0  in=6612 out=6612
+  key 2  t=12.875s  frame=309  in=6612 out=6612
+  key 3  t=14.583s  frame=350  in=6612 out=6612
+
+KeyframeInterpolationType.LINEAR = 6612
+KeyframeInterpolationType.BEZIER = 6613
+KeyframeInterpolationType.HOLD   = 6614
+
+=== D. Interpolation types legal on maskPath (prd.md 7, tier 1) ===
+If BEZIER or HOLD is false here, tier-1 ease is unreachable and every
+interval falls back to tier-3 drift correction.
+LINEAR valid: true
+BEZIER valid: true
+HOLD valid  : true
+
+=== E. Feather reachability (prd.md 10) ===
+maskFeather value: [20,20]  (2-D, NOT a scalar)
+prd.md 9.1 step 6 says 'write maskFeather mean'. If this is 2-D the
+spec must say which component, or how x and y combine.
+
+Uniform feather is a SECOND, independent mechanism. Set the mask's
+Mask Feather to something anisotropic (e.g. 20,5) and key it on two
+frames before running, or this section proves nothing.
+maskFeather numKeys: 0
+maskFeather is animated: no (static)
+
+maskFeatherFalloff: 7212  (LINEAR=7213 SMOOTH=7212)
+maskFeatherFalloff is an ATTRIBUTE, not a Property, so it cannot be
+keyframed. Cheap to carry, but .rbj has no field for it today.
+
+maskExpansion value: 0  (numKeys=0)
+maskExpansion is animatable and prd.md never mentions it. Not feather,
+but the same class of silent per-mask drop.
+
+MaskMode constants: NONE=6812 ADD=6813 SUBTRACT=6814 INTERSECT=6815 LIGHTEN=6816 DARKEN=6817 DIFFERENCE=6818
+
+Variable-width feather lives on the Shape object returned by maskPath,
+NOT as a property on the mask group. Run 2 looked in the wrong place.
+  Shape.featherSegLocs: []  (length 0)
+  Shape.featherRelSegLocs: []  (length 0)
+  Shape.featherRadii: []  (length 0)
+  Shape.featherTypes: []  (length 0)
+  Shape.featherInterps: []  (length 0)
+  Shape.featherTensions: []  (length 0)
+  Shape.featherRelCornerAngles: []  (length 0)
+
+A non-empty featherRadii means AE CAN carry per-segment feather, and
+prd.md must map it rather than collapsing Nuke feather to a mean.
+Add feather points to the mask in the UI and re-run to see real values.
+
+Feather points and maskFeather COMPOSE - both are non-zero above if
+the mask was set up as instructed, which means .rbj must carry both
+layers, not choose between them. prd.md 9.3 currently treats them as
+exclusive ('no feather points present -> uniform from the mean').
+
+All properties on this mask, for reference:
+  [1] Mask Path  (matchName=ADBE Mask Shape)
+  [2] Mask Feather  (matchName=ADBE Mask Feather)
+  [3] Mask Opacity  (matchName=ADBE Mask Opacity)
+  [4] Mask Expansion  (matchName=ADBE Mask Offset)
+
+=== F. sourcePointToComp under scale + rotation (prd.md 9.1 step 4) ===
+scale [150,220], rotation 30deg, position [700,400]
+vertex  layer [200, 300]  -> comp [-23.269, -627.261]
+vertex  comp  [-23.269, -627.261]  -> layer [200, 300]
+round-trip error: 0, 0  (want < 0.001)
+
+tangent [40, 0] via transform-then-subtract -> [51.962, 30]
+tangent length layer=40  comp=60
+
+Expect the comp tangent to be rotated AND non-uniformly scaled.
+If it merely equals the layer tangent, sourcePointToComp is not
+applying the transform and the AE export needs rework.
+
+With rotation animated 0deg@0s -> 90deg@2s, same layer point:
+  comp.time=0s -> comp [-440, -128]
+  comp.time=1s -> comp [267.251, -779.454]
+  comp.time=2s -> comp [1228, -740]
+
+100 x (set comp.time + sourcePointToComp) took 757 ms  (7.57 ms each)
+This is the real dense-bake cost - the export must set comp.time
+per frame, so this dominates, not valueAtTime.
+
+=== G. Temporal ease on maskPath keys (prd.md 7, tier 1) ===
+AE ease = influence (%) + speed (value-units/sec). Only influence
+normalizes across control points; see the .rbj ease param question.
+  key 1 in : 1 dim, [0] speed=0 influence=16.667
+  key 1 out: 1 dim, [0] speed=1 influence=16.667
+  key 2 in : 1 dim, [0] speed=1 influence=16.667
+  key 2 out: 1 dim, [0] speed=1 influence=16.667
+  key 3 in : 1 dim, [0] speed=1 influence=16.667
+  key 3 out: 1 dim, [0] speed=0 influence=16.667
+
+Note the dimension count above. If ease is 1-D on a shape property,
+a single shape-wide ease is what .rbj must store.
+
+=== H. Key write round-trip and drift-pass cost (prd.md 15 Q6) ===
+set 2 keys; numKeys now = 2
+setInterpolationTypeAtKey(1, BEZIER): ok, reads back as 6613
+setInterpolationTypeAtKey(1, HOLD)  : ok, reads back as 6614
+
+midpoint vertex 0 under LINEAR: [300, 150]   (halfway between [100,100] and [500,200] = [300,150])
+
+100 valueAtTime read-backs took 4 ms  (0.04 ms each)
+Extrapolate: a 150-frame shape needs ~150 reads per drift iteration
+per shape. That is the prd.md 15 Q6 budget.

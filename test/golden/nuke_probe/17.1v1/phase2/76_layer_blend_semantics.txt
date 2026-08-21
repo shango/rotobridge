@@ -1,0 +1,83 @@
+Blending is a property of the LAYER, not the shape.
+
+Case 75 swept the shape attribute and found nothing subtracts.
+The reason: in RotoPaint the blending mode belongs to the layer a
+spline sits on, and a node can hold several layers. Redo case 75
+one level up - two layers, one shape each, sweep the upper
+layer's bm and sample the rendered alpha.
+
+append() copies into the tree, so every handle here is
+re-fetched from its parent; the passed-in object goes stale.
+  rootLayer holds 2 element(s): lower(Layer), upper(Layer)
+  'lower' holds 1, 'upper' holds 1
+
+A on layer 'lower' covers (100,100)-(300,300).
+B on layer 'upper' covers (200,200)-(400,400).
+
+  union        -> A 1, overlap 1, B 1
+  difference   -> A 1, overlap 0, B 0
+  intersection -> A 0, overlap 1, B 0
+
+step by step, to find which call on a Layer fails:
+  type(rootLayer[1])                             -> 'Layer'
+  rootLayer[1].name                              -> 'upper'
+  len(rootLayer[1])                              -> 1
+  rootLayer[1].getAttributes()                   -> <_curvelib.AnimAttributes object at 0x0000021877176330>
+    getValue(1, 'bm', 'main')                    -> 0.0
+    getCurve('bm', 'main')                       -> <_curvelib.AnimCurve object at 0x00000218771753B0>
+    getNumberOfKeys('bm', 'main')                -> 0
+  attribute names on the layer: vis, opc, mbo, mb, mbs, fo, fx, fy, ff, ft, warp, pt1x, pt1y, pt2x, pt2y, pt3x, pt3y, pt4x, pt4y, ptex00, ptex01, ptex02, ptex03, ptex10, ptex11, ptex12, ptex13, ptex20, ptex21, ptex22, ptex23, ptex30, ptex31, ptex32, ptex33, ptof1x, ptof1y, ptof2x, ptof2y, ptof3x, ptof3y, ptof4x, ptof4y, pterr, pt, ptrefset, ptmot, ptref, , , , , , , , , , , , , , , , 
+
+the same calls on the SHAPE inside that layer, for comparison
+- case 72 showed these work at the shape level:
+  rootLayer[1][0].name                           -> 'B'
+  rootLayer[1][0] getValue(1, 'bm', 'main')      -> 0.0
+
+enumerate a SHAPE's attributes for comparison - if `bm` is
+here but not on the layer, blending is shape-level in this API
+whatever the UI presents:
+  vis, r, g, b, a, ro, go, bo, ao, opc, bm, inv, mbo, mb, mbs, mbsot, mbso, fo, fx, fy, ff, ft, osw, osf, src, stx, sty, str, sr, ssx, ssy, sskx, ssky, sso, spx, spy, stot, sto, sv, sf, sb, nv, view1, ltn, ltm, ltt, tt, pt
+  'bm' present on shape: True
+
+creating bm on the layer with add() instead of getCurve, since
+the layer has no such attribute to fetch a curve for:
+  layer add('bm', 27.0)                          -> None
+  layer getValue(1, 'bm', 'main')                -> 27.0
+  sampling FAILED: cannot access local variable 'alpha' where it is not associated with a value
+
+  bm    A only     overlap    B only     reads as
+  0     1.0000     1.0000     1.0000     UNION
+  1     1.0000     1.0000     1.0000     UNION
+  2     1.0000     1.0000     1.0000     UNION
+  3     1.0000     1.0000     1.0000     UNION
+  4     1.0000     1.0000     1.0000     UNION
+  5     1.0000     1.0000     1.0000     UNION
+  6     1.0000     1.0000     1.0000     UNION
+  7     1.0000     1.0000     1.0000     UNION
+  8     1.0000     1.0000     1.0000     UNION
+  9     1.0000     1.0000     1.0000     UNION
+  10    1.0000     1.0000     1.0000     UNION
+  11    1.0000     1.0000     1.0000     UNION
+  12    1.0000     1.0000     1.0000     UNION
+  13    1.0000     1.0000     1.0000     UNION
+  14    1.0000     1.0000     1.0000     UNION
+  15    1.0000     1.0000     1.0000     UNION
+  16    1.0000     1.0000     1.0000     UNION
+  17    1.0000     1.0000     1.0000     UNION
+  18    1.0000     1.0000     1.0000     UNION
+  19    1.0000     1.0000     1.0000     UNION
+  20    1.0000     1.0000     1.0000     UNION
+  21    1.0000     1.0000     1.0000     UNION
+  22    1.0000     1.0000     1.0000     UNION
+  23    1.0000     1.0000     1.0000     UNION
+  24    1.0000     1.0000     1.0000     UNION
+  25    1.0000     1.0000     1.0000     UNION
+  26    1.0000     1.0000     1.0000     UNION
+  27    1.0000     1.0000     1.0000     UNION
+  28    1.0000     1.0000     1.0000     UNION
+  29    1.0000     1.0000     1.0000     UNION
+
+The labelled rows are the mapping .rbj `blend` needs. Because
+AE carries a mode per MASK and Nuke carries one per LAYER, the
+export must read a shape's blend from its parent layer, and the
+import must group shapes by blend into one layer each.

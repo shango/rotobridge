@@ -1,0 +1,80 @@
+What the `blending_mode` node knob is, and what it accepts.
+
+Case 93 found it by diffing a UI-authored script against a fresh
+node. Cases 73 and 75 missed it because both searched the curves
+tree, where it does not live.
+
+blending_mode: Enumeration_Knob
+    value()                                      -> 'over'
+    getValue()                                   -> 0.0
+  15 value(s):
+     0  color-burn		3
+     1  color-dodge		6
+     2  difference		13
+     3  exclusion		14
+     4  from		11
+     5  hard-light		10
+     6  max		1
+     7  min		4
+     8  minus		12
+     9  multiply		2
+    10  over		0
+    11  overlay		8
+    12  plus		7
+    13  screen		5
+    14  soft-light		9
+
+toolbar_blending_mode: Enumeration_Knob
+    value()                                      -> 'over'
+    getValue()                                   -> 0.0
+  15 value(s):
+     0  color-burn		3
+     1  color-dodge		6
+     2  difference		13
+     3  exclusion		14
+     4  from		11
+     5  hard-light		10
+     6  max		1
+     7  min		4
+     8  minus		12
+     9  multiply		2
+    10  over		0
+    11  overlay		8
+    12  plus		7
+    13  screen		5
+    14  soft-light		9
+
+Case 73's Merge operation list, for comparison. If the two
+agree in order then `bm` is an index into it after all; the
+default already says otherwise (`bm` 0.0 against `over`).
+  Merge2.operation has 30 value(s):
+     0  atop
+     1  average
+     2  color-burn
+     3  color-dodge
+     4  conjoint-over
+     5  copy
+     6  difference
+     7  disjoint-over
+     8  divide
+     9  exclusion
+    10  from
+    11  geometric
+    12  hard-light
+    13  hypot			diagonal
+    14  in
+    15  mask
+    16  matte
+    17  max
+    18  min
+    19  minus
+    20  multiply
+    21  out
+    22  over
+    23  overlay
+    24  plus
+    25  screen
+    26  soft-light
+    27  stencil
+    28  under
+    29  xor

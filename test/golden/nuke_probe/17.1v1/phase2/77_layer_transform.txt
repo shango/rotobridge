@@ -1,0 +1,37 @@
+Does a layer transform reach the points, and does it compose?
+
+prd.md 9.2 flattens nested layers to the root with a warning. If a
+layer carries its own transform that the export never bakes, then
+flattening moves the geometry - silently, which is worse than the
+blend loss because it is not a mapping question, it is wrong
+output.
+
+before any transform:
+  shape[0].center.getPosition(1)                 -> { 100, 100, 1 }
+  layer.getTransform().isDefault()               -> False
+
+put +500, +25 on the LAYER's transform:
+  layer addTranslationKey(1, 500, 25, 0)         -> None
+  layer.getTransform().isDefault()               -> False
+  shape[0].center.getPosition(1)                 -> { 100, 100, 1 }
+  shape.getTransform().isDefault()               -> False
+  list(layer.getTransform().evaluate(1).getMatrix()) -> [1.0, 0.0, 0.0, 500.0, 0.0, 1.0, 0.0, 25.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+If getPosition still reports (100, 100) and the SHAPE transform
+is still default, then the layer transform is a separate factor
+the export must multiply in. Flattening without it is a bug.
+
+now add +7, +9 on the SHAPE transform as well, to see whether
+the two compose and in which order:
+  shape addTranslationKey(1, 7, 9, 0)            -> None
+  shape matrix                                   -> [1.0, 0.0, 0.0, 7.0, 0.0, 1.0, 0.0, 9.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+  layer matrix                                   -> [1.0, 0.0, 0.0, 500.0, 0.0, 1.0, 0.0, 25.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+Neither matrix should contain the other's translation: the
+export has to walk the layer chain and multiply them itself.
+
+where does the rendered shape actually land? sample the alpha
+along y=200 to find the left edge. Authored x is 100; layer
+adds 500 and shape adds 7, so a composed transform puts the
+edge near 607:
+  sampling FAILED: unable to sample node at given location (90, 200) for the current context (may be zoomed in or have a ROI set)

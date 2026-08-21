@@ -1,0 +1,15 @@
+getTransform() -> AnimCTransform
+
+prd.md 9.2 step 5 specifies getMatrixAt(frame). That method does
+not exist on AnimCTransform. Finding the real path:
+
+  xf.isDefault()                  -> False  (type bool)
+  xf.getTransformKeyTimes()       -> [1.0]  (type list)
+  xf.getTranslationKeyTimes()     -> [1.0]  (type list)
+  xf.getRotationKeyTimes()        -> [1.0]  (type list)
+  xf.getScaleKeyTimes()           -> [1.0]  (type list)
+  xf.getNumberOfTransformKeys()   -> 1  (type int)
+  xf.evaluate(1)                  -> <_curvelib.CTransform object at 0x0000024DAA0D63D0>  (type CTransform)
+
+dir(evaluate(1)) i.e. CTransform:
+  getInverseMatrix, getMatrix, getTransposeMatrix, isDefault, name, pivotPoint, reset, rotation, rotationOrder, scale, setIdentity, skew, transformOrder, translation

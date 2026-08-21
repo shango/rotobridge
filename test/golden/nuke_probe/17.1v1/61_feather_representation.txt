@@ -1,0 +1,15 @@
+Every ShapeControlPoint member is an AnimControlPoint:
+  center, leftTangent, rightTangent,
+  featherCenter, featherLeftTangent, featherRightTangent
+
+center       @1 = (100.0, 100.0)
+featherCenter@1 = (0.0, 0.0)
+featherLeftT @1 = (0.0, 0.0)
+featherRightT@1 = (0.0, 0.0)
+
+after setPosition((12,7)):
+  featherCenter@1 = (12.0, 7.0)
+
+If featherCenter is a 2D OFFSET rather than a width scalar,
+the .rbj per-point `feather` float cannot round-trip it and
+prd.md section 6 needs a vector feather field.

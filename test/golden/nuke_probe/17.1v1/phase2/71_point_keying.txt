@@ -1,0 +1,44 @@
+How to key one control point across frames (dense import inner loop).
+
+dir(AnimControlPoint) candidates: addKey(time, cpOrDim, view),
+addPositionKey(time, positionOrDim, view),
+setPositionKey(time, index, value, id, view).
+Phase 0 found two introspected signatures that lie, so try each.
+
+addPositionKey with a CVec3:
+  addPositionKey(1, CVec3(100,100,1))            -> None
+  addPositionKey(10, CVec3(300,200,1))           -> None
+  addPositionKey(20, CVec3(500,100,1))           -> None
+
+read back:
+  getPosition(1)                                 -> { 100, 100, 1 }
+  getPosition(5)                                 -> { 190.766, 162.277, 1 }
+  getPosition(10)                                -> { 300, 200, 1 }
+  getPosition(15)                                -> { 401.974, 168.75, 1 }
+  getPosition(20)                                -> { 500, 100, 1 }
+  getControlPointKeyTimes()                      -> [1.0, 10.0, 20.0]
+
+A midpoint that is not the linear average means the point curve
+defaulted to curved (case 21), and the importer must set
+curveType per axis. Frame 5 linear would be x=200, y=150.
+
+per-axis curve access and curveType, the tier-1 linear control:
+  getPositionAnimCurve(0).getNumberOfKeys()      -> 3
+  getPositionAnimCurve(0).curveType              -> 0
+  getPositionAnimCurve(1).getNumberOfKeys()      -> 3
+  getPositionAnimCurve(1).curveType              -> 0
+  getPositionAnimCurve(2).getNumberOfKeys()      -> 3
+  getPositionAnimCurve(2).curveType              -> 0
+
+  CurveType enum: eBSplineCurveType=2, eBezierCurveType=0, eCardinalCurveType=3, eCatmullRomCurveType=4, eHermiteCurveType=1, eNurbsCurveType=5, eUndefineCurveType=-1
+
+setting curveType to linear and re-reading the midpoint:
+  set curveType[0] = eLinearCurveType            -> None
+  set curveType[1] = eLinearCurveType            -> None
+  set curveType[2] = eLinearCurveType            -> None
+  getPosition(5) after                           -> { 190.766, 162.277, 1 }
+
+tangents animate too - same call on leftTangent:
+  leftTangent.addPositionKey(1, CVec3(-60,0,0))  -> None
+  leftTangent.addPositionKey(20, CVec3(-10,30,0)) -> None
+  leftTangent.getPosition(20)                    -> { -10, 30, 0 }

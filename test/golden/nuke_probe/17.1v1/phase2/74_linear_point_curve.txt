@@ -1,0 +1,36 @@
+How to actually get linear interpolation on a point curve.
+
+Case 71 found CurveType has NO linear member:
+  eBSplineCurveType=2, eBezierCurveType=0, eCardinalCurveType=3, eCatmullRomCurveType=4, eHermiteCurveType=1, eNurbsCurveType=5, eUndefineCurveType=-1
+
+So prd.md 7 and 9.2 step 3 are wrong to say 'set curveType
+explicitly for linear' - curveType is the spline basis. Case 63
+found the real control is per key: interpolationType = the
+InterpolationType enum PLUS ONE. Case 63 measured that on a
+scalar curve; confirm it on a point POSITION curve, which is
+what the shape importer writes.
+
+  InterpolationType: eCubicInterpolationType=2, eLinearInterpolationType=1, eStepInterpolationType=0, eUndefineInterpolationType=-1
+
+Keys sit at 1, 10 and 20, so the linear value at frame 5 is
+4/9 of the way from key 1 to key 2: (188.889, 144.444). At
+frame 15 it is halfway from key 2 to key 3: (400, 150).
+
+default (untouched):
+  getPosition(5)                                 -> { 190.766, 162.277, 1 }
+
+setting every key's interpolationType = eLinear + 1 = 2 on both axes:
+  axis 0 key 0: 256 -> 2                         -> None
+  axis 0 key 1: 256 -> 2                         -> None
+  axis 0 key 2: 256 -> 2                         -> None
+  axis 1 key 0: 256 -> 2                         -> None
+  axis 1 key 1: 256 -> 2                         -> None
+  axis 1 key 2: 256 -> 2                         -> None
+
+  getPosition(5) after                           -> { 188.889, 144.444, 1 }
+  getPosition(15) after                          -> { 400, 150, 1 }
+
+Landing on (188.889, 144.444) and (400, 150) means the
+key-level enum+1 is the linear control on point curves too, and
+curveType never needs touching. Note the untouched keys report
+interpolationType 256, the unset sentinel case 63 found.

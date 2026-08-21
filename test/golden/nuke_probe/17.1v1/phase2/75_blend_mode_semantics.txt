@@ -1,0 +1,51 @@
+Which `bm` value is union, difference, intersection - by rendering.
+
+Case 73 showed `bm` is an opaque float and the Python API never
+names it. The only authority is what the node actually composites,
+so build two overlapping squares and sample the alpha in three
+places while sweeping the second shape's blending mode.
+
+A covers (100,100)-(300,300), B covers (200,200)-(400,400).
+Sample points: A only (150, 150), overlap (250, 250), B only (350, 350).
+
+Reference readings, with B at its default:
+  union        -> A 1, overlap 1, B 1
+  difference   -> A 1, overlap 0, B 0   (B cuts A away)
+  intersection -> A 0, overlap 1, B 0
+
+  bm    A only     overlap    B only     reads as
+  0     1.0000     1.0000     1.0000     UNION
+  1     1.0000     1.0000     1.0000     UNION
+  2     1.0000     1.0000     0.0000     
+  3     1.0000     1.0000     0.0000     
+  4     1.0000     1.0000     0.0000     
+  5     1.0000     1.0000     1.0000     UNION
+  6     1.0000     1.0000     1.0000     UNION
+  7     1.0000     1.0000     1.0000     UNION
+  8     1.0000     1.0000     1.0000     UNION
+  9     1.0000     1.0000     1.0000     UNION
+  10    1.0000     1.0000     0.0000     
+  11    1.0000     1.0000     1.0000     UNION
+  12    1.0000     1.0000     -1.0000    
+  13    1.0000     1.0000     1.0000     UNION
+  14    1.0000     1.0000     1.0000     UNION
+  15    1.0000     1.0000     0.0000     
+  16    1.0000     1.0000     0.0000     
+  17    1.0000     1.0000     0.0000     
+  18    1.0000     1.0000     0.0000     
+  19    1.0000     1.0000     0.0000     
+  20    1.0000     1.0000     0.0000     
+  21    1.0000     1.0000     0.0000     
+  22    1.0000     1.0000     0.0000     
+  23    1.0000     1.0000     0.0000     
+  24    1.0000     1.0000     0.0000     
+  25    1.0000     1.0000     0.0000     
+  26    1.0000     1.0000     0.0000     
+  27    1.0000     1.0000     0.0000     
+  28    1.0000     1.0000     0.0000     
+  29    1.0000     1.0000     0.0000     
+
+The three labelled rows are the mapping prd.md 10 needs. If no
+row reads as one of them, Nuke's roto blending does not contain
+the three operations .rbj assumes and the format's `blend` enum
+is wrong, not the adapter.

@@ -1,0 +1,68 @@
+Does one shape subtract from another? Sweep each in turn.
+
+Case 97 found `bm` is live but read it in the wrong place. The
+overlap is covered by whichever shape draws on top with the
+default opaque `over`, which restores it no matter what the other
+shape did, so only the shape ON TOP can show a blend there.
+Which one that is has never been established, so sweep both.
+
+No input this time: case 97's Constant carried alpha 1.0
+everywhere, which is its own opaque background and hides exactly
+the effect being looked for.
+
+  union        -> A 1, overlap 1, B 1
+  difference   -> A 1, overlap 0, B 0   (the top shape cuts)
+  intersection -> A 0, overlap 1, B 0
+
+A was appended first, B second. rootLayer order: A, B
+at the defaults the render is ['1.0000', '1.0000', '1.0000']
+
+sweeping A's bm, the other shape left at over:
+  bm    mode       A only     overlap    B only   
+  ------------------------------------------------
+  0     over       1.0000     1.0000     1.0000     UNION
+  1     max        1.0000     1.0000     1.0000     UNION
+  2     multiply   0.0000     1.0000     1.0000     
+  3     color-burn 0.0000     1.0000     1.0000     
+  4     min        0.0000     1.0000     1.0000     
+  5     screen     1.0000     1.0000     1.0000     UNION
+  6     color-dodge 1.0000     1.0000     1.0000     UNION
+  7     plus       1.0000     2.0000     1.0000     
+  8     overlay    1.0000     1.0000     1.0000     UNION
+  9     soft-light 1.0000     2.0000     1.0000     
+  10    hard-light 0.0000     1.0000     1.0000     
+  11    from       1.0000     0.0000     1.0000     
+  12    minus      -1.0000    0.0000     1.0000     
+  13    difference 1.0000     0.0000     1.0000     
+  14    exclusion  1.0000     0.0000     1.0000     
+
+  distinct: 5 of 15
+    (-1.0, 0.0, 1.0)             <- 12 minus
+    (0.0, 1.0, 1.0)              <- 2 multiply, 3 color-burn, 4 min, 10 hard-light
+    (1.0, 0.0, 1.0)              <- 11 from, 13 difference, 14 exclusion
+    (1.0, 1.0, 1.0)              <- 0 over, 1 max, 5 screen, 6 color-dodge, 8 overlay
+    (1.0, 2.0, 1.0)              <- 7 plus, 9 soft-light
+
+sweeping B's bm, the other shape left at over:
+  bm    mode       A only     overlap    B only   
+  ------------------------------------------------
+  0     over       1.0000     1.0000     1.0000     UNION
+  1     max        1.0000     1.0000     1.0000     UNION
+  2     multiply   1.0000     1.0000     0.0000     
+  3     color-burn 1.0000     1.0000     0.0000     
+  4     min        1.0000     1.0000     0.0000     
+  5     screen     1.0000     1.0000     1.0000     UNION
+  6     color-dodge 1.0000     1.0000     1.0000     UNION
+  7     plus       1.0000     1.0000     1.0000     UNION
+  8     overlay    1.0000     1.0000     1.0000     UNION
+  9     soft-light 1.0000     1.0000     1.0000     UNION
+  10    hard-light 1.0000     1.0000     0.0000     
+  11    from       1.0000     1.0000     1.0000     UNION
+  12    minus      1.0000     1.0000     -1.0000    
+  13    difference 1.0000     1.0000     1.0000     UNION
+  14    exclusion  1.0000     1.0000     1.0000     UNION
+
+  distinct: 3 of 15
+    (1.0, 1.0, -1.0)             <- 12 minus
+    (1.0, 1.0, 0.0)              <- 2 multiply, 3 color-burn, 4 min, 10 hard-light
+    (1.0, 1.0, 1.0)              <- 0 over, 1 max, 5 screen, 6 color-dodge, 7 plus, 8 overlay, 9 soft-light, 11 from, 13 difference, 14 exclusion

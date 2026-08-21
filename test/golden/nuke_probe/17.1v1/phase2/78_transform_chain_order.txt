@@ -1,0 +1,38 @@
+In what order do layer and shape transforms compose?
+
+Case 77 showed they are separate matrices and that getPosition
+reports neither. The export has to multiply them itself, and with
+translation only the order is unobservable because translations
+commute. Use a ROTATION on the layer and a TRANSLATION on the
+shape, which do not.
+
+layer matrix: [1.0, -0.0087, 0.0, 0.0, 0.0087, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+shape matrix: [1.0, 0.0, 0.0, 400.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+authored point (100.0, 100.0) maps to:
+  layer applied first  (shape * layer) -> (499.1235, 100.8688)
+  shape applied first  (layer * shape) -> (499.1083, 104.3595)
+
+oracle: Shape.evaluate(curveNum, time) 'bakes out a curve for
+the shape's outline'. If that is world space it settles both
+the order and gives the round-trip test something to check
+the whole chain against.
+  type: CubicCurve
+  dir: getPoint
+    getPoint(0)                                  -> { 100, 100, 1, 0 }
+    getPoint(1)                                  -> { 100, 100, 1, 0 }
+    getPoint(2)                                  -> FAILED: ValueError: invalid curve parameter value (must be between 0.0 and 1.0)
+    getPoint(3)                                  -> FAILED: ValueError: invalid curve parameter value (must be between 0.0 and 1.0)
+    getPoint(0.0)                                -> { 100, 100, 1, 0 }
+    getPoint(0.25)                               -> { 300, 100, 1, 0 }
+    getPoint(0.5)                                -> { 300, 300, 1, 0 }
+    getPoint(1.0)                                -> { 100, 100, 1, 0 }
+
+  The authored corners are (100,100) (300,100) (300,300)
+  (100,300). If getPoint returns values near 499/100.9 the
+  layer applies first; near 499/104.4 the shape does. If it
+  returns the authored numbers, evaluate() is pre-transform
+  too and is no oracle at all.
+
+and where the shape actually renders, as an independent check:
+  sampling FAILED: unable to sample node at given location (0, 300) for the current context (may be zoomed in or have a ROI set)

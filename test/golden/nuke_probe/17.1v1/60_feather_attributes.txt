@@ -1,0 +1,7 @@
+dir(ShapeControlPoint instance):
+  center                       = <_curvelib.AnimControlPoint object at 0x0000024DAA0D6F70>
+  featherCenter                = <_curvelib.AnimControlPoint object at 0x0000024DAA0D6F70>
+  featherLeftTangent           = <_curvelib.AnimControlPoint object at 0x0000024DAA0D6F70>
+  featherRightTangent          = <_curvelib.AnimControlPoint object at 0x0000024DAA0D6F70>
+  leftTangent                  = <_curvelib.AnimControlPoint object at 0x0000024DAA0D6F70>
+  rightTangent                 = <_curvelib.AnimControlPoint object at 0x0000024DAA0D6F70>

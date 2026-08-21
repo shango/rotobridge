@@ -1,0 +1,49 @@
+AnimCurve.curveType = 0, curveTension = 0.5
+kDefaultAnimCurveKeyInterpolation = 256
+
+nuke.rotopaint.InterpolationType values:
+  eCubicInterpolationType          = 2
+  eLinearInterpolationType         = 1
+  eStepInterpolationType           = 0
+  eUndefineInterpolationType       = -1
+
+per-key state as authored:
+  key 0  t=1.0 v=0.0 interp=256
+         lslope=0.0 rslope=0.0 la=0.0 ra=0.0
+  key 1  t=50.0 v=1.0 interp=256
+         lslope=0.0 rslope=0.0 la=0.0 ra=0.0
+  key 2  t=100.0 v=0.0 interp=256
+         lslope=0.0 rslope=0.0 la=0.0 ra=0.0
+
+Nuke has ONE interpolationType per key but SEPARATE
+lslope/rslope. Can the two sides be made to differ?
+  after lslope=0, rslope=5: lslope=0.0 rslope=5.0
+  ASYMMETRIC slopes stick - Nuke can express a
+  different shape on each side of a key.
+
+interpolationType sweep. Reference behaviours on this curve
+(keys 0.0@1, 1.0@50, 0.0@100):
+  exact linear  -> evaluate(25)=0.4898 evaluate(75)=0.5
+  step/constant -> evaluate(75)=1.0 (outgoing held at key value)
+  cubic default -> evaluate(25)=0.6759 evaluate(75)=0.6875
+
+Hypothesis: the key field is the InterpolationType enum
+shifted by one, so eUndefine(-1) lands on 0.
+
+  set   -1 -> reads   -1  eval(25)=0.5621   eval(75)=0.5718    other
+  set    0 -> reads    0  eval(25)=0.6759   eval(75)=0.6875    CUBIC (= untouched default)
+  set    1 -> reads    1  eval(25)=0.6759   eval(75)=1.0       STEP
+  set    2 -> reads    2  eval(25)=0.4898   eval(75)=0.5       LINEAR
+  set    3 -> reads    3  eval(25)=0.6759   eval(75)=0.6875    CUBIC (= untouched default)
+  set    4 -> reads    4  eval(25)=0.6722   eval(75)=0.6913    other
+  set    5 -> reads    5  eval(25)=0.6722   eval(75)=0.6913    other
+  set  256 -> reads  256  eval(25)=0.6759   eval(75)=0.6875    CUBIC (= untouched default)
+
+If 1=STEP, 2=LINEAR, 3=CUBIC then the field is simply the
+enum plus one and there is no mystery - just an undocumented
+offset. 256 would then be a separate 'unset' sentinel bit.
+
+If one type governs BOTH sides of a Nuke key, then AE's
+in=LINEAR/out=HOLD has no Nuke equivalent and .rbj can stay
+single-valued for the Nuke direction - but AE->AE round trips
+through .rbj would still lose it. That is the Q9 tradeoff.

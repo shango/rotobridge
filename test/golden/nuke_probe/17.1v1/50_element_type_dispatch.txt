@@ -1,0 +1,3 @@
+rootLayer children:
+  Shape1                   type=Shape      Shape=True Stroke=False Layer=False
+  Layer1                   type=Layer      Shape=False Stroke=False Layer=True

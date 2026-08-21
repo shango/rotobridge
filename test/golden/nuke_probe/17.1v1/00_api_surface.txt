@@ -1,0 +1,376 @@
+Nuke 17.1v1
+
+=== nuke.rotopaint.Shape ===
+  append                           self.append(shapeControlPoint) -> None
+  clone                            self.clone() -> elementCreate clone of element
+  evaluate                         self.evaluate(curveNum, time, viewName='default') -> CubicCurve
+  getAttributes                    self.getAttributes() -> AnimAttributes
+  getFlag                          self.getFlag(flag) -> bool
+  getTransform                     self.getTransform() -> AnimCTransform
+  getVisible                       self.getVisible(time) -> bool
+  insert                           self.insert(index, shapeControlPoint) -> None
+  locked                           Whether this element is locked.
+  name                             The name for this element.
+  remove                           self.remove(index) -> None
+  serialise                        self.serialise() -> string
+  setFlag                          self.setFlag(flag, value) -> None
+  setVisible                       self.setVisible(time, value) -> None
+
+=== nuke.rotopaint.Stroke ===
+  append                           self.append(controlPoint) -> None
+  clone                            self.clone() -> elementCreate clone of element
+  evaluate                         self.evaluate(time, viewName='default') -> CubicCurve
+  getAttributes                    self.getAttributes() -> AnimAttributes
+  getFlag                          self.getFlag(flag) -> bool
+  getTransform                     self.getTransform() -> AnimCTransform
+  getVisible                       self.getVisible(time) -> bool
+  insert                           self.insert(index, controlPoint) -> None
+  locked                           Whether this element is locked.
+  name                             The name for this element.
+  remove                           self.remove(index) -> None
+  serialise                        self.serialise() -> string
+  setFlag                          self.setFlag(flag, value) -> None
+  setVisible                       self.setVisible(time, value) -> None
+
+=== nuke.rotopaint.Layer ===
+  append                           self.append(element) -> None
+  clone                            self.clone() -> elementCreate clone of element
+  getAttributes                    self.getAttributes() -> AnimAttributes
+  getFlag                          self.getFlag(flag) -> bool
+  getTransform                     self.getTransform() -> AnimCTransform
+  getVisible                       self.getVisible(time) -> bool
+  insert                           self.insert(index, element) -> None
+  locked                           Whether this element is locked.
+  name                             The name for this element.
+  remove                           self.remove(index) -> None
+  removeAll                        self.removeAll() -> None
+  serialise                        self.serialise() -> string
+  setFlag                          self.setFlag(flag, value) -> None
+  setTransform                     self.setTransform(transform) -> None
+  setVisible                       self.setVisible(time, value) -> None
+
+=== nuke.rotopaint.Element ===
+  clone                            self.clone() -> elementCreate clone of element
+  getVisible                       self.getVisible(time) -> bool
+  locked                           Whether this element is locked.
+  name                             The name for this element.
+  serialise                        self.serialise() -> string
+  setVisible                       self.setVisible(time, value) -> None
+
+=== nuke.rotopaint.ShapeControlPoint ===
+  center                           The center of the control point
+  featherCenter                    The feather point offsets, relative to the center point
+  featherLeftTangent               The left feather tangent offsets, relative to the feather center point.
+  featherRightTangent              The right feather tangent offsets, relative to the feather center point.
+  leftTangent                      The left tangent offsets, relative to the center point.
+  rightTangent                     The right tangent offsets, relative to the center point.
+
+=== nuke.rotopaint.AnimControlPoint ===
+  addControlPoint                  self.addControlPoint(controlPoint) -> None
+  addKey                           self.addKey(time, controlPointOrDim, view) -> None
+  addPositionKey                   self.addPositionKey(time, positionOrDim, view) -> None
+  dim                              The dimensionality, or number of components, for this control point (usually 3 - x, y and pressure).
+  evaluate                         self.evaluate(time, view) -> ControlPoint
+  getControlPointKeyTimes          self.getControlPointKeyTimes(view) -> list of floats
+  getFlag                          getFlag(flag) -> bool
+  getPosition                      self.getPosition(time, view) -> CVec3
+  getPositionAnimCurve             self.getPositionAnimCurve(index, view) -> AnimCurve
+  getPositionKeyTime               self.getPositionKeyTime(index, keyIndex, view) -> float
+  hash                             The hash value for this control point.
+  name                             The name of the control point (if any).
+  removeAllKeys                    self.removeAllKeys(view) -> None
+  removeKey                        self.removeKey(time, view) -> None
+  removePositionKey                self.removePositionKey(time, view) -> None
+  reset                            self.reset() -> None
+  setFlag                          setFlag(flag, value) -> None
+  setPosition                      self.setPosition(position, view) -> None
+  setPositionAnimCurve             self.setPositionAnimCurve(index, animCurve, view) -> None
+  setPositionKey                   self.setPositionKey(time, index, value, id, view) -> None
+
+=== nuke.rotopaint.AnimAttributes ===
+  add                              self.add(name, value) -> None
+  addKey                           self.addKey(time, name, value, view) -> None
+  getCurve                         self.getCurve(attr, view) -> AnimCurve
+  getKeyTime                       self.getKeyTime(index, keyIndexOrHash, view) -> float
+  getName                          self.getName(index) -> str
+  getNumberOfKeys                  self.getNumberOfKeys(attr, view) -> int
+  getValue                         self.getValue(time, indexOrName, view) -> float
+  kAlphaAttribute                  str(object='') -> str
+  kAlphaOverlayAttribute           str(object='') -> str
+  kBlendingModeAttribute           str(object='') -> str
+  kBlueAttribute                   str(object='') -> str
+  kBlueOverlayAttribute            str(object='') -> str
+  kBrushSizeAttribute              str(object='') -> str
+  kBrushSpacingAttribute           str(object='') -> str
+  kBrushTypeAttribute              str(object='') -> str
+  kBuildUpAttribute                str(object='') -> str
+  kDynamicHardnessAttribute        str(object='') -> str
+  kDynamicSizeAttribute            str(object='') -> str
+  kDynamicTransparencyAttribute    str(object='') -> str
+  kEffectParameter1Attribute       str(object='') -> str
+  kEffectParameter2Attribute       str(object='') -> str
+  kEffectParameter3Attribute       str(object='') -> str
+  kFeatherFallOffAttribute         str(object='') -> str
+  kFeatherOnAttribute              str(object='') -> str
+  kFeatherTypeAttribute            str(object='') -> str
+  kFeatherXAttribute               str(object='') -> str
+  kFeatherYAttribute               str(object='') -> str
+  kGreenAttribute                  str(object='') -> str
+  kGreenOverlayAttribute           str(object='') -> str
+  kHardnessAttribute               str(object='') -> str
+  kInvertedAttribute               str(object='') -> str
+  kLifeTimeMAttribute              str(object='') -> str
+  kLifeTimeNAttribute              str(object='') -> str
+  kLifeTimeTypeAttribute           str(object='') -> str
+  kMotionBlurAttribute             str(object='') -> str
+  kMotionBlurOnAttribute           str(object='') -> str
+  kMotionBlurShutterAttribute      str(object='') -> str
+  kMotionBlurShutterOffsetAttribute str(object='') -> str
+  kMotionBlurShutterOffsetTypeAttribute str(object='') -> str
+  kNumberOfViewsAttribute          str(object='') -> str
+  kOpacityAttribute                str(object='') -> str
+  kPlanarTrackLayerAttribute       str(object='') -> str
+  kRedAttribute                    str(object='') -> str
+  kRedOverlayAttribute             str(object='') -> str
+  kSourceAttribute                 str(object='') -> str
+  kSourcePivotPointXAttribute      str(object='') -> str
+  kSourcePivotPointYAttribute      str(object='') -> str
+  kSourceRotateAttribute           str(object='') -> str
+  kSourceScaleXAttribute           str(object='') -> str
+  kSourceScaleYAttribute           str(object='') -> str
+  kSourceSkewOrderAttribute        str(object='') -> str
+  kSourceSkewXAttribute            str(object='') -> str
+  kSourceSkewYAttribute            str(object='') -> str
+  kSourceTimeOffsetAttribute       str(object='') -> str
+  kSourceTimeOffsetTypeAttribute   str(object='') -> str
+  kSourceTranslateRoundAttribute   str(object='') -> str
+  kSourceTranslateXAttribute       str(object='') -> str
+  kSourceTranslateYAttribute       str(object='') -> str
+  kTensionAttribute                str(object='') -> str
+  kViewAttribute                   str(object='') -> str
+  kVisibleAttribute                str(object='') -> str
+  kWriteOnEndAttribute             str(object='') -> str
+  kWriteOnStartAttribute           str(object='') -> str
+  remove                           self.remove(attributeIndexOrName) -> None
+  removeAll                        self.removeAll() -> None
+  removeKey                        self.removeKey(time, attributeIndex, view) -> None
+  removeKeys                       self.removeKeys(attributeIndex, view) -> None
+  reset                            self.reset() -> None
+  set                              self.set(time, attributeIndexOrName, value, view) -> None
+  setCurve                         self.setCurve(index, curve) -> None
+  setKey                           self.setKey(time, attributeIndex, hash, value, view) -> None
+  setName                          self.setName(attributeIndex, newName) -> None
+
+=== nuke.rotopaint.AnimCurve ===
+  addKey                           self.addKey(time, value) -> None
+  constantValue                    The constant (not-animated) value for this curve, if any.
+  curveTension                     The tension type for this curve.
+  curveType                        The type of curve to treat this as.
+  evaluate                         self.evaluate(time) -> float
+  evaluateY                        self.evaluateY(time) -> float
+  expressionString                 The expression string for the this curve, if any.
+  getFlag                          getFlag(flag) -> bool
+  getKey                           self.getKey(index) -> AnimCurveKey
+  getNumberOfKeys                  self.getNumberOfKeys() -> int
+  isDefault                        self.isDefault() -> bool
+  kDefaultConstantValue            Convert a string or number to a floating point number, if possible.
+  kDefaultCurveFlag                int([x]) -> integer
+  kDefaultCurveTension             Convert a string or number to a floating point number, if possible.
+  kDefaultCurveType                int([x]) -> integer
+  name                             The name for this curve.
+  removeAllKeys                    self.removeAllKeys() -> None
+  removeKey                        self.removeKey(timeOrHash) -> None
+  reset                            self.reset() -> None
+  setFlag                          setFlag(flag, value) -> None
+  useExpression                    Whether or not to use the expression string to calculate a value for this curve.
+
+=== nuke.rotopaint.AnimCurveKey ===
+  getFlag                          self.getFlag(flag) -> bool
+  interpolationType                The interpolation type to use for this key.
+  kDefaultAnimCurveKeyInterpolation int([x]) -> integer
+  kDefaultAnimCurveKeyTime         Convert a string or number to a floating point number, if possible.
+  kDefaultAnimCurveKeyValue        Convert a string or number to a floating point number, if possible.
+  la                               The left bicubic value for this key.
+  lslope                           The left derivative for this key.
+  ra                               The right bicubic value for this key.
+  reset                            self.reset() -> None
+  rslope                           The right derivative for this key.
+  setFlag                          self.setFlag(flag, value) -> None
+  time                             The time this key is set at.
+  value                            The value for this key.
+
+=== nuke.rotopaint.CurveKnob ===
+  Class                            self.Class() -> Class name.
+  ClassID                          self.ClassID() -> Class ID.
+  changed                          self.changed() -> None
+  clearAnimated                    Clear animation for channel 'c'. Return True if successful.
+  clearFlag                        self.clearFlag(f) -> None.
+  critical                         self.critical(message) -> None.
+  curveWidget                      Curve Widget
+  debug                            self.debug(message) -> None.
+  enabled                          self.enabled() -> Boolean.
+  error                            self.error(message) -> None.
+  fromScript                       Initialise from script.
+  fullyQualifiedName               self.fullyQualifiedName(channel=-1) -> string
+  getAuthorMode                    self.getAuthorMode() -> Integer.
+  getAuthorModes                   self.getAuthorModes() -> List.
+  getDerivative                    Return derivative at time 't' for channel 'c'.
+  getFlag                          self.getFlag(f) -> Bool.
+  getIntegral                      Return integral at the interval [t1, t2] for channel 'c'.
+  getKeyIndex                      Return keyframe index at time 't' for channel 'c'.
+  getKeyList                       Get all unique keys on the knob.  Returns list.
+  getKeyTime                       Return index of the keyframe at time 't' for channel 'c'.
+  getNthDerivative                 Return nth derivative at time 't' for channel 'c'.
+  getNumKeys                       Return number of keyframes for channel 'c'.
+  getSelected                      self.getSelected() -> [selectedObjects]
+  getValue                         Return value at the current frame for channel 'c'.
+  getValueAt                       Return value at time 't' for channel 'c'.
+  hasExpression                    self.hasExpression(index=-1) -> bool
+  isAnimated                       Return True if channel 'c' is animated.
+  isKey                            Return True if there is a keyframe at the current frame for channel 'c'.
+  isKeyAt                          Return True if there is a keyframe at time 't' for channel 'c'.
+  label                            self.label() -> label.
+  makeWidget                       self.makeWidget() -> PySide6.QtWidgets.QWidget.
+  name                             self.name() -> name.
+  node                             self.node() -> nuke.Node
+  notDefault                       self.notDefault() -> True if any of the values is not set to the default, False otherwise.
+  removeKey                        Remove key for channel 'c'. Return True if successful.
+  removeKeyAt                      Remove key at time 't' for channel 'c'. Return True if successful.
+  resetToDefault                   self.resetToDefault() set the knob value back to its default, removing all animations.
+  rootLayer                        The root layer.
+  setAnimated                      Set channel 'c' to be animated.
+  setAuthorMode                    self.setAuthorMode(authorMode) -> None.
+  setEnabled                       self.setEnabled(enabled) -> None.
+  setExpression                    self.setExpression(expression, channel=-1, view=None) -> bool
+  setFlag                          self.setFlag(f) -> None.
+  setLabel                         self.setLabel(s) -> None.
+  setName                          self.setName(s) -> None.
+  setTooltip                       self.setTooltip(s) -> None.
+  setValue                         self.setValue(val, chan) -> bool
+  setValueAt                       self.setValueAt(val, time, chan) -> bool
+  setVisible                       self.setVisible(visible) -> None.
+  toElement                        self.toElement(path) -> Element
+  toScript                         toScript(quote, context=current) -> string.
+  toScriptPrefix                   self.toScriptPrefix() -> string
+  tooltip                          self.tooltip() -> tooltip.
+  value                            Return value at the current frame for channel 'c'.
+  visible                          self.visible() -> Boolean.
+  warning                          self.warning(message) -> None.
+
+=== nuke.rotopaint.AnimCTransform ===
+  addPivotPointKey                 self.addPivotPointKey(time, x, y, pressure, view='default') -> None
+  addRotationKey                   self.addRotationKey(time, x, y, pressure, view='default') -> None
+  addScaleKey                      self.addScaleKey(time, x, y, pressure, view='default') -> None
+  addSkewXKey                      self.addSkewXKey(time, x, y, pressure, view='default') -> None
+  addTransformKey                  self.addTransformKey(time, view) -> None
+  addTranslationKey                self.addTranslationKey(time, x, y, pressure, view='default') -> None
+  evaluate                         self.evaluate(time, view) -> None
+  getExtraMatrixAnimCurve          self.getExtraMatrixAnimCurve(i, j, view) -> AnimCurve
+  getNumberOfPivotPointKeys        self.getNumberOfPivotPointKeys(view) -> int
+  getNumberOfRotationKeys          self.getNumberOfRotationKeys(view) -> int
+  getNumberOfScaleKeys             self.getNumberOfScaleKeys(view) -> int
+  getNumberOfSkewXKeys             self.getNumberOfSkewXKeys(view) -> int
+  getNumberOfTransformKeys         self.getNumberOfTransformKeys(view) -> int
+  getNumberOfTranslationKeys       self.getNumberOfTranslationKeys(view) -> int
+  getPivotPointAnimCurve           self.getPivotPointAnimCurve(index, view) -> AnimCurve
+  getPivotPointKeyTime             self.getPivotPointKeyTime(index, view) -> float
+  getPivotPointKeyTimes            self.getPivotPointKeyTimes(view) -> list of floats
+  getRotationAnimCurve             self.getRotationAnimCurve(index, view) -> AnimCurve
+  getRotationKeyTime               self.getRotationKeyTime(index, view) -> float
+  getRotationKeyTimes              self.getRotationKeyTimes(view) -> list of floats
+  getScaleAnimCurve                self.getScaleAnimCurve(index, view) -> AnimCurve
+  getScaleKeyTime                  self.getScaleKeyTime(index, view) -> float
+  getScaleKeyTimes                 self.getScaleKeyTimes(view) -> list of floats
+  getSkewXAnimCurve                self.getSkewXAnimCurve(index, view) -> AnimCurve
+  getSkewXKeyTime                  self.getSkewXKeyTime(index, view) -> float
+  getSkewXKeyTimes                 self.getSkewXKeyTimes(view) -> list of floats
+  getTransformKeyTime              self.getTransformKeyTime(index, view) -> float
+  getTransformKeyTimes             self.getTransformKeyTimes(view) -> list of floats
+  getTranslationAnimCurve          self.getTranslationAnimCurve(index, view) -> AnimCurve
+  getTranslationKeyTime            self.getTranslationKeyTime(index, view) -> float
+  getTranslationKeyTimes           self.getTranslationKeyTimes(view) -> list of floats
+  isDefault                        self.isDefault() -> bool
+  name                             The name for this transform.
+  removePivotPointKey              self.removePivotPointKey(time, view) -> None
+  removeRotationKey                self.removeRotationKey(time, view) -> None
+  removeScaleKey                   self.removeScaleKey(time, view) -> None
+  removeSkewXKey                   self.removeSkewXKey(time, view) -> None
+  removeTransformKey               self.removeTransformKey(time, view) -> None
+  removeTranslationKey             self.removeTranslationKey(time, view) -> None
+  reset                            self.reset() -> None
+  rotationOrder                    The order in which to perform rotations around the axes.
+  setExtraMatrixAnimCurve          self.setExtraMatrixAnimCurve(i, j, animcurve, view) -> None
+  setIdentity                      self.setIdentity(view='default') -> None
+  setPivotPointAnimCurve           self.setPivotPointAnimCurve(index, animCurve, view) -> None
+  setRotationAnimCurve             self.setRotationAnimCurve(index, animCurve, view) -> None
+  setScaleAnimCurve                self.setScaleAnimCurve(index, animCurve, view) -> None
+  setSkewXAnimCurve                self.setSkewXAnimCurve(index, animCurve, view) -> None
+  setTranslationAnimCurve          self.setTranslationAnimCurve(index, animCurve, view) -> None
+  transformOrder                   The order in which to perform the transformations.
+
+=== nuke.rotopaint.CTransform ===
+  getInverseMatrix                 self.getInverseMatrix() -> CMatrix4
+  getMatrix                        self.getMatrix() -> CMatrix4
+  getTransposeMatrix               self.getTransposeMatrix() -> CMatrix4
+  isDefault                        self.isDefault() -> bool
+  name                             The name for this transform.
+  pivotPoint                       The location of the pivot point, represented as a CVec3 object.
+  reset                            self.reset() -> None
+  rotation                         The rotation amounts, represented as a CVec3 object.
+  rotationOrder                    Indicates which order to apply the rotations in. The value will be one of the constants from the RotationOrder
+  scale                            The scale factors, represented as a CVec3 object.
+  setIdentity                      self.setIdentity() -> None
+  skew                             The skew amounts, represented as a CVec3 object.
+  transformOrder                   Indicates which order to apply the transformations in. The value will be one of the constants from the Transfo
+  translation                      The translation amounts, represented as a CVec3 object.
+
+=== nuke.rotopaint.CMatrix4 ===
+  makeIdentity                     self.makeIdentity() -> None
+  rotateX                          self.rotateX(angleInRadians) -> None
+  rotateY                          self.rotateY(angleInRadians) -> None
+  rotateZ                          self.rotateY(angleInRadians) -> None
+  scale                            self.scale(x, y, z) -> None
+  skew                             self.skew(x, y, z) -> None
+  translate                        self.translate(x, y, z) -> None
+  translation                      self.translation(x, y, z) -> None
+  transpose                        self.transpose() -> None
+
+=== nuke.rotopaint.FlagType ===
+  eActiveFlag                      int([x]) -> integer
+  eBreakFlag                       int([x]) -> integer
+  eKeySelectedFlag                 int([x]) -> integer
+  eLeftTangentSelectedFlag         int([x]) -> integer
+  eLockedFlag                      int([x]) -> integer
+  eMaxFlag                         int([x]) -> integer
+  eNukeAnimCurveEvalFlag           int([x]) -> integer
+  eOpenFlag                        int([x]) -> integer
+  ePressureInZFlag                 int([x]) -> integer
+  eRelativeTangentFlag             int([x]) -> integer
+  eRenderableFlag                  int([x]) -> integer
+  eRightTangentSelectedFlag        int([x]) -> integer
+  eSelectedFlag                    int([x]) -> integer
+  eTangentLengthLockFlag           int([x]) -> integer
+  eUndefineFlag                    int([x]) -> integer
+  eVisibleFlag                     int([x]) -> integer
+
+=== nuke.rotopaint.CurveType ===
+  eBSplineCurveType                int([x]) -> integer
+  eBezierCurveType                 int([x]) -> integer
+  eCardinalCurveType               int([x]) -> integer
+  eCatmullRomCurveType             int([x]) -> integer
+  eHermiteCurveType                int([x]) -> integer
+  eNurbsCurveType                  int([x]) -> integer
+  eUndefineCurveType               int([x]) -> integer
+
+=== nuke.rotopaint.InterpolationType ===
+  eCubicInterpolationType          int([x]) -> integer
+  eLinearInterpolationType         int([x]) -> integer
+  eStepInterpolationType           int([x]) -> integer
+  eUndefineInterpolationType       int([x]) -> integer
+
+=== nuke.rotopaint.ExtrapolationType ===
+  eConstantExtrapolationType       int([x]) -> integer
+  eCycleExtrapolationType          int([x]) -> integer
+  eLinearExtrapolationType         int([x]) -> integer
+  eUndefineExtrapolationType       int([x]) -> integer
+

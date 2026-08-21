@@ -1,0 +1,54 @@
+Blending written numerically, sampling colour as well as alpha.
+
+Case 94 settled the numbering: `bm` runs 0 to 14, not the 0 to 29
+case 75 assumed from the Merge list. Case 75's sweep therefore
+spent half its range out of bounds, and read alpha only.
+
+Two things change here. The node gets an INPUT, because a blend
+has nothing to blend against without one; and every probe reads
+red as well as alpha, because a paint-model blend acts on colour.
+
+input: Constant rgba = 0.5, 0.5, 0.5, 1.0
+A covers (100,100)-(300,300), B covers (200,200)-(400,400).
+B's `bm` is the swept value; A stays at its default.
+
+  node['output'].value()                         -> 'rgba'
+  node['premultiply'].value()                    -> 'none'
+  node['rotoMode'].value()                       -> 0.0
+  node['invert_mask'].value()                    -> False
+
+        alpha / red          alpha / red          alpha / red        
+  bm    A only               overlap              B only             
+  -------------------------------------------------------------------------
+  0     1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 1.0000       over
+  1     1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 1.0000       max
+  2     1.0000 / 1.0000      1.0000 / 1.0000      0.0000 / 0.5000       multiply
+  3     1.0000 / 1.0000      1.0000 / 1.0000      0.0000 / 1.0000       color-burn
+  4     1.0000 / 1.0000      1.0000 / 1.0000      0.0000 / 0.5000       min
+  5     1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 1.0000       screen
+  6     1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 1.0000       color-dodge
+  7     1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 1.5000       plus
+  8     1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 1.0000       overlay
+  9     1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 1.5000       soft-light
+  10    1.0000 / 1.0000      1.0000 / 1.0000      0.0000 / 1.0000       hard-light
+  11    1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 0.5000       from
+  12    1.0000 / 1.0000      1.0000 / 1.0000      -1.0000 / -0.5000     minus
+  13    1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 0.5000       difference
+  14    1.0000 / 1.0000      1.0000 / 1.0000      1.0000 / 0.5000       exclusion
+
+distinct results: 6 of 15 values
+  ((1.0, 1.0), (1.0, 1.0), (-1.0, -0.5))
+      <- bm 12 (minus)
+  ((1.0, 1.0), (1.0, 1.0), (0.0, 0.5))
+      <- bm 2 (multiply), 4 (min)
+  ((1.0, 1.0), (1.0, 1.0), (0.0, 1.0))
+      <- bm 3 (color-burn), 10 (hard-light)
+  ((1.0, 1.0), (1.0, 1.0), (1.0, 0.5))
+      <- bm 11 (from), 13 (difference), 14 (exclusion)
+  ((1.0, 1.0), (1.0, 1.0), (1.0, 1.0))
+      <- bm 0 (over), 1 (max), 5 (screen), 6 (color-dodge), 8 (overlay)
+  ((1.0, 1.0), (1.0, 1.0), (1.0, 1.5))
+      <- bm 7 (plus), 9 (soft-light)
+
+A's bm is still 0.0, and the serialised B carries:
+  b.serialise()                                  -> '{curvegroup B 512 bezier\n  {{cc\n    {f 8192}\n    {p\n     {}\n     {x43480000 x43480000 1}\n     {}\n     {}\n     {x43c80000 x43480000 1}\n     {}\n     {}\n     {x43c80000 x43c80000 1}\n     {}\n     {}\n     {x43480000 x43c80000 1}\n     {}}}\n   {cc\n    {f 8192}\n    {p\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}\n     {}}}}\n  {tx 1 0}\n  {a bm\n   {{1 x41600000}}  osw x41200000 osf 0 str 1 sf x40000000}}'
