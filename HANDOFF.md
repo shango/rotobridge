@@ -890,7 +890,9 @@ the current verification lives:
    bit-perfect and the softness edge is subtly different: exactly the scenario
    above. Measured on the real crossing - `feathered` logged **3 feather points
    snapped** from mid-segment, plus a collision on vertex 3 that kept radius 12
-   and dropped a radius-0 point (that half is benign).
+   and dropped a radius-0 point. The collision is the worse half: it turns a
+   corner the artist pinned to zero width into a 12 px soft one. See "Where the
+   fix has to live" below for the measurement.
 2. **`ff`, the feather falloff profile.** Same signature: geometry identical,
    edge softness wrong, invisible to every check that exists.
 3. **Motion blur.** Off-grid keys snap to whole frames. At whole frames that is
@@ -908,12 +910,72 @@ there.** Subdivision reproduces the original curve exactly, so the geometry does
 not move, and Nuke then has a vertex to anchor the feather on - carried exactly
 rather than snapped. The cost is extra vertices the compositor sees.
 
-**The one fact that decides whether this is available: are After Effects feather
-anchor positions static per shape, or do they animate per frame?** If they
-animate, the split point moves and the topology changes frame to frame, which
-breaks it. This is answerable from `test/golden/ae_scene.rbj` with no host -
-`feathered` is the shape that carries per-point feather - and it is the next
-thing to do.
+#### Where the fix has to live, 2026-08-21
+
+The gate written here used to be "are AE feather anchors static or animated,
+answerable from `test/golden/ae_scene.rbj`". Both halves were wrong, and the
+second one is the useful correction.
+
+**The golden file cannot answer it, and no `.rbj` can.** `.rbj` v1 has no field
+for a feather anchor location. Spec section 8 gives a point `c`, `in`, `out`,
+`feather` and an optional `feather_offset`; section 11.1 defines `feather` as a
+signed distance along the normal *at that vertex*. There is nowhere to put
+`(segLoc, relSegLoc)`. The AE exporter calls `geom.snapFeatherPoints` at
+`ae/rotobridge_export.jsx:163`, **per frame, before anything is written**, so
+the anchor is destroyed at the source adapter. Nuke never had the chance to lose
+it. Confirmed by dumping `feathered`: every frame carries four scalars and no
+anchor, and they are constant only because that mask's path is never keyed
+(`setup_ae_scene.jsx` calls `setValue`, not `setValueAtTime`; the motion in its
+`c` values is the baked layer transform). The shape could not have shown anchor
+animation even if AE had it.
+
+**And animation is not the gate anyway.** A de Casteljau split is exact at
+whatever parameter you give it, so an anchor that moves just means a different
+split parameter on each frame. The vertex count stays constant, which is what
+spec section 7.3 actually requires, and the dense layer stays exact frame by
+frame. What degrades is the *sparse* layer: Nuke would interpolate the inserted
+vertex as a vertex, in a straight line between authored keys, while the truth is
+a point sliding along a curve. That is ordinary drift, and the drift pass
+already measures and corrects it. Animated anchors cost keys, not accuracy,
+which by the standing decision below is a price already agreed.
+
+**The one case that genuinely breaks it** is narrow and worth naming: a feather
+anchor that slides *past* an original vertex. The inserted vertex has to occupy
+a fixed index in `points`, and crossing a vertex changes its ordinal position
+around the ring. That is a topology change mid-shape and section 7.3 forbids it.
+Detectable (watch for `seg + rel` crossing an integer) and warnable.
+
+**So the fix is a format change, not an importer change.** The information has
+to survive the AE adapter before Nuke can use it:
+
+- Carry the anchor in the file. `spec/rbj-v2-draft.md` is where it goes. Either
+  a `feather_anchor` alongside `feather` on the point, or better, lift feather
+  out of `points` into its own per-frame list with its own `seg` and `rel`,
+  which is what AE, Mocha (`edge_width`) and Silhouette all actually look like.
+- Do the de Casteljau split in the **Nuke** importer, not the exporter. Nuke is
+  the only host that needs the extra vertices; splitting at export would put a
+  Nuke-shaped compromise into a host-neutral format and hand a 7-vertex shape
+  back to the AE artist who authored 4.
+
+**The unmeasured fact that now gates it**, and it needs a host: is
+`featherRelSegLocs` the **bezier parameter** or an **arc-length fraction**? De
+Casteljau splits at the parameter. If AE means arc length, splitting at `rel`
+directly puts the anchor in the wrong place on any segment with asymmetric
+tangents, and the fix quietly reintroduces the error it was built to remove. No
+probe here has ever asked. Reading the value back cannot answer it either, since
+AE returns what was written; it needs a render, so it is Phase 5 work rather
+than a cheap scripted probe.
+
+**What the snap actually costs, on the one real shape measured.** `feathered` is
+a 300 px square with anchors `segLocs [0, 0, 2, 3]`, `relSegLocs [0.25, 0.75,
+0.5, 0]`, `radii [30, -15, 12, 0]`. The radius-12 anchor sat at the midpoint of
+segment 2 and landed on vertex 3: **150 px along the path**. Worse than the
+distance, it collided with the artist's authored radius-**0** point on vertex 3
+and won. So a corner deliberately pinned to zero feather width arrives 12 px
+soft. The HANDOFF text above calls that collision "benign"; it is not, and this
+supersedes it. Geometry bit-perfect, softness visibly wrong at a corner the
+artist went out of their way to harden. That is the blame scenario, on file, in
+the golden scene.
 
 ### A policy worth adopting, cheap
 
@@ -942,11 +1004,13 @@ temporary.
 used to sit here is closed - see "Nuke is the hub" above. It is a "cannot", not
 a "not yet", and it is recorded in `core/interp.to_nuke`.
 
-1. **Do AE feather anchors animate?** Host-free, answerable now, and it decides
-   whether the de Casteljau vertex-insertion fix above is available at all. Read
-   `featherSegLocs` / `featherRelSegLocs` per frame out of `feathered` in
-   `test/golden/ae_scene.rbj`: constant across frames means the fix is on the
-   table, moving means it is not. **This is the next thing to do.**
+1. **Decide whether feather anchors go into `.rbj` v2.** Done as far as it can
+   go without the user: see "Where the fix has to live" above. The anchor is
+   destroyed in the AE exporter, so no importer change can recover it and no
+   golden file can be interrogated for it. Carrying it is a v2 format decision,
+   and it is the highest-value one available, because the snap is the top-ranked
+   blame risk and it is currently unrecoverable. Blocked on a product call, not
+   on a measurement.
 
 2. **Phase 5, one direction.** AE to Nuke, rendered in Nuke, same plate. It was
    written as a symmetric comparison; it is not one any more. The Nuke-to-AE
