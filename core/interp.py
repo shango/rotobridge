@@ -113,12 +113,25 @@ def to_nuke(sides):
     make in either direction.
 
     prd.md section 9.2 step 3 also calls for writing `lslope` / `rslope` per
-    side on an asymmetric key. Phase 3 does not: case 63 made asymmetric slopes
-    stick but never measured what a slope value renders as, and an asymmetric
-    key cannot arrive from a Nuke source, so Phase 3 has no way to exercise or
-    verify it. It is deferred to Phase 4 for the same reason as the `ease`
-    parameters - After Effects is the only place both sides of the mapping are
-    observable at once.
+    side on an asymmetric key. This does not, and the reason is no longer that
+    the question is open. Measured in 17.1v1, `test/probe/probe_nuke_ease.py`:
+
+    - Under the cubic types Nuke recomputes a written slope rather than using
+      it. Write 5.0, evaluate, read back 1.0101 (case 115).
+    - interpolationType 5 is a genuine user-tangent mode, where slope and accel
+      do drive the curve (case 115).
+    - But only an INTERIOR key honours an authored tangent. Every value of the
+      first key's outgoing slope and accel changes nothing (case 117).
+
+    An ease describes a segment from both of its ends, so under any of those
+    the outgoing half is unreachable. The best fit to a real After Effects
+    curve is about 77 px off on a 700 px travel, against a 0.5 px tolerance.
+
+    So dropping the parameters is not a deferral - it is the whole available
+    vocabulary, and the dense layer is what carries the shape instead. Nuke is
+    the hub for this pipeline, so that trade is worth stating plainly rather
+    than leaving as a TODO. The Nuke importer warns when a key arrives carrying
+    ease, because the geometry survives and the editable timing does not.
     """
     if sides["out"] == HOLD:
         return NUKE_STEP, True
