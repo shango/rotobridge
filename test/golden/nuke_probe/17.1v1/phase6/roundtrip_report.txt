@@ -8,7 +8,7 @@ Nuke 17.1v1, frames 1001-1020
 --- export ---
   1 shape(s), 20 frames, 4 points
   feather_model = per_point, blend = union, falloff = smooth
-  took 0.007 s
+  took 0.017 s
   warning: shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
 
 --- schema ---
@@ -20,7 +20,7 @@ Nuke 17.1v1, frames 1001-1020
 
 --- import at tolerance 0 ---
   rebuilt 'round_trip' with 4 points, closed=True
-  took 0.015 s
+  took 0.031 s
 
 --- geometry, every point on every frame ---
   worst centre deviation:  3.052e-05 px
@@ -40,9 +40,9 @@ Nuke 17.1v1, frames 1001-1020
   imported at offset -1000; worst centre deviation 3.052e-05 px
 
 --- acceptance criterion 11, 20 points over 150 frames ---
-  export: 0.16 s  (budget 10 s)
-  import at tolerance 0:   0.03 s  (budget 30 s)
-  import at tolerance 0.5: 0.03 s  (budget 30 s)
+  export: 0.42 s  (budget 10 s)
+  import at tolerance 0:   0.07 s  (budget 30 s)
+  import at tolerance 0.5: 0.08 s  (budget 30 s)
 
 --- Phase 3: a shape keyed on 5 frames ---
   The acceptance criterion: five authored keys survive as five keys
@@ -67,8 +67,8 @@ Nuke 17.1v1, frames 1001-1020
   dense layer, which is what a foreign exporter's tier-2 output
   looks like, and checks the pass brings it back inside tolerance.
   tolerance inf: 2 key(s), worst deviation 30.919 px
-  tolerance 0.5: 12 key(s), worst deviation 0.465 px
-  report: 2 authored, 10 corrective
+  tolerance 0.5: 13 key(s), worst deviation 0.465 px
+  report: 2 authored, 11 corrective
 
 --- Phase 3: mode switching, acceptance criterion 5 ---
   Re-importing the same file at tolerance 0 must reach the dense

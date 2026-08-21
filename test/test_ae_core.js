@@ -537,6 +537,90 @@ describe("drift.correct", function () {
     });
 });
 
+function HoldingHost(truth, held) {
+    /* A destination whose outgoing side at `held` freezes the rest of its gap,
+     * so the deviation climbs steadily and the worst frame of the gap is always
+     * its LAST. Line for line the Python's fixture. */
+    this.truth = truth;
+    this.held = held;
+    this.applied = null;
+}
+
+HoldingHost.prototype.applyKeys = function (keyFrames) {
+    this.applied = keyFrames.slice(0);
+};
+
+HoldingHost.prototype.evaluate = function (frame) {
+    var keys = this.applied;
+    if (frame <= keys[0]) { return this.truth(keys[0]); }
+    if (frame >= keys[keys.length - 1]) {
+        return this.truth(keys[keys.length - 1]);
+    }
+    for (var i = 0; i + 1 < keys.length; i++) {
+        var a = keys[i];
+        var b = keys[i + 1];
+        if (a <= frame && frame <= b) {
+            if (a === this.held) { return this.truth(a); }
+            return this.truth(a) +
+                ((frame - a) / (b - a)) * (this.truth(b) - this.truth(a));
+        }
+    }
+    throw new Error("frame " + frame + " outside the key span");
+};
+
+HoldingHost.prototype.measure = function (frame) {
+    return Math.abs(this.evaluate(frame) - this.truth(frame));
+};
+
+describe("drift.correct over a monotone gap", function () {
+    /* The gap whose worst frame is its own end. A key there shortens the run
+     * instead of splitting it, so without the midpoint the pass walks backwards
+     * one frame per pass and runs out of them - which is what the After Effects
+     * import reported in the host against held_over_moving_layer.rbj. */
+
+    function runHeld(tolerance) {
+        var host = new HoldingHost(function (f) { return 20.0 * f; }, 12);
+        var r = drift.correct(timing.frameRange(0, 24), [0, 12, 24],
+                              function (k) { host.applyKeys(k); },
+                              function (f) { return host.measure(f); },
+                              tolerance);
+        r.host = host;
+        return r;
+    }
+
+    it("converges instead of running out of passes", function () {
+        var r = runHeld(0.5);
+        if (!(r.worst <= 0.5)) { fail("worst " + r.worst + " exceeds 0.5"); }
+    });
+
+    it("splits the gap rather than walking back from its end", function () {
+        var r = runHeld(0.5);
+        var corrective = [];
+        for (var i = 0; i < r.keys.length; i++) {
+            var f = r.keys[i];
+            if (f !== 0 && f !== 12 && f !== 24) { corrective.push(f); }
+        }
+        if (!(corrective.length < 8)) {
+            fail("one key per pass is the degenerate walk, not a split");
+        }
+        if (corrective.indexOf(18) < 0) {
+            fail("the gap's midpoint is missing: " + corrective.join(","));
+        }
+    });
+
+    it("leaves every unkeyed frame inside tolerance", function () {
+        var r = runHeld(0.5);
+        var frames = timing.frameRange(0, 24);
+        for (var i = 0; i < frames.length; i++) {
+            if (r.keys.indexOf(frames[i]) < 0 &&
+                    r.host.measure(frames[i]) > 0.5) {
+                fail("frame " + frames[i] + " drifts " +
+                     r.host.measure(frames[i]));
+            }
+        }
+    });
+});
+
 /* --- the schema --------------------------------------------------------- */
 
 var GOLDEN = path.join(ROOT, "test", "golden");

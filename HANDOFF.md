@@ -3,9 +3,10 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-21 (first real After Effects host run: **export passed,
-import FAILED**; Phase 6 open splines drafted and implemented host-free; Q10
-closed; Nuke-to-AE crossing tested host-free)
+Last updated: 2026-08-21 (drift pass now splits a monotone gap instead of
+walking back from its end, which closes the `hold`-over-a-moving-ancestor
+question; first real After Effects host run: **export passed, import FAILED**;
+Phase 6 open splines drafted and implemented host-free; Q10 closed)
 
 ## Status
 
@@ -21,9 +22,9 @@ itself. `core/` holds the host-free geometry, timing, schema, interpolation and
 drift code: stdlib only, no host imports, no file access, so it runs unchanged
 under plain Python and under Nuke's embedded Python. `nuke/` holds the Nuke
 adapter pair and `ae/` the After Effects one, over an ES3 mirror of `core/`.
-`test/test_core.py` is **165 passing tests**, run with `python3
+`test/test_core.py` is **170 passing tests**, run with `python3
 test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
-package). `./test/run.sh` runs all five host-free suites: **348 tests**.
+package). `./test/run.sh` runs all five host-free suites: **357 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -386,19 +387,56 @@ silently**, which is the policy working as intended.
 
 **But "structurally cannot converge" was too strong, and the host says so.**
 That claim was made from this synthetic case alone, before the crossing test
-ran. In Nuke, at the default tolerance, the real `mixed` mask converges to
-**0.4616 px with 14 corrective keys**, and its worst frame is 8 - *before* the
-hold, not inside it. So this is a severity question, not a categorical one: the
-pass copes when the ancestor moves the geometry mildly across the held interval,
-as a 12-degree rotation does, and fails when it moves it a long way, as the
-synthetic 20 px per frame does. Two things are still genuinely unknown: where
-the boundary between those is, and whether After Effects behaves like Nuke here
-at all, since the AE import has never completed. Do not restate the strong claim
-without measuring it.
+ran. In Nuke, at the default tolerance, the real `mixed` mask converged to
+**0.4616 px with 14 corrective keys**, and its worst frame was 8 - *before* the
+hold, not inside it. So it was a severity question, not a categorical one.
 
-Undecided: whether the exporter should refuse to write `hold` when an ancestor
-transform animates across that interval, or warn, or whether the drift pass
-should skip held gaps and say so. Not started.
+### RESOLVED 2026-08-21: the drift pass owns this, not the exporter
+
+**The mechanism, exactly.** Inside a held gap the destination is frozen while
+the dense layer keeps moving, so the deviation climbs steadily and the worst
+frame of the gap is always its **last**. `drift._survey` picked the worst frame,
+and a key on the end of a run does not split it - it shortens it by one frame.
+Bisection degenerated into a backward walk of one frame per pass and ran out of
+the eight. The corrective keys it landed on the synthetic file were exactly
+`[16, 17, 18, 19, 20, 21, 22, 23]`, contiguous from the end of the gap, which is
+the signature of the walk rather than of a split.
+
+**Why the exporter is the wrong place to fix it.** `hold` is a claim about
+**layer** space, and it is *correct* there - reimported onto a layer carrying
+the same transform, the layer-space targets really are frozen across the
+interval and the pass lands **zero** corrective keys. The exporter cannot know
+what transform the destination layer will have, so downgrading `hold` to
+`linear` on the way out would destroy a lossless same-rig round trip in order to
+help a destination that may not exist. The dense layer is the ground truth and
+the drift pass is what reconciles the two layers, so the drift pass has to be
+able to.
+
+**The fix.** `_survey` now adds a gap's **midpoint as well as** its worst frame,
+when the worst frame is one of the gap's two ends. Mirrored in
+`RB.drift.survey`. The worst frame is still always added, so this can only
+reduce the passes a gap needs, never increase them.
+
+**Adding the midpoint *instead of* the worst frame was measured and rejected.**
+It looks leaner on the synthetic file - 4 corrective keys against 6 - but on the
+real crossing it lands the same key count on five of six shapes and leaves
+`mixed` at 0.4503 px where adding both reaches 0.1000 px. Once the error is not
+perfectly monotone, pinning the measured worst frame is what closes the gap; the
+midpoint only guarantees the run gets split. Recorded in the `_survey` docstring
+so it is not tried again.
+
+**Measured.** `held_over_moving_layer.rbj` through the real After Effects
+importer under the mock: **8 corrective keys and 60.0000 px unaccounted at frame
+15, before; 6 corrective and converged, after.** Re-running both Nuke acceptance
+tests over the real `ae_scene.rbj` moves nothing else - five of six shapes keep
+their worst deviation to the digit (0.3723, 0.2143, 0.3665, 0.2577) and pay one
+or two extra keys, while `mixed`, the one shape carrying the `hold`, improves
+**0.4616 px to 0.1000 px**. Both reports are re-committed under
+`test/golden/nuke_probe/17.1v1/phase6/`.
+
+Still genuinely unknown, and unchanged by this: whether After Effects behaves
+like Nuke over a held interval at all, since the AE import has never completed
+in the host. Do not restate the strong claim without measuring it.
 
 ## Decisions made, so they are not relitigated
 
@@ -605,9 +643,9 @@ Both host applications are **Windows-side**; this repo lives in WSL.
    warning present rather than `MISSING`, and the verdict line ending "dense,
    sparse and open".
 
-1b. **Decide what to do about a `hold` over an animated ancestor transform.**
-   Described above. Not started, and it is a Phase 4 correctness question rather
-   than anything to do with open splines.
+1c. **A `hold` over an animated ancestor transform is RESOLVED**, 2026-08-21 -
+   in the drift pass, not the exporter. See the section above for the mechanism
+   and for why the exporter is the wrong place. Nothing is outstanding.
 
 2. **Phase 5 - verify across both applications.** Same plate in both, comp AE's
    matte against Nuke's at each import mode, confirm the tolerance bounds hold.

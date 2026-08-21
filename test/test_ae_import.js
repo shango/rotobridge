@@ -526,6 +526,32 @@ describe("options", function () {
         has(host.alerts, "5 authored key(s)");
     });
 
+    it("converges on a hold its own dense layer contradicts", function () {
+        // `held_over_moving_layer.rbj` is the case that made the drift pass's
+        // bisection degenerate: `out: hold` at frame 12 over a dense layer that
+        // keeps moving 20 px a frame, so the deviation climbs steadily and the
+        // worst frame of the held gap is always its last one. Keying there
+        // shortens the run by a frame instead of splitting it, and the pass
+        // used to walk backwards from frame 23 and give up with 60.0000 px
+        // still unaccounted for at frame 15 - which is exactly what the host
+        // reported. `core.drift._survey` now adds the gap's midpoint too.
+        //
+        // The file is not synthetic in the way it looks: an outgoing `hold` is
+        // a claim about LAYER space, and `.rbj` keys describe canonical space
+        // with the ancestor transform already baked in, so any animated
+        // ancestor makes the claim false. See HANDOFF.md.
+        var text = fs.readFileSync(path.join(ROOT, "test", "golden",
+                                             "held_over_moving_layer.rbj"),
+                                   "utf8");
+        var host = importInto(text, { workAreaDuration: 25 / 24 });
+        has(host.alerts, "3 authored key(s)");
+        for (var i = 0; i < host.alerts.length; i++) {
+            if (String(host.alerts[i]).indexOf("ran out of passes") > -1) {
+                fail("the drift pass gave up: " + host.alerts[i]);
+            }
+        }
+    });
+
     it("reports the warnings the exporter recorded in the file", function () {
         var host = importInto(exported({ mask: { inverted: true } }));
         has(host.alerts, "when the file was written");

@@ -44,12 +44,14 @@ def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
     about; `at` is what makes the warning actionable, since prd.md section 8
     requires the import report to name the frames of worst drift.
 
-    One frame is added per gap per pass, the worst in that gap, rather than
-    every offending frame. A key placed at the worst point of a run splits it
-    in two and usually fixes most of it, so bisecting converges in a few passes
-    and lands far fewer keys than adding every frame over tolerance would. Every
-    gap is worked in the same pass, so the pass count does not scale with the
-    number of gaps - only with how deep the worst one has to subdivide.
+    One or two frames are added per gap per pass - the worst in that gap, and
+    the gap's midpoint when the worst frame is an end of it - rather than every
+    offending frame. A key placed inside a run splits it in two and usually
+    fixes most of it, so bisecting converges in a few passes and lands far fewer
+    keys than adding every frame over tolerance would. `_survey` carries why the
+    midpoint is needed. Every gap is worked in the same pass, so the pass count
+    does not scale with the number of gaps - only with how deep the worst one
+    has to subdivide.
     """
     frames = sorted(set(int(f) for f in frames))
     if not frames:
@@ -92,8 +94,31 @@ def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
 def _survey(frames, keys, measure, tolerance):
     """Measure every non-key frame once.
 
-    Returns `(additions, worst, at)`: the worst frame of each gap that exceeds
-    `tolerance`, the worst deviation seen anywhere, and the frame carrying it.
+    Returns `(additions, worst, at)`: the frames to key next, the worst
+    deviation seen anywhere, and the frame carrying it.
+
+    A gap over `tolerance` contributes its worst frame. It contributes the
+    gap's **midpoint as well** when that worst frame is one of the gap's two
+    ends, because a key on the end of a run does not split it - it shortens it
+    by one frame, and `correct`'s whole convergence argument is that a run gets
+    split. Error that grows steadily across a run puts its maximum on the run's
+    last frame every time, so the pass would walk backwards one frame per pass
+    instead of halving, and run out of passes on a gap it could have closed.
+    That is not hypothetical: it is what an outgoing `hold` does whenever an
+    ancestor transform moves the geometry through the held interval, since the
+    destination freezes while the dense layer keeps going (`HANDOFF.md`).
+
+    The worst frame is still always added, so this can only reduce the passes a
+    gap needs, never increase them - at a cost of at most one extra key per
+    degenerate gap per pass.
+
+    Adding the midpoint *instead of* the worst frame was measured and is worse.
+    It looks leaner on a synthetic hold (4 corrective keys against 6) but on the
+    real crossing of `test/golden/ae_scene.rbj` it lands the same key count on
+    five of six shapes and leaves the sixth - `mixed`, the one carrying the
+    `hold` - at 0.4503 px where adding both reaches 0.1000 px. Once the error is
+    not perfectly monotone, pinning the measured worst frame is what closes the
+    gap; the midpoint only guarantees the run gets split.
     """
     additions = []
     worst, worst_at = 0.0, None
@@ -106,5 +131,7 @@ def _survey(frames, keys, measure, tolerance):
         if deviation > worst:
             worst, worst_at = deviation, at
         if deviation > tolerance:
+            if at == run[0] or at == run[-1]:
+                additions.append(run[len(run) // 2])
             additions.append(at)
     return additions, worst, worst_at

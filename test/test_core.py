@@ -921,6 +921,101 @@ class TestDriftCorrect(unittest.TestCase):
         self.assertEqual(worst, 0.0)
 
 
+class HoldingHost(object):
+    """A destination whose outgoing side at `held` freezes the rest of its gap.
+
+    The parabola fixture puts a gap's worst frame in its middle, which is the
+    easy case. This is the hard one: past `held` the destination stops while the
+    dense layer keeps moving, so the deviation climbs steadily and the worst
+    frame of the gap is always its **last**. A key there shortens the run
+    instead of splitting it, which is the degeneracy `drift._survey` guards.
+
+    Not synthetic - an outgoing `hold` behaves exactly this way whenever an
+    ancestor transform moves the geometry through the held interval, because
+    `.rbj` keys describe canonical space with that transform already baked in
+    (`HANDOFF.md`, "A `hold` can contradict its own dense layer").
+    """
+
+    def __init__(self, truth, held):
+        self.truth = truth
+        self.held = held
+        self.applied = None
+
+    def apply_keys(self, key_frames):
+        self.applied = list(key_frames)
+
+    def evaluate(self, frame):
+        keys = self.applied
+        if frame <= keys[0]:
+            return self.truth(keys[0])
+        if frame >= keys[-1]:
+            return self.truth(keys[-1])
+        for a, b in zip(keys, keys[1:]):
+            if a <= frame <= b:
+                if a == self.held:
+                    return self.truth(a)
+                t = (frame - a) / float(b - a)
+                return self.truth(a) + t * (self.truth(b) - self.truth(a))
+        raise AssertionError("frame %r outside the key span" % frame)
+
+    def measure(self, frame):
+        return abs(self.evaluate(frame) - self.truth(frame))
+
+
+class TestDriftOverAMonotoneGap(unittest.TestCase):
+    """The gap whose worst frame is its own end, which bisection has to notice.
+
+    Before `_survey` added the midpoint this walked backwards one frame per
+    pass and ran out of them: against `test/golden/held_over_moving_layer.rbj`
+    it landed corrective keys on 16 through 23 and left 60.0000 px at frame 15,
+    which is the failure the After Effects import reported in the host.
+    """
+
+    def setUp(self):
+        self.frames = list(range(0, 25))
+        # Steady motion, so the deviation inside the held gap is proportional to
+        # the distance from the hold and its maximum is always the gap's end.
+        self.host = HoldingHost(lambda f: 20.0 * f, held=12)
+
+    def run_correct(self, tolerance=0.5, max_passes=8):
+        return drift.correct(self.frames, [0, 12, 24], self.host.apply_keys,
+                             self.host.measure, tolerance, max_passes)
+
+    def test_it_converges_instead_of_running_out_of_passes(self):
+        _, worst, _ = self.run_correct()
+        self.assertLessEqual(worst, 0.5)
+
+    def test_it_does_not_walk_backwards_from_the_end_of_the_gap(self):
+        keys, _, _ = self.run_correct()
+        corrective = [f for f in keys if f not in (0, 12, 24)]
+        self.assertLess(len(corrective), 8,
+                        "one key per pass is the degenerate walk, not a split")
+        self.assertIn(18, corrective, "the gap's midpoint splits it")
+
+    def test_every_unkeyed_frame_really_is_within_tolerance(self):
+        keys, _, _ = self.run_correct()
+        for frame in self.frames:
+            if frame not in keys:
+                self.assertLessEqual(self.host.measure(frame), 0.5)
+
+    def test_the_worst_frame_is_still_pinned(self):
+        # The midpoint is added as well as the worst frame, never instead of
+        # it, so this can only cost passes that the old behaviour also paid.
+        self.host.apply_keys([0, 12, 24])
+        additions, _, _ = drift._survey(self.frames, [0, 12, 24],
+                                        self.host.measure, 0.5)
+        self.assertIn(23, additions, "the worst frame of the held gap")
+        self.assertIn(18, additions, "and the midpoint that splits it")
+
+    def test_an_interior_worst_frame_is_left_alone(self):
+        # The parabola case must not start paying for the degenerate one.
+        host = FakeHost(parabola)
+        frames = list(range(1, 42))
+        host.apply_keys([1, 41])
+        additions, _, at = drift._survey(frames, [1, 41], host.measure, 0.5)
+        self.assertEqual(additions, [at])
+
+
 class TestGoldenSparseExport(unittest.TestCase):
     """A real Nuke export of a shape keyed on five frames out of forty-one.
 

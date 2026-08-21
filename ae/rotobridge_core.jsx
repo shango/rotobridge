@@ -441,9 +441,19 @@ var RB = (function () {
     };
 
     function survey(frames, keys, measure, tolerance) {
-        /* Measure every non-key frame once. Returns
-         * {additions, worst, at}: the worst frame of each gap that exceeds
-         * tolerance, the worst deviation seen anywhere, and its frame. */
+        /* Measure every non-key frame once. Returns {additions, worst, at}:
+         * the frames to key next, the worst deviation seen anywhere, and its
+         * frame.
+         *
+         * A gap over tolerance contributes its worst frame, and the gap's
+         * MIDPOINT as well when that worst frame is one of the gap's two ends.
+         * A key on the end of a run does not split it - it shortens it by one
+         * frame - and correct()'s convergence argument is that a run gets
+         * split. Error that grows steadily across a run puts its maximum on the
+         * run's last frame every time, so the pass would walk backwards one
+         * frame per pass instead of halving. That is what an outgoing `hold`
+         * does when an ancestor transform moves the geometry through the held
+         * interval. Mirrors core/drift.py, which carries the full reasoning. */
         var additions = [];
         var worst = 0.0;
         var worstAt = null;
@@ -457,7 +467,13 @@ var RB = (function () {
                 if (here > deviation) { at = run[i]; deviation = here; }
             }
             if (deviation > worst) { worst = deviation; worstAt = at; }
-            if (deviation > tolerance) { additions[additions.length] = at; }
+            if (deviation > tolerance) {
+                if (at === run[0] || at === run[run.length - 1]) {
+                    additions[additions.length] =
+                        run[Math.floor(run.length / 2)];
+                }
+                additions[additions.length] = at;
+            }
         }
         return { additions: additions, worst: worst, at: worstAt };
     }
@@ -479,12 +495,14 @@ var RB = (function () {
          * prd.md section 8 requires the import report to name the frames of
          * worst drift.
          *
-         * One frame is added per gap per pass, the worst in that gap, rather
-         * than every offending frame. A key at the worst point of a run splits
-         * it in two and usually fixes most of it, so bisecting converges in a
-         * few passes and lands far fewer keys. Every gap is worked in the same
-         * pass, so the pass count scales with how deep the worst gap has to
-         * subdivide, not with the number of gaps.
+         * One or two frames are added per gap per pass - the worst in that
+         * gap, and the gap's midpoint when the worst frame is an end of it -
+         * rather than every offending frame. A key inside a run splits it in
+         * two and usually fixes most of it, so bisecting converges in a few
+         * passes and lands far fewer keys; survey() carries why the midpoint is
+         * needed. Every gap is worked in the same pass, so the pass count
+         * scales with how deep the worst gap has to subdivide, not with the
+         * number of gaps.
          */
         if (maxPasses === undefined) { maxPasses = 8; }
         frames = sortedInts(frames);

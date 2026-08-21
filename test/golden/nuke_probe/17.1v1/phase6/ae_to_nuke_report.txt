@@ -1,5 +1,5 @@
 AE -> Nuke crossing, 17.1v1
-source: C:\Users\shann\rotobridge\rb\ae_scene.rbj
+source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
 
 --- the file ---
   version 2 from After Effects 25.6x101, 6 shape(s), frames 0-24
@@ -40,16 +40,16 @@ source: C:\Users\shann\rotobridge\rb\ae_scene.rbj
 --- import at tolerance 0.5: the default, what an artist gets ---
   This is the only mode where the drift pass actually runs, so it is
   the one that can expose a sparse layer the dense layer contradicts.
-    linear     4 authored, 11 corrective; worst 0.3723 px at frame 9
+    linear     4 authored, 13 corrective; worst 0.3723 px at frame 9
     eased      5 authored, 20 corrective
-    mixed      5 authored, 14 corrective; worst 0.4616 px at frame 8
-    feathered  4 authored, 10 corrective; worst 0.2143 px at frame 12
-    offgrid    5 authored, 10 corrective; worst 0.3665 px at frame 9
-    opened     4 authored, 10 corrective; worst 0.2577 px at frame 12
+    mixed      5 authored, 15 corrective; worst 0.1000 px at frame 16
+    feathered  4 authored, 12 corrective; worst 0.2143 px at frame 12
+    offgrid    5 authored, 11 corrective; worst 0.3665 px at frame 9
+    opened     4 authored, 11 corrective; worst 0.2577 px at frame 12
   measured against the dense layer:
     linear     worst 0.3723 px at frame 9
     eased      worst 0.0001 px at frame 19
-    mixed      worst 0.4616 px at frame 8
+    mixed      worst 0.1000 px at frame 16
     feathered  worst 0.2143 px at frame 12
     offgrid    worst 0.3665 px at frame 9
     opened     worst 0.2577 px at frame 12
