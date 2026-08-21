@@ -673,6 +673,89 @@ describe("export keys", function () {
         eq(keys[1].interp["out"], "ease", "nothing was authored on the path");
     });
 
+    it("calls a synthetic key inside a held segment a hold", function () {
+        // The defect this pins: a transform key landing inside a held path
+        // segment is labelled `ease` because nothing was authored on the path
+        // there - but the bake right next to it says the shape does not move.
+        // Nuke's step is outgoing-only and `interp.to_nuke` reports `out: hold`
+        // exact, so the whole path from measurement to Nuke already exists and
+        // only this label is wrong. Measured on the real crossing: frames 19-23
+        // of `mixed` in `test/golden/ae_scene.rbj` are byte-identical and the
+        // key at 18 claims `ease`, which costs five corrective keys and tells a
+        // Nuke artist the shape ramps where After Effects freezes.
+        var spec = keyedAt([at(0, { outType: HOLD }), at(4)]);
+        spec.layers[0].transformKeys = { "ADBE Position": [2 / 24] };
+        var doc = runExport(mock.install(spec));
+        var frames = doc.shapes[0].frames;
+
+        // The control, and it has to come first: if the mock ever stopped
+        // baking a hold as a hold, the assertion below would pass for the
+        // wrong reason and this test would be measuring nothing.
+        eq(JSON.stringify(frames["3"].points),
+           JSON.stringify(frames["2"].points),
+           "the bake holds across the segment");
+        var moved = JSON.stringify(frames["4"].points)
+                 !== JSON.stringify(frames["2"].points);
+        eq(moved, true, "and releases at the next path key");
+
+        var keys = doc.shapes[0].keys;
+        eq(keys.length, 3);
+        eq(keys[1].frame, 2);
+        eq(keys[1].interp["out"], "hold");
+    });
+
+    it("still calls a synthetic key on a moving segment an ease", function () {
+        // The other half of the same rule, and the reason it cannot simply be
+        // "synthetic keys hold". Same shape of scene, no hold authored: the
+        // bake moves on every frame, so `ease` stays the honest answer.
+        var spec = keyedAt([at(0), at(4)]);
+        spec.layers[0].transformKeys = { "ADBE Position": [2 / 24] };
+        var doc = runExport(mock.install(spec));
+        var frames = doc.shapes[0].frames;
+        var moved = JSON.stringify(frames["3"].points)
+                 !== JSON.stringify(frames["2"].points);
+        eq(moved, true, "the bake moves across the segment");
+        eq(doc.shapes[0].keys[1].interp["out"], "ease");
+    });
+
+    it("refuses a hold the layer's motion contradicts", function () {
+        // The mirror of the test above, and the larger of the two errors.
+        // The artist authored `out: HOLD` on the path, but the layer moves
+        // underneath it, so the SHAPE is not flat - and spec section 10.2 is
+        // about the segment, not about which property was keyed: "when
+        // `A.interp.out` is `hold` the segment is flat". `frames` carries the
+        // composite, so a `hold` here is a claim the dense layer next to it
+        // contradicts. Measured on the real crossing: `mixed` frames 13-17 of
+        // `test/golden/ae_scene.rbj` move about 11 px per frame under an
+        // authored hold, and Nuke steps them ~66 px wrong until the drift pass
+        // pays to put it back.
+        var held = [at(0, { outType: HOLD }), at(4)];
+
+        // Control, and the whole test rests on it: the SAME path with a static
+        // layer must still say `hold`. Without this, a rule that simply never
+        // wrote `hold` would pass.
+        var stillSpec = keyedAt(held);
+        stillSpec.layers[0].transformKeys = { "ADBE Position": [0, 4 / 24] };
+        eq(keysOf(stillSpec)[0].interp["out"], "hold",
+           "a real hold over a still layer is still a hold");
+
+        var spec = keyedAt(held);
+        spec.layers[0].transformKeys = { "ADBE Position": [0, 4 / 24] };
+        spec.layers[0].transform = {
+            position: function (t) { return [t * 2400, 0]; }
+        };
+        var doc = runExport(mock.install(spec));
+        var frames = doc.shapes[0].frames;
+        var moved = JSON.stringify(frames["2"].points)
+                 !== JSON.stringify(frames["1"].points);
+        eq(moved, true, "the layer really moves the held path");
+
+        var keys = doc.shapes[0].keys;
+        eq(keys.length, 2);
+        eq(keys[0].interp["out"], "ease");
+        has(doc.warnings, "hold");
+    });
+
     it("ignores a transform property that cannot move geometry", function () {
         // Layer opacity lives in the same group. Keying it would otherwise
         // plant a key in the middle of a shape that never moved.

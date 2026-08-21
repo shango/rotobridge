@@ -421,7 +421,72 @@
         return key;
     }
 
-    function sparseKeys(comp, entry, frames, warn) {
+    var POINT_VECTORS = ["c", "in", "out"];
+
+    function samePoints(a, b) {
+        /* Exact equality, not a tolerance. Both sides come from the same bake
+         * of the same host, so a segment that is genuinely flat is
+         * bit-identical - measured, `test/golden/ae_scene.rbj` frames 19-23 of
+         * `mixed`. Any doubt therefore reads as "not flat", which is the
+         * pre-existing answer, so this can only ever add a `hold` it can
+         * prove. */
+        if (a.length !== b.length) { return false; }
+        for (var i = 0; i < a.length; i++) {
+            for (var m = 0; m < POINT_VECTORS.length; m++) {
+                var k = POINT_VECTORS[m];
+                if (a[i][k][0] !== b[i][k][0] || a[i][k][1] !== b[i][k][1]) {
+                    return false;
+                }
+            }
+            /* Per-point feather rides on the point and is part of the shape a
+             * destination keys, so a segment whose feather breathes is not
+             * flat even when every vertex stands still. */
+            if (a[i]["feather"] !== b[i]["feather"]) { return false; }
+        }
+        return true;
+    }
+
+    function segmentVerdict(baked, from, to) {
+        /* What the bake can say about the segment leaving `from`: "flat",
+         * "moves", or **null for cannot tell**, which is the answer more often
+         * than it looks and getting it wrong reads as a confident lie.
+         *
+         * A hold and a smooth interpolation produce identical frames whenever
+         * their endpoints agree, so the bake can only separate them when the
+         * question is observable at all. Two ways it is not:
+         *
+         * - **Adjacent keys.** A segment from f to f+1 has no interior frame,
+         *   and both readings put the next key's value on f+1. Nothing to see.
+         * - **A shape that never moves.** Flat all the way through and flat at
+         *   the far key too: hold and ease agree everywhere, so neither is more
+         *   true and the authored answer stands.
+         *
+         * A `hold` is only worth claiming where the shape stands still and then
+         * jumps, which is what a hold means and what nothing else expresses. */
+        var a = baked["frames"][String(from)];
+        var far = baked["frames"][String(to)];
+        var f, mid;
+        if (!a || !far || to <= from + 1) { return null; }
+        for (f = from + 1; f < to; f++) {
+            mid = baked["frames"][String(f)];
+            if (!mid) { return null; }
+            if (!samePoints(a["points"], mid["points"])) { return "moves"; }
+        }
+        return samePoints(a["points"], far["points"]) ? null : "flat";
+    }
+
+    function holdOut(key) {
+        /* A side carries an `ease` entry only when its interp is `ease` (spec
+         * section 10.3), so promoting a side to `hold` has to take that
+         * entry with it or the file fails its own validator. */
+        key["interp"]["out"] = RB.interp.HOLD;
+        if (key["ease"]) {
+            delete key["ease"]["out"];
+            if (!RB.util.hasOwn(key["ease"], "in")) { delete key["ease"]; }
+        }
+    }
+
+    function sparseKeys(comp, entry, frames, baked, warn) {
         /* The `keys` array for one shape: which frames, and how each one
          * interpolates.
          *
@@ -454,6 +519,7 @@
 
         var out = [];
         all = RB.util.sortedInts(wanted);
+        var unheld = 0;
         for (i = 0; i < all.length; i++) {
             var frame = all[i];
             var at = RB.util.hasOwn(onPath.index, String(frame))
@@ -462,11 +528,47 @@
              * transform key. Nothing was authored there to read, so the side is
              * unknown, which spec section 10.3 spells `ease` with no
              * parameters: "smooth, parameters unknown, rely on the drift
-             * pass". That is exactly what is true here. */
-            out[out.length] = at === null
+             * pass". */
+            var key = at === null
                 ? { "frame": frame,
                     "interp": { "in": RB.interp.EASE, "out": RB.interp.EASE } }
                 : pathKey(path, at, frame);
+
+            /* Then the bake overrules both of them on one question.
+             *
+             * Spec section 10.2 defines `hold` as a property of the SEGMENT -
+             * "when `A.interp.out` is `hold` the segment is flat" - and
+             * `frames` carries the composite, path through layer transform.
+             * The path property alone cannot answer it and gets it wrong in
+             * both directions: a transform key landing inside a held segment
+             * reads `ease` while the shape stands still, and a hold authored
+             * under a moving layer reads `hold` while the shape moves. Both
+             * are claims the dense layer sitting beside them contradicts, and
+             * `frames` is the one that renders.
+             *
+             * Only the outgoing side, because only it governs a segment
+             * (section 10.2, and `interp.to_nuke` reads only `out` for step).
+             * Only where there is a next key: the last key has no segment
+             * leaving it (section 10.1). Only the hold question - whether what
+             * is left is linear or eased is a fit, not a measurement, and
+             * belongs to the drift pass. And only where the bake can actually
+             * tell, which `segmentVerdict` decides and is not always. */
+            var verdict = i + 1 < all.length
+                ? segmentVerdict(baked, frame, all[i + 1]) : null;
+            if (verdict === "flat") {
+                holdOut(key);
+            } else if (verdict === "moves"
+                       && key["interp"]["out"] === RB.interp.HOLD) {
+                key["interp"]["out"] = RB.interp.EASE;
+                unheld += 1;
+            }
+            out[out.length] = key;
+        }
+        if (unheld) {
+            warn(name + ": " + unheld + " key(s) hold the mask path while the"
+                 + " layer moves under it, so the shape is not flat there and"
+                 + " the hold is not carried as one. Geometry is unaffected;"
+                 + " what is lost is a held key the artist could edit");
         }
         return out;
     }
@@ -480,7 +582,8 @@
             /* After the bake, not during it: `sparseKeys` reads key times and
              * key times do not depend on `comp.time`, so pulling it out of the
              * frame loop costs one pass per shape instead of one per frame. */
-            headers[s]["keys"] = sparseKeys(comp, shapes[s], frames, warn.fn());
+            headers[s]["keys"] = sparseKeys(comp, shapes[s], frames, headers[s],
+                                            warn.fn());
         }
         return {
             "format": "rotobridge",

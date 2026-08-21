@@ -285,13 +285,28 @@ function makeLayer(host, spec) {
      * from three probes and then trusts it. A mock that returned the identity
      * would let a broken derivation pass. */
     var xf = spec.transform || {};
-    var anchor = xf.anchor || [0, 0];
-    var scale = xf.scale || [1, 1];
-    var rotation = (xf.rotation || 0) * Math.PI / 180;
-    var position = xf.position || [0, 0];
+
+    /* Each member is a constant or a **function of time**, the same idiom
+     * `spec.pathAt` already uses. A transform that animates is not a nicety:
+     * it is the only way to build a shape whose path holds while the shape
+     * itself moves, which is what a mask on a moving layer is and what the
+     * export's `interp` has to describe correctly (spec section 10.2 - `hold`
+     * says the *segment* is flat, and `frames` carries the composite).
+     *
+     * Resolved per call rather than once, because `sourcePointToComp` takes no
+     * time parameter and reads whatever `comp.time` currently is - which is
+     * exactly how the export drives it, one frame at a time. */
+    function at(v, fallback) {
+        if (typeof v === "function") { return v(host.comp.time); }
+        return v === undefined ? fallback : v;
+    }
 
     function toComp(p) {
         host.pointCalls += 1;
+        var anchor = at(xf.anchor, [0, 0]);
+        var scale = at(xf.scale, [1, 1]);
+        var rotation = at(xf.rotation, 0) * Math.PI / 180;
+        var position = at(xf.position, [0, 0]);
         var x = (p[0] - anchor[0]) * scale[0];
         var y = (p[1] - anchor[1]) * scale[1];
         return [position[0] + x * Math.cos(rotation) - y * Math.sin(rotation),
@@ -300,6 +315,10 @@ function makeLayer(host, spec) {
 
     function toSource(p) {
         host.pointCalls += 1;
+        var anchor = at(xf.anchor, [0, 0]);
+        var scale = at(xf.scale, [1, 1]);
+        var rotation = at(xf.rotation, 0) * Math.PI / 180;
+        var position = at(xf.position, [0, 0]);
         var x = p[0] - position[0];
         var y = p[1] - position[1];
         var rx = x * Math.cos(-rotation) - y * Math.sin(-rotation);
@@ -310,7 +329,11 @@ function makeLayer(host, spec) {
     /* The transform group, with keys where a test asked for them. Only the
      * key TIMES matter to the export - the transform itself is `toComp` above,
      * which is the thing the geometry actually goes through - so a keyed
-     * property here holds times and nothing else.
+     * property here holds times and nothing else. A test that wants the
+     * transform to actually move gives `spec.transform` a function of time as
+     * well, and the two are independent on purpose: the export reads times
+     * from here and geometry from there, so a mismatch between them is a state
+     * a real comp can be in and a test should be able to build.
      *
      * The properties an unseparated 2D layer really has are present whether a
      * test asked for them or not, so a script can write one; the separated

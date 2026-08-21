@@ -998,6 +998,62 @@ the additional keyframes." Do not optimise key counts at the expense of
 fidelity; for ease specifically, plan on the bake being permanent rather than
 temporary.
 
+### `interp` is about the segment, not the property, 2026-08-21
+
+**The defect.** `.rbj` read `interp` off the mask path property while `frames`
+carried the composite, path through layer transform. Wherever the transform
+animates the two disagree, and the sparse layer described timing the dense layer
+next to it contradicted. Both directions were wrong on one shape:
+
+- `mixed` frames 19-23 are **byte-identical** and frame 24 jumps 360 px. That is
+  a hold. The key at 18 said `ease`, so Nuke ramped and the drift pass paid five
+  corrective keys to put it back.
+- `mixed` key 12 carries the artist's authored `out: hold`, but the layer moves
+  underneath at ~11 px/frame, so the shape is **not** flat. Nuke stepped it and
+  sat ~66 px wrong until the drift pass paid again.
+
+**The spec already settled it**, which is what removed the design fork. Section
+10.1 defines `hold` as "constant, no interpolation" and 10.2 as "the segment is
+flat". That is a property of the **segment**, and `frames` is what the segment
+renders as. Deriving it from the path property alone was never right; a hold in
+layer space is not a hold in comp space.
+
+**The fix.** `sparseKeys` now takes the baked header - `buildDocument` already
+had it in hand, one line above the call - and `segmentVerdict` decides the
+outgoing side from the bake. Only the outgoing side, because only it governs a
+segment. Only the hold question, because linear-versus-eased is a fit and
+belongs to the drift pass. An authored hold the bake contradicts warns once per
+shape: geometry is unaffected, an editable held key is what is lost.
+
+**The part that took two tries, and it is the session's recurring lesson.** The
+first predicate asked "is every frame in [from, to) equal to `from`?" and was
+**vacuously true** for adjacent keys, since there are no interior frames. It
+turned four passing tests red by stamping `hold` on everything keyed on every
+frame. The real rule is that a hold and a smooth interpolation are
+**indistinguishable whenever their endpoints agree**, so there are two ways the
+question is not observable at all: no interior frame, and a shape that is flat
+at the far key too. `segmentVerdict` returns **null for cannot tell** and leaves
+the authored answer alone. A `hold` is only claimed where the shape stands still
+and then jumps, which is the only thing nothing else expresses.
+
+**Verified on real host data, not only on the mock.** Replaying the predicate
+over `test/golden/ae_scene.rbj` changes exactly two labels across six shapes:
+`mixed` 12 `hold -> ease` and `mixed` 18 `ease -> hold`. Every other key of
+every other shape is untouched.
+
+**`test/ae_mock.js` gained an animating transform.** `spec.transform` members
+may now be functions of time, the idiom `spec.pathAt` already used. Without it
+the mock could not build a path that holds while the shape moves, so the larger
+half of the defect was not reproducible host-free. Key times and transform
+geometry stay independent on purpose: a mismatch between them is a state a real
+comp can be in.
+
+**Still outstanding.** `test/golden/ae_scene.rbj` was exported by the old code
+and still carries the old labels. It needs a re-export in After Effects before
+the golden files agree with the exporter, and the Nuke crossing report
+(`ae_to_nuke_report.txt`, `mixed` 5 authored + 15 corrective) is measured
+against the stale file. Expect roughly 15 corrective keys to become 3.
+
 ## Next
 
 **The frontier is feather anchoring, then Phase 5.** The AE ease question that
