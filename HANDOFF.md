@@ -17,10 +17,11 @@ and **the format has to be falsifiable** - see the two sections under Status.
 The AE ease question is closed as a "cannot", not a "not yet". Feather anchoring
 closed 2026-08-22, and the durable import record with it. **Phase 5's Nuke half
 is built and passing** (`test/test_ae_to_nuke_render.py`, 2026-08-22), with the
-measurement checked against arithmetic before it is trusted. **All that is left
-in the project is one After Effects run** - it closes Phase 5, `ff`, and
-section 6.4 at once, and `test/probe/probe_ae_phase5.jsx` collapses it and the
-three other host-blocked loose ends into that single visit.
+measurement checked against arithmetic before it is trusted. **The rendered
+comparison is out of scope** - this tool moves roto spline data between
+applications, and that is what is measured. Everything that was blocked on
+After Effects has now been answered in After Effects except the matte, which is
+not being rendered.
 
 ## Status
 
@@ -317,11 +318,21 @@ Phase 5 was written: **the project is ACEScg at 32 bpc, and that cannot move
 the measurement.** Alpha is not colour managed. "No colour management" was
 never a requirement; an alpha channel is.
 
-**Phase 5's rendered comparison is now a decision, not a blocker.** It is not
-waiting on anyone. `ff` and `spec/rbj-v2-draft.md` section 6.4 are observable
-only in rendered pixels, so both stay unmeasured for as long as that stands,
-and acceptance criterion 2 stays unmet. The Nuke half is built and passing and
-costs nothing to leave in place.
+**And the rendered comparison is out of scope, stated by the user 2026-08-22:
+this tool moves roto spline data from one application to another.** That is the
+job, and it is the thing that is measured - geometry to 6.1e-05 px across the
+crossing, every per-side key intact, feather carried by anchor rather than
+snapped. A rendered matte was only ever a proxy for those, and it is a proxy
+for two questions that are about how a host *draws* a shape rather than about
+whether the shape arrived: `ff`, and where an anchored feather sits along a
+curve (`spec/rbj-v2-draft.md` section 6.4). Both stay open as rendering
+questions and neither is a data loss - the file carries what the source said in
+both cases.
+
+Do not reopen this by proposing a render. `test/test_ae_to_nuke_render.py` and
+`test/probe/probe_ae_phase5.jsx` stay in the tree on the same footing as
+`spec/rbj-v2-draft.md`: built, passing, costing the live paths nothing, and
+waiting on a use that has not appeared.
 
 ### AE to Nuke: the crossing works, measured in the host
 
