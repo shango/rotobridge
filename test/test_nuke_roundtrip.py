@@ -583,13 +583,127 @@ def main():
     say("  (spec/rbj-v2-draft.md section 5).")
     say()
 
+    say("--- Phase 7: anchored feather (spec/rbj-v2-draft.md section 6) ---")
+    say("  Nuke anchors feather at a vertex and nowhere else, so an anchor")
+    say("  the artist put mid-segment gets one: the segment is split with de")
+    say("  Casteljau, which reproduces the curve exactly. The shape gains")
+    say("  points and does not move. Nothing on the Nuke side WRITES such a")
+    say("  file (section 6.6), so the fixture is built by hand.")
+    nuke.scriptClear()
+    nuke.root()["first_frame"].setValue(1)
+    nuke.root()["last_frame"].setValue(2)
+
+    curved = [{"c": [100.0, 100.0], "in": [-40.0, 0.0], "out": [40.0, 60.0]},
+              {"c": [400.0, 100.0], "in": [-40.0, 60.0], "out": [40.0, 0.0]},
+              {"c": [400.0, 400.0], "in": [40.0, 0.0], "out": [-40.0, 0.0]},
+              {"c": [100.0, 400.0], "in": [40.0, 0.0], "out": [-40.0, 0.0]}]
+    # 0.25 is mid-segment, 2.0 is a vertex, 2.5 is mid-segment on another
+    # segment. Two need a vertex inserted and one does not.
+    anchors = [{"t": 0.25, "feather": 30.0},
+               {"t": 2.0, "feather": -15.0},
+               {"t": 2.5, "feather": 12.0}]
+    anchored_doc = {
+        "format": "rotobridge", "version": 2,
+        "source": {"app": "test", "app_version": "0", "width": 2048,
+                   "height": 858, "pixel_aspect": 1.0, "fps": 24.0},
+        "range": [1, 2], "warnings": [],
+        "shapes": [{"name": "anchored", "closed": True, "blend": "union",
+                    "feather_model": "anchored", "feather_falloff": "smooth",
+                    "frames": dict(
+                        (str(f), {"opacity": 1.0, "feather_uniform": [0.0, 0.0],
+                                  "points": [dict((k, list(v))
+                                                  for k, v in pt.items())
+                                             for pt in curved],
+                                  "feather_points": [dict(a) for a in anchors]})
+                        for f in (1, 2)),
+                    "keys": [{"frame": 1,
+                              "interp": {"in": "linear", "out": "linear"}},
+                             {"frame": 2,
+                              "interp": {"in": "linear", "out": "linear"}}]}],
+    }
+    anchored_errs = rbj.validate(anchored_doc)
+    if anchored_errs:
+        failures.append("the hand-built anchored document is not valid .rbj")
+        for e in anchored_errs[:5]:
+            say("  INVALID: %s" % e)
+
+    nuke.scriptClear()
+    anchored_node, anchored_warnings, _ = rbi.import_document(anchored_doc,
+                                                              tolerance=0.0)
+    built = anchored_node["curves"].rootLayer[0]
+    say("  4 points and 3 anchors in, %d points out (want 6)" % len(built))
+    if len(built) != 6:
+        failures.append("anchored import made %d points, wanted 6"
+                        % len(built))
+
+    inserted_warning = [w for w in anchored_warnings if "were inserted" in w]
+    say("  insertion warning: %s"
+        % (inserted_warning[0][:70] if inserted_warning else "MISSING"))
+    if not inserted_warning:
+        failures.append("no warning that vertices were inserted to hold "
+                        "feather anchors")
+
+    # The claim is that the shape did not move. The original vertices must be
+    # exactly where the file put them, and each inserted vertex exactly on the
+    # curve the file described - evaluated here from the Bernstein form rather
+    # than from anything the importer used to place it.
+    def on_curve(points, i, j, u):
+        b0 = points[i]["c"]
+        b1 = [points[i]["c"][k] + points[i]["out"][k] for k in (0, 1)]
+        b2 = [points[j]["c"][k] + points[j]["in"][k] for k in (0, 1)]
+        b3 = points[j]["c"]
+        v = 1.0 - u
+        return [v * v * v * b0[k] + 3 * v * v * u * b1[k]
+                + 3 * v * u * u * b2[k] + u * u * u * b3[k] for k in (0, 1)]
+
+    # After two insertions the ring is: v0, split(0.25), v1, v2, split(2.5), v3.
+    wanted = [(0, curved[0]["c"]),
+              (1, on_curve(curved, 0, 1, 0.25)),
+              (2, curved[1]["c"]),
+              (3, curved[2]["c"]),
+              (4, on_curve(curved, 2, 3, 0.5)),
+              (5, curved[3]["c"])]
+    worst_anchor = 0.0
+    for index, want in wanted:
+        if index >= len(built):
+            break
+        got = built[index].center.getPosition(1.0)
+        worst_anchor = max(worst_anchor, abs(got.x - want[0]),
+                           abs(got.y - want[1]))
+    say("  worst vertex placement %.3e px" % worst_anchor)
+    if worst_anchor > FLOAT32_FLOOR:
+        failures.append("anchored import moved the shape by %.3e px"
+                        % worst_anchor)
+
+    # Feather lands on the vertex the anchor named, and nowhere else. The
+    # normals are unit length, so the offset's magnitude is the radius.
+    if len(built) == 6:
+        want_radius = {0: 0.0, 1: 30.0, 2: 0.0, 3: 15.0, 4: 12.0, 5: 0.0}
+        worst_radius = 0.0
+        for index, radius in want_radius.items():
+            fc = built[index].featherCenter.getPosition(1.0)
+            got = (float(fc.x) ** 2 + float(fc.y) ** 2) ** 0.5
+            worst_radius = max(worst_radius, abs(got - radius))
+        say("  worst feather radius error %.3e px" % worst_radius)
+        if worst_radius > 1e-3:
+            failures.append("anchored feather landed %.3e px off its radius"
+                            % worst_radius)
+
+    say("  What is still unmeasured is section 6.4's open question: whether")
+    say("  After Effects' featherRelSegLocs is the bezier parameter this")
+    say("  splits at or an arc-length fraction. On a curved segment the two")
+    say("  differ, and only a rendered comparison can say. Until then an")
+    say("  anchored AE file is better than the snap, not known to be exact.")
+    say()
+
     say("=== VERDICT ===")
     if failures:
         say("FAIL")
         for f in failures:
             say("  - %s" % f)
     else:
-        say("PASS - Nuke round trips through .rbj, dense, sparse and open")
+        say("PASS - Nuke round trips through .rbj, dense, sparse, open"
+            " and anchored")
     return failures
 
 

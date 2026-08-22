@@ -1542,6 +1542,237 @@ class TestFeatherAnchors(unittest.TestCase):
                                 "seg %d rel %s gave t %r" % (seg, rel, t))
 
 
+def _eval_cubic(points, i, j, u):
+    """One .rbj segment evaluated at parameter u, straight from the formula.
+
+    Deliberately not built out of anything the code under test uses: a split
+    that is wrong in the same way as its own evaluator would look right.
+    """
+    b0 = points[i]["c"]
+    b1 = [points[i]["c"][0] + points[i]["out"][0],
+          points[i]["c"][1] + points[i]["out"][1]]
+    b2 = [points[j]["c"][0] + points[j]["in"][0],
+          points[j]["c"][1] + points[j]["in"][1]]
+    b3 = points[j]["c"]
+    v = 1.0 - u
+    return [v * v * v * b0[k] + 3 * v * v * u * b1[k]
+            + 3 * v * u * u * b2[k] + u * u * u * b3[k] for k in (0, 1)]
+
+
+class TestSplitCubic(unittest.TestCase):
+    """spec/rbj-v2-draft.md section 6.5. The claim is that nothing moves."""
+
+    CURVE = [[0.0, 0.0], [30.0, 100.0], [120.0, -40.0], [150.0, 60.0]]
+
+    def test_the_halves_share_the_split_point(self):
+        left, right = geom.split_cubic(self.CURVE, 0.4)
+        self.assertEqual(left[3], right[0])
+
+    def test_the_ends_are_untouched(self):
+        left, right = geom.split_cubic(self.CURVE, 0.4)
+        self.assertEqual(left[0], self.CURVE[0])
+        self.assertEqual(right[3], self.CURVE[3])
+
+    def test_the_split_point_is_on_the_original_curve(self):
+        def bezier(control, u):
+            v = 1.0 - u
+            return [v ** 3 * control[0][k] + 3 * v * v * u * control[1][k]
+                    + 3 * v * u * u * control[2][k] + u ** 3 * control[3][k]
+                    for k in (0, 1)]
+
+        for u in (0.1, 0.25, 0.5, 0.75, 0.9):
+            left, _ = geom.split_cubic(self.CURVE, u)
+            want = bezier(self.CURVE, u)
+            for k in (0, 1):
+                self.assertAlmostEqual(left[3][k], want[k], places=12)
+
+    def test_the_two_halves_retrace_the_whole_curve(self):
+        # The claim section 6.5 rests on: subdivision reproduces the curve
+        # exactly, so a vertex inserted to hold a feather anchor does not move
+        # the shape. Sampled densely rather than at the split point alone.
+        def bezier(control, u):
+            v = 1.0 - u
+            return [v ** 3 * control[0][k] + 3 * v * v * u * control[1][k]
+                    + 3 * v * u * u * control[2][k] + u ** 3 * control[3][k]
+                    for k in (0, 1)]
+
+        split = 0.37
+        left, right = geom.split_cubic(self.CURVE, split)
+        for i in range(101):
+            u = i / 100.0
+            want = bezier(self.CURVE, u)
+            if u <= split:
+                got = bezier(left, u / split)
+            else:
+                got = bezier(right, (u - split) / (1.0 - split))
+            for k in (0, 1):
+                self.assertAlmostEqual(got[k], want[k], places=9,
+                                       msg="at u=%g" % u)
+
+
+class TestInsertAnchorVertices(unittest.TestCase):
+    """spec/rbj-v2-draft.md section 6.5, into a host that anchors at vertices.
+
+    The price is vertices; the guarantee is that the shape does not move.
+    """
+
+    def square(self):
+        # Curved sides, so a split that ignored the tangents would show.
+        return [{"c": [0.0, 0.0], "in": [-20.0, 0.0], "out": [20.0, 30.0]},
+                {"c": [100.0, 0.0], "in": [-20.0, 30.0], "out": [20.0, 0.0]},
+                {"c": [100.0, 100.0], "in": [20.0, 0.0], "out": [-20.0, 0.0]},
+                {"c": [0.0, 100.0], "in": [20.0, 0.0], "out": [-20.0, 0.0]}]
+
+    def test_an_anchor_on_a_vertex_inserts_nothing(self):
+        got = geom.insert_anchor_vertices(self.square(),
+                                          [{"t": 2.0, "feather": 9.0}])
+        self.assertEqual(got["inserted"], 0)
+        self.assertEqual(len(got["points"]), 4)
+        self.assertEqual(got["feather"], [0.0, 0.0, 9.0, 0.0])
+
+    def test_a_mid_segment_anchor_inserts_one_vertex(self):
+        got = geom.insert_anchor_vertices(self.square(),
+                                          [{"t": 0.5, "feather": 9.0}])
+        self.assertEqual(got["inserted"], 1)
+        self.assertEqual(len(got["points"]), 5)
+        self.assertEqual(got["feather"], [0.0, 9.0, 0.0, 0.0, 0.0])
+
+    def test_the_inserted_vertex_sits_on_the_original_curve(self):
+        base = self.square()
+        for t in (0.25, 0.5, 0.75, 1.5, 3.5):
+            got = geom.insert_anchor_vertices(base, [{"t": t, "feather": 1.0}])
+            segment = int(t)
+            want = _eval_cubic(base, segment, (segment + 1) % 4, t - segment)
+            new = got["points"][segment + 1]["c"]
+            for k in (0, 1):
+                self.assertAlmostEqual(new[k], want[k], places=9,
+                                       msg="t=%g axis %d" % (t, k))
+
+    def test_the_shape_does_not_move(self):
+        # The whole promise. Sample the original curve and the split one and
+        # require them to agree everywhere, not only at the inserted vertex.
+        base = self.square()
+        got = geom.insert_anchor_vertices(base, [{"t": 0.4, "feather": 1.0}])
+        after = got["points"]
+        for i in range(101):
+            u = i / 100.0
+            want = _eval_cubic(base, 0, 1, u)
+            if u <= 0.4:
+                have = _eval_cubic(after, 0, 1, u / 0.4)
+            else:
+                have = _eval_cubic(after, 1, 2, (u - 0.4) / 0.6)
+            for k in (0, 1):
+                self.assertAlmostEqual(have[k], want[k], places=9,
+                                       msg="at u=%g" % u)
+
+    def test_two_anchors_on_one_segment_both_get_a_vertex(self):
+        # The case v1 could not carry at all, and the reason the whole model
+        # is a list rather than a wider point field.
+        base = self.square()
+        got = geom.insert_anchor_vertices(base, [{"t": 0.25, "feather": 5.0},
+                                                 {"t": 0.75, "feather": -7.0}])
+        self.assertEqual(got["inserted"], 2)
+        self.assertEqual(got["feather"], [0.0, 5.0, -7.0, 0.0, 0.0, 0.0])
+        for k, t in ((1, 0.25), (2, 0.75)):
+            want = _eval_cubic(base, 0, 1, t)
+            for axis in (0, 1):
+                self.assertAlmostEqual(got["points"][k]["c"][axis], want[axis],
+                                       places=9, msg="t=%g" % t)
+
+    def test_the_shape_does_not_move_after_two_cuts_on_one_segment(self):
+        # The parameter remap is the part that is easy to get wrong: the
+        # second cut is taken on what is left of the segment, not on the whole.
+        base = self.square()
+        got = geom.insert_anchor_vertices(base, [{"t": 0.25, "feather": 1.0},
+                                                 {"t": 0.75, "feather": 2.0}])
+        after = got["points"]
+        spans = ((0, 1, 0.0, 0.25), (1, 2, 0.25, 0.75), (2, 3, 0.75, 1.0))
+        for i in range(101):
+            u = i / 100.0
+            want = _eval_cubic(base, 0, 1, u)
+            for a, b, lo, hi in spans:
+                if lo <= u <= hi:
+                    have = _eval_cubic(after, a, b, (u - lo) / (hi - lo))
+                    break
+            for k in (0, 1):
+                self.assertAlmostEqual(have[k], want[k], places=9,
+                                       msg="at u=%g" % u)
+
+    def test_cuts_on_different_segments_do_not_disturb_each_other(self):
+        base = self.square()
+        got = geom.insert_anchor_vertices(base, [{"t": 0.5, "feather": 1.0},
+                                                 {"t": 2.5, "feather": 2.0}])
+        self.assertEqual(got["inserted"], 2)
+        self.assertEqual(got["feather"], [0.0, 1.0, 0.0, 0.0, 2.0, 0.0])
+        for index, t in ((1, 0.5), (4, 2.5)):
+            segment = int(t)
+            want = _eval_cubic(base, segment, segment + 1, t - segment)
+            for k in (0, 1):
+                self.assertAlmostEqual(got["points"][index]["c"][k], want[k],
+                                       places=9)
+
+    def test_a_cut_on_the_wrapping_segment_fixes_the_first_vertex(self):
+        # The segment leaving the last vertex arrives at vertex 0, which the
+        # emitting loop has already passed. Its incoming tangent still has to
+        # be the rewritten one.
+        base = self.square()
+        got = geom.insert_anchor_vertices(base, [{"t": 3.5, "feather": 1.0}])
+        self.assertEqual(got["inserted"], 1)
+        self.assertNotEqual(got["points"][0]["in"], base[0]["in"])
+        want = _eval_cubic(base, 3, 0, 0.5)
+        for k in (0, 1):
+            self.assertAlmostEqual(got["points"][4]["c"][k], want[k], places=9)
+
+    def test_the_input_is_not_modified(self):
+        base = self.square()
+        before = json.dumps(base)
+        geom.insert_anchor_vertices(base, [{"t": 3.5, "feather": 1.0},
+                                           {"t": 0.5, "feather": 2.0}])
+        self.assertEqual(json.dumps(base), before)
+
+    def test_two_anchors_at_one_t_collide(self):
+        # Nuke's featherCenter is one offset per control point, so two anchors
+        # at one position have one vertex between them however the segment is
+        # cut. This is the loss section 6 cannot remove, and it is reported.
+        got = geom.insert_anchor_vertices(self.square(),
+                                          [{"t": 2.0, "feather": 3.0},
+                                           {"t": 2.0, "feather": -9.0}])
+        self.assertEqual(got["feather"][2], -9.0)
+        self.assertEqual(got["collided"],
+                         [{"t": 2.0, "radius": 3.0, "kept": -9.0}])
+
+    def test_two_anchors_at_one_mid_segment_t_collide(self):
+        got = geom.insert_anchor_vertices(self.square(),
+                                          [{"t": 1.5, "feather": 3.0},
+                                           {"t": 1.5, "feather": 1.0}])
+        self.assertEqual(got["inserted"], 1)
+        self.assertEqual(got["feather"][2], 3.0)
+        self.assertEqual(len(got["collided"]), 1)
+
+    def test_the_earlier_anchor_holds_on_a_tie(self):
+        # snap_feather_points' rule, kept so the two paths do not disagree
+        # about the same input.
+        got = geom.insert_anchor_vertices(self.square(),
+                                          [{"t": 1.0, "feather": 4.0},
+                                           {"t": 1.0, "feather": -4.0}])
+        self.assertEqual(got["feather"][1], 4.0)
+
+    def test_no_anchors_leaves_the_shape_alone(self):
+        base = self.square()
+        got = geom.insert_anchor_vertices(base, [])
+        self.assertEqual(got["inserted"], 0)
+        self.assertEqual(got["points"], base)
+        self.assertEqual(got["feather"], [0.0] * 4)
+
+    def test_an_open_shape_keeps_its_last_vertex_free(self):
+        base = self.square()
+        got = geom.insert_anchor_vertices(base, [{"t": 3.0, "feather": 6.0}],
+                                          closed=False)
+        self.assertEqual(got["inserted"], 0)
+        self.assertEqual(got["feather"], [0.0, 0.0, 0.0, 6.0])
+        self.assertEqual(got["points"][0]["in"], base[0]["in"])
+
+
 class TestFeatherPointsFromAnchors(unittest.TestCase):
     """spec/rbj-v2-draft.md section 6, back into After Effects.
 
@@ -1631,6 +1862,146 @@ class TestFeatherPointsFromVertices(unittest.TestCase):
 
 @unittest.skipUnless(NODE, "node is not installed; the ExtendScript port is "
                            "still covered by test/test_ae_core.js")
+class TestNukeAnchoredFeather(unittest.TestCase):
+    """The Nuke importer's section 6.5 policy, without Nuke.
+
+    `nuke/rotobridge_import.py` cannot be imported without the host, but the
+    two functions that decide what happens to an anchored shape touch only
+    `geom` and a `warn` callable. Stubbing the host modules is worth it for
+    one branch in particular: the crossing fallback is the case no one will
+    reach by hand, and an untested fallback is a fallback that does not work.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import types
+        stubs = {}
+        nuke_stub = types.ModuleType("nuke")
+        rp_stub = types.ModuleType("nuke.rotopaint")
+        nuke_stub.rotopaint = rp_stub
+        shared = types.ModuleType("rotobridge_nuke")
+        for name in ("ATTR_FEATHER_FALLOFF", "ATTR_FEATHER_X", "ATTR_FEATHER_Y",
+                     "ATTR_OPACITY", "INTERP_LINEAR", "blend_from_rbj",
+                     "falloff_from_rbj", "point_members", "roto_knob",
+                     "set_curve_linear", "set_curve_types", "write_attr_curve"):
+            setattr(shared, name, None)
+        shared.drift, shared.geom = drift, geom
+        shared.interp, shared.rbj = interp, rbj
+        stubs["nuke"] = nuke_stub
+        stubs["nuke.rotopaint"] = rp_stub
+        stubs["rotobridge_nuke"] = shared
+
+        cls._saved = dict((k, sys.modules.get(k)) for k in stubs)
+        sys.modules.update(stubs)
+        sys.path.insert(0, os.path.join(REPO, "nuke"))
+        try:
+            import rotobridge_import
+            cls.rbi = rotobridge_import
+        finally:
+            sys.path.pop(0)
+
+    @classmethod
+    def tearDownClass(cls):
+        for key, was in cls._saved.items():
+            if was is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = was
+        sys.modules.pop("rotobridge_import", None)
+
+    def spec(self, anchors_at, frames=(0, 1, 2)):
+        """A four-point square whose anchors are `anchors_at(frame)`."""
+        square = [{"c": [0.0, 0.0], "in": [-20.0, 0.0], "out": [20.0, 30.0]},
+                  {"c": [100.0, 0.0], "in": [-20.0, 30.0], "out": [20.0, 0.0]},
+                  {"c": [100.0, 100.0], "in": [20.0, 0.0], "out": [-20.0, 0.0]},
+                  {"c": [0.0, 100.0], "in": [20.0, 0.0], "out": [-20.0, 0.0]}]
+        return {
+            "name": "feathered", "closed": True,
+            "feather_model": "anchored",
+            "frames": dict(
+                (str(f), {"opacity": 1.0, "feather_uniform": [0.0, 0.0],
+                          "points": copy.deepcopy(square),
+                          "feather_points": anchors_at(f)})
+                for f in frames),
+        }
+
+    def run_anchored(self, anchors_at, frames=(0, 1, 2)):
+        said = []
+        got = self.rbi._anchored_dense(self.spec(anchors_at, frames),
+                                       list(frames), said.append)
+        return got, said
+
+    def test_a_mid_segment_anchor_becomes_a_vertex_on_every_frame(self):
+        got, said = self.run_anchored(
+            lambda f: [{"t": 0.5, "feather": 9.0}])
+        self.assertIsNotNone(got)
+        for frame in ("0", "1", "2"):
+            points = got[frame]["points"]
+            self.assertEqual(len(points), 5, frame)
+            self.assertEqual(points[1]["feather"], 9.0, frame)
+        self.assertTrue(any("1 vertex was inserted" in w for w in said), said)
+
+    def test_every_point_carries_feather_so_it_reads_as_per_point(self):
+        # The whole reason for the transformation: downstream is Nuke's own
+        # model and needs no further special case.
+        got, _ = self.run_anchored(lambda f: [{"t": 1.5, "feather": 4.0}])
+        for point in got["0"]["points"]:
+            self.assertIn("feather", point)
+
+    def test_the_insertion_count_is_written_in_words_that_read(self):
+        # It goes in front of a compositor wondering why the shape has more
+        # points than the artist drew, so "2 vertex/vertices" will not do.
+        _, one = self.run_anchored(lambda f: [{"t": 0.5, "feather": 1.0}])
+        _, two = self.run_anchored(lambda f: [{"t": 0.5, "feather": 1.0},
+                                              {"t": 2.5, "feather": 2.0}])
+        self.assertIn("1 vertex was inserted", " ".join(one))
+        self.assertIn("2 vertices were inserted", " ".join(two))
+
+    def test_a_moving_anchor_keeps_one_vertex_count(self):
+        # Section 6.5: an anchor that slides costs keys, not accuracy. The
+        # count is what the format requires to stay fixed, and it does.
+        got, said = self.run_anchored(
+            lambda f: [{"t": 0.2 + 0.1 * f, "feather": 9.0}])
+        self.assertIsNotNone(got)
+        self.assertEqual(set(len(got[k]["points"]) for k in got), set([5]))
+        self.assertNotEqual(got["0"]["points"][1]["c"],
+                            got["2"]["points"][1]["c"])
+
+    def test_an_anchor_sliding_onto_a_vertex_falls_back_to_the_snap(self):
+        # The crossing case. At frame 2 the anchor is exactly on vertex 1, so
+        # no vertex is inserted and the count drops - which is a topology
+        # change, and the shape takes the v1 reading instead.
+        got, said = self.run_anchored(
+            lambda f: [{"t": 0.5 + 0.25 * f, "feather": 9.0}])
+        self.assertIsNone(got)
+        self.assertTrue(any("cross each other between frames" in w
+                            for w in said), said)
+
+    def test_the_fallback_places_feather_as_version_1_did(self):
+        spec = self.spec(lambda f: [{"t": 0.75, "feather": 9.0}])
+        got = self.rbi._snapped_dense(spec, [0, 1, 2])
+        points = got["0"]["points"]
+        self.assertEqual(len(points), 4, "the snap inserts nothing")
+        self.assertEqual([p["feather"] for p in points],
+                         [0.0, 9.0, 0.0, 0.0])
+
+    def test_a_vertex_anchor_inserts_nothing_and_says_nothing(self):
+        got, said = self.run_anchored(lambda f: [{"t": 2.0, "feather": 5.0}])
+        self.assertEqual(len(got["0"]["points"]), 4)
+        self.assertEqual([p["feather"] for p in got["0"]["points"]],
+                         [0.0, 0.0, 5.0, 0.0])
+        self.assertEqual(said, [])
+
+    def test_colliding_anchors_are_reported_once_not_once_per_frame(self):
+        got, said = self.run_anchored(
+            lambda f: [{"t": 2.0, "feather": 3.0},
+                       {"t": 2.0, "feather": -9.0}])
+        clashes = [w for w in said if "share a position" in w]
+        self.assertEqual(len(clashes), 1, said)
+        self.assertIn("1 feather anchor(s)", clashes[0])
+        self.assertEqual(got["0"]["points"][2]["feather"], -9.0)
+
+
 class TestEs3CrossCheck(unittest.TestCase):
     """What the ExtendScript writer produces, the Python reader must accept.
 

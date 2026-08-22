@@ -56,6 +56,107 @@ def _feather_offsets(record, warn, shape_name, model, closed):
     return offsets
 
 
+def _snapped_dense(spec, frames):
+    """The v1 reading of an anchored shape: every anchor moved to a vertex.
+
+    The fallback `_anchored_dense` names, and the one section 6.8 keeps
+    `geom.snap_feather_points` around for. It loses exactly what v1 lost, and
+    the caller has already said so.
+    """
+    source = spec["frames"]
+    out = {}
+    for frame in frames:
+        record = source[str(frame)]
+        anchors = record["feather_points"]
+        got = geom.snap_feather_points([int(a["t"]) for a in anchors],
+                                       [float(a["t"]) - int(a["t"])
+                                        for a in anchors],
+                                       [a["feather"] for a in anchors],
+                                       len(record["points"]))
+        points = []
+        for point, scalar in zip(record["points"], got["feather"]):
+            carried = dict(point)
+            carried["feather"] = scalar
+            points.append(carried)
+        out[str(frame)] = dict(record, points=points)
+    return out
+
+
+def _anchored_dense(spec, frames, warn):
+    """The `anchored` feather layer as vertices Nuke can hold (spec 6.5).
+
+    Returns a `frames` mapping whose points each carry a `feather` scalar, so
+    everything downstream reads the shape as `per_point` - which is Nuke's own
+    model and needs no further special case. Returns None when the shape cannot
+    be carried this way and the caller should fall back to the v1 snap.
+
+    Nuke anchors feather at a vertex and nowhere else, so an anchor that sits
+    mid-segment gets one: the segment is split with de Casteljau, which
+    reproduces the curve exactly, and the anchor rides the new vertex. The
+    shape gains vertices and does not move. That is the trade section 6.5
+    makes, and the compositor is told about it rather than left to wonder why
+    there are more points than the artist drew.
+
+    **The one case that does not work.** An anchor that slides past an
+    original vertex changes its ordinal position around the ring, so the
+    inserted vertex would have to change index partway through the shape -
+    which is a topology change, forbidden for the reason v1 section 7.3
+    forbids a changing vertex count. It shows up here as a vertex count that
+    differs between frames, and the whole shape falls back to the snap. That
+    is coarser than section 6.5's "snap that one anchor": the count says a
+    crossing happened but not which pair crossed, and guessing would be worse
+    than being plain about it.
+    """
+    name = spec["name"]
+    source = spec["frames"]
+    out = {}
+    counts = {}
+    inserted = 0
+    collided = {}
+
+    for frame in frames:
+        record = source[str(frame)]
+        got = geom.insert_anchor_vertices(record["points"],
+                                          record["feather_points"],
+                                          spec["closed"])
+        counts.setdefault(len(got["points"]), frame)
+        inserted = max(inserted, got["inserted"])
+        for clash in got["collided"]:
+            collided[clash["t"]] = clash
+        points = []
+        for point, scalar in zip(got["points"], got["feather"]):
+            carried = dict(point)
+            carried["feather"] = scalar
+            points.append(carried)
+        out[str(frame)] = dict(record, points=points)
+
+    if len(counts) > 1:
+        detail = ", ".join("%d at frame %s" % (n, counts[n])
+                           for n in sorted(counts))
+        warn("shape '%s': feather anchors cross each other between frames "
+             "(%s vertices would be needed), which would change the shape's "
+             "topology partway through. They were snapped to vertices as .rbj "
+             "version 1 does, so this shape's feather is placed as it would "
+             "have been before" % (name, detail))
+        return None
+
+    if inserted:
+        warn("shape '%s': %d %s inserted to hold feather anchors that sat "
+             "mid-segment. The subdivision is exact, so the shape has not "
+             "moved - it has more points than the artist drew because Nuke "
+             "can only anchor feather at a vertex"
+             % (name, inserted,
+                "vertex was" if inserted == 1 else "vertices were"))
+
+    if collided:
+        warn("shape '%s': %d feather anchor(s) share a position with another "
+             "and could not be given a vertex of their own; the larger radius "
+             "was kept. Nuke carries one feather offset per control point"
+             % (name, len(collided)))
+
+    return out
+
+
 def _key_plan(spec, frames, offset, warn):
     """Which frames to key, and the Nuke key type each one wants.
 
@@ -166,6 +267,19 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
     name = spec["name"]
     model = spec["feather_model"]
     dense = spec["frames"]
+
+    if model == "anchored":
+        # Resolved to vertices before anything is built, because the split
+        # changes the point count and the Shape is created from it.
+        # `_anchored_dense` returns None only for the crossing case, and then
+        # the v1 snap is the fallback - which is why `snap_feather_points`
+        # does not go away (spec/rbj-v2-draft.md section 6.8).
+        anchored = _anchored_dense(spec, frames, warn)
+        if anchored is None:
+            dense = _snapped_dense(spec, frames)
+        else:
+            dense = anchored
+        model = "per_point"
 
     shape = rp.Shape(knob)
     for point in dense[str(frames[0])]["points"]:

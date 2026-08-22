@@ -8,7 +8,7 @@ Nuke 17.1v1, frames 1001-1020
 --- export ---
   1 shape(s), 20 frames, 4 points
   feather_model = per_point, blend = union, falloff = smooth
-  took 0.017 s
+  took 0.006 s
   warning: shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
 
 --- schema ---
@@ -20,7 +20,7 @@ Nuke 17.1v1, frames 1001-1020
 
 --- import at tolerance 0 ---
   rebuilt 'round_trip' with 4 points, closed=True
-  took 0.031 s
+  took 0.023 s
 
 --- geometry, every point on every frame ---
   worst centre deviation:  3.052e-05 px
@@ -40,9 +40,9 @@ Nuke 17.1v1, frames 1001-1020
   imported at offset -1000; worst centre deviation 3.052e-05 px
 
 --- acceptance criterion 11, 20 points over 150 frames ---
-  export: 0.42 s  (budget 10 s)
-  import at tolerance 0:   0.07 s  (budget 30 s)
-  import at tolerance 0.5: 0.08 s  (budget 30 s)
+  export: 0.14 s  (budget 10 s)
+  import at tolerance 0:   0.03 s  (budget 30 s)
+  import at tolerance 0.5: 0.03 s  (budget 30 s)
 
 --- Phase 3: a shape keyed on 5 frames ---
   The acceptance criterion: five authored keys survive as five keys
@@ -97,5 +97,21 @@ Nuke 17.1v1, frames 1001-1020
   still unmeasured is what an OPEN mask renders as in After Effects
   (spec/rbj-v2-draft.md section 5).
 
+--- Phase 7: anchored feather (spec/rbj-v2-draft.md section 6) ---
+  Nuke anchors feather at a vertex and nowhere else, so an anchor
+  the artist put mid-segment gets one: the segment is split with de
+  Casteljau, which reproduces the curve exactly. The shape gains
+  points and does not move. Nothing on the Nuke side WRITES such a
+  file (section 6.6), so the fixture is built by hand.
+  4 points and 3 anchors in, 6 points out (want 6)
+  insertion warning: shape 'anchored': 2 vertices were inserted to hold feather anchors tha
+  worst vertex placement 0.000e+00 px
+  worst feather radius error 3.129e-07 px
+  What is still unmeasured is section 6.4's open question: whether
+  After Effects' featherRelSegLocs is the bezier parameter this
+  splits at or an arc-length fraction. On a curved segment the two
+  differ, and only a rendered comparison can say. Until then an
+  anchored AE file is better than the snap, not known to be exact.
+
 === VERDICT ===
-PASS - Nuke round trips through .rbj, dense, sparse and open
+PASS - Nuke round trips through .rbj, dense, sparse, open and anchored

@@ -1151,17 +1151,39 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    for an unrelated reason (the 27 px phantom), and that is the same invariant
    section 6.4 stores.
 
-   **Still to do: the Nuke importer.** Section 6.5's de Casteljau split, the
-   once-per-shape warning naming how many vertices were inserted, and the
-   crossing-case fallback to `snapFeatherPoints`, which is why that function
-   stays. Until it lands, an anchored file opens in After Effects and not in
-   Nuke, which is backwards for a product whose hub is Nuke.
+   **Nuke importer: done, 2026-08-21, and verified in the host.**
+   `geom.split_cubic` and `geom.insert_anchor_vertices` do section 6.5;
+   `_anchored_dense` in `nuke/rotobridge_import.py` is the policy and
+   `_snapped_dense` the fallback. An anchored shape is resolved to vertices
+   before the Shape is built, then read as `per_point` - which is Nuke's own
+   model - so nothing downstream needed a special case.
 
-   **Re-export `test/golden/ae_scene.rbj` once the Nuke importer is in.** Its
-   `feathered` mask has anchors at `seg + rel` of `[0.25, 0.75, 2.5, 3.0]`, so
-   it will come out `anchored` and the two snap warnings will disappear -
-   changing the alert's warning count again, and `test/probe/README.md` says
-   five. Re-run the crossing after it.
+   Measured in Nuke 17.1v1, `test_nuke_roundtrip.py` Phase 7: 4 points and 3
+   anchors in, 6 points out, **worst vertex placement 0.000e+00 px** and worst
+   feather radius error 3.129e-07, which is the float32 floor. The shape does
+   not move; the price is vertices, exactly as section 6.5 says.
+
+   The crossing case falls back per shape rather than per anchor. A vertex
+   count that differs between frames says a crossing happened but not which
+   pair crossed, and guessing would be worse than saying so - which it does.
+   That branch is tested host-free in `TestNukeAnchoredFeather`, by stubbing
+   the host modules, because it is the one nobody will reach by hand.
+
+   **Section 6 is implemented end to end.** What is NOT settled is 6.4's open
+   question - whether After Effects' `featherRelSegLocs` is the bezier
+   parameter the split uses or an arc-length fraction. On a curved segment the
+   two differ, and reading the value back cannot answer it because the host
+   returns what was written. It needs a rendered comparison, which is Phase 5.
+   **Until then an anchored After Effects file is better than the snap, not
+   known to be exact.** Do not claim exact.
+
+   **Re-export `test/golden/ae_scene.rbj`.** Its `feathered` mask has anchors
+   at `seg + rel` of `[0.25, 0.75, 2.5, 3.0]`, so it now comes out `anchored`
+   and the two snap warnings disappear - the alert's warning count changes
+   again, and `test/probe/README.md` currently says five. Expect **three**:
+   the two that remain are `opened` and `offgrid`, plus the `mixed` hold
+   warning, so five minus the two feather ones. Re-run the crossing after it;
+   `feathered` will arrive in Nuke with more vertices than the artist drew.
 
    **One thing is unmeasured and it gates exactness, not the work.** Is AE's
    `featherRelSegLocs` a bezier parameter or an arc-length fraction? Section 6.4

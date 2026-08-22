@@ -365,6 +365,161 @@ def feather_anchors(seg_locs, rel_locs, radii, vertex_count, closed=True):
     return anchors
 
 
+def _lerp(a, b, u):
+    return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]
+
+
+def _sub(a, b):
+    return [a[0] - b[0], a[1] - b[1]]
+
+
+def split_cubic(control, u):
+    """De Casteljau. One cubic's four control points to the two halves.
+
+    `control` is `[b0, b1, b2, b3]` in absolute coordinates. Returns
+    `(left, right)`, each the same shape, sharing the split point.
+
+    Subdivision reproduces the original curve exactly - the two halves traced
+    end to end are the same curve, not an approximation of it - which is the
+    whole reason spec/rbj-v2-draft.md section 6.5 can promise that inserting a
+    vertex to hold a feather anchor does not move the shape.
+    """
+    b0, b1, b2, b3 = control
+    a = _lerp(b0, b1, u)
+    b = _lerp(b1, b2, u)
+    c = _lerp(b2, b3, u)
+    d = _lerp(a, b, u)
+    e = _lerp(b, c, u)
+    f = _lerp(d, e, u)
+    return [b0, a, d, f], [f, e, c, b3]
+
+
+def _split_segment(control, params):
+    """One segment split at each of `params`, which must ascend within (0, 1).
+
+    Returns `(start_out, made, end_in)`: the start vertex's new outgoing
+    tangent, a list of `(c, in, out)` for the inserted vertices in order, and
+    the end vertex's new incoming tangent. All tangents are vertex-relative,
+    as spec section 8 stores them.
+
+    Each split is taken on what is left of the segment, so the parameter is
+    remapped: after cutting at `u1`, the piece that remains runs from `u1` to
+    1 and a later `u2` sits at `(u2 - u1) / (1 - u1)` along it.
+    """
+    remaining = control
+    previous = 0.0
+    start_out = None
+    made = []
+    for u in params:
+        local = (u - previous) / (1.0 - previous)
+        left, right = split_cubic(remaining, local)
+        if start_out is None:
+            start_out = _sub(left[1], left[0])
+        else:
+            # `left[0]` is the vertex inserted by the previous cut, so this is
+            # where its outgoing tangent is finally known.
+            made[-1] = (made[-1][0], made[-1][1], _sub(left[1], left[0]))
+        made.append((left[3], _sub(left[2], left[3]), None))
+        remaining = right
+        previous = u
+    made[-1] = (made[-1][0], made[-1][1], _sub(remaining[1], remaining[0]))
+    return start_out, made, _sub(remaining[2], remaining[3])
+
+
+def insert_anchor_vertices(points, anchors, closed=True):
+    """Anchored feather onto a host that can only anchor at a vertex (6.5).
+
+    Returns `{"points", "feather", "inserted", "collided"}`. `points` is the
+    original list with a vertex inserted wherever an anchor sat mid-segment,
+    and `feather` is one signed scalar per resulting point - which is
+    `per_point`, the model Nuke has. `inserted` counts the new vertices, for
+    the caller's once-per-shape warning; `collided` lists anchors that could
+    not be given a vertex of their own, as
+    `{"t", "radius", "kept"}`.
+
+    The geometry does not move. The split is exact, so the shape gains a
+    vertex and changes nothing about where it is - that is the trade section
+    6.5 makes: vertices rather than accuracy.
+
+    **Two anchors at one position is the case that still loses.** Nuke's
+    `featherCenter` is one offset per control point, so two anchors at the same
+    `t` have one vertex between them however the segment is cut. Larger
+    magnitude wins and the earlier holds on a tie, which is
+    `snap_feather_points`' rule, kept so the two paths do not disagree.
+    """
+    n = len(points)
+    at_vertex = {}
+    by_segment = {}
+    collided = []
+
+    def claim(store, key, t, radius):
+        if key in store:
+            kept = store[key]
+            if abs(radius) > abs(kept):
+                collided.append({"t": t, "radius": kept, "kept": radius})
+                store[key] = radius
+            else:
+                collided.append({"t": t, "radius": radius, "kept": kept})
+        else:
+            store[key] = radius
+
+    for anchor in anchors:
+        t = float(anchor["t"])
+        radius = float(anchor["feather"])
+        segment = int(math.floor(t))
+        u = t - segment
+        if u == 0.0:
+            claim(at_vertex, segment % n if closed else segment, t, radius)
+        else:
+            by_segment.setdefault(segment, {})
+            claim(by_segment[segment], u, t, radius)
+
+    # Every cut is taken before anything is emitted. A cut rewrites the
+    # tangents at both ends of its segment, and the far end can be a vertex
+    # already written or the very first one, so doing this in one pass would
+    # make the result depend on which segment was reached first.
+    cuts = {}
+    for i in sorted(by_segment):
+        j = (i + 1) % n
+        if j == 0 and not closed:
+            # An open shape has no segment leaving its last vertex, so there is
+            # nothing here to cut. Section 6.4's range rule says this cannot
+            # arrive; ignoring it beats inventing a segment for it.
+            continue
+        control = [list(points[i]["c"]),
+                   [points[i]["c"][0] + points[i]["out"][0],
+                    points[i]["c"][1] + points[i]["out"][1]],
+                   [points[j]["c"][0] + points[j]["in"][0],
+                    points[j]["c"][1] + points[j]["in"][1]],
+                   list(points[j]["c"])]
+        params = sorted(by_segment[i])
+        start_out, made, end_in = _split_segment(control, params)
+        cuts[i] = (start_out, made, end_in, params)
+
+    out_points = []
+    feather = []
+    inserted = 0
+    for i in range(n):
+        previous = (i - 1) % n
+        out_points.append({
+            "c": list(points[i]["c"]),
+            "in": cuts[previous][2] if previous in cuts
+                  else list(points[i]["in"]),
+            "out": cuts[i][0] if i in cuts else list(points[i]["out"]),
+        })
+        feather.append(at_vertex.get(i, 0.0))
+        if i not in cuts:
+            continue
+        _, made, _, params = cuts[i]
+        for k, (c, tangent_in, tangent_out) in enumerate(made):
+            out_points.append({"c": c, "in": tangent_in, "out": tangent_out})
+            feather.append(by_segment[i][params[k]])
+            inserted += 1
+
+    return {"points": out_points, "feather": feather, "inserted": inserted,
+            "collided": collided}
+
+
 def feather_points_from_anchors(anchors):
     """`feather_points` (spec 6.3) back to the arrays After Effects wants.
 
