@@ -195,10 +195,11 @@ tree, so a `cp ae/*.jsx` on its own leaves it behind.
    shapes and a different file. (`ae_static_ease.rbj` is the other solid,
    exported the same way with the other layer selected.)
 4. Same menu -> `rotobridge_export.jsx`. Save as `ae_scene.rbj`.
-5. Read the alert: **6 shapes, 600 points, 5 warnings**. Any other count means
-   step 1 or step 3 went wrong, and the file is not this fixture. Four warnings
-   is the specific symptom of a deployment predating `0c1b3af`, which is the
-   commit that adds the fifth.
+5. Read the alert: **6 shapes, 600 points, 4 warnings**. Any other count means
+   step 1 or step 3 went wrong, and the file is not this fixture. The count has
+   moved twice and the number alone is a deployment check: five means a build
+   before `fc712d5`, which is where `feathered` stopped being snapped, and four
+   before that meant a build predating `0c1b3af`.
 6. Copy the file back over `test/golden/ae_scene.rbj`.
 7. **Check the diff before committing it**, against the version you replaced:
 
@@ -213,19 +214,36 @@ one-ulp wobble in the bake and a flipped `interp` label look identical in it.
 The tool reports geometry as a worst-case distance and labels one at a time.
 
 **The re-export is only believable if the diff is the one that was predicted.**
-Geometry identical, and exactly three lines under labels:
+That prediction changes every time the exporter does, so it is written down
+here beside the commit that moved it. As of `fc712d5`, against the golden
+committed at `df8584f`:
 
-    mixed key 12 out: hold -> ease
-    mixed key 18 out: ease -> hold
-    warning changed: mask 'mixed': 1 key(s) hold the mask path while the layer
-    moves under it, ...
+    --- labels ---
+    feathered feather_model: 'per_point' -> 'anchored'
+    warning changed: ... 3 feather point(s) sat mid-segment ...   (gone)
+    warning changed: ... two feather points resolved to vertex 3 ... (gone)
+    warning changed: ... feather is anchored along the path ...    (new)
 
-The two key lines are the change itself: `mixed` holds its mask path from frame
-12 to 24, but the layer's rotation is keyed at 6 and 18, so the composite only
-stops moving at 18. The old exporter read the path property and put the hold at
-12; the new one reads the bake and puts it at 18, where the shape actually
-stands still. The warning is the same fact said out loud - a held key the artist
-authored is not carried as a hold, and they should hear that.
+    --- geometry ---
+    feathered: anchor added at t 0.25, feather 30 on every frame
+    feathered: anchor added at t 0.75, feather -15 on every frame
+    feathered: anchor added at t 2.5, feather 12 on every frame
+    feathered: anchor added at t 3, feather 0 on every frame
+    feathered: point 0: feather 30 -> None on every frame
+    feathered: point 1: feather -15 -> None on every frame
+    feathered: point 2: feather 0 -> None on every frame
+    feathered: point 3: feather 12 -> None on every frame
+
+Nothing about the vertices, and nothing about any other shape. `feathered` is
+the only mask in the scene whose feather sits off a vertex, so it is the only
+one section 6.7 promotes; the rest stay exactly as they were.
+
+The four anchors are the ones `setup_ae_scene.jsx` authors, at `seg + rel` of
+`[0.25, 0.75, 2.5, 3.0]`. Under v1 the radius-12 one travelled 150 px along the
+path to reach vertex 3 and landed on the authored radius-0 point, which was
+discarded - a corner deliberately pinned to zero width arriving 12 px soft.
+That is the defect this whole section exists to fix, so the line that matters
+most in that diff is `anchor added at t 3, feather 0`.
 
 Anything else means the fixture moved, not the exporter - a different AE build,
 a stale project, a hand-tweaked mask - and the file should not be committed
@@ -233,14 +251,20 @@ until that is explained. Geometry drifting by a float epsilon is fine and worth
 recording; geometry drifting by a pixel is a different scene.
 
 Then re-run the crossing, because `ae_to_nuke_report.txt` is measured against
-this file. Run 2026-08-21: `mixed` went from 5 authored + 15 corrective at
-tolerance 0.5 to 5 + 11, which is in line with every other moving shape rather
-than an outlier. The prediction beforehand was "roughly 3" and was wrong; it
-counted only the false hold and forgot that segment 12 to 18 still needs a cubic
-fitted to a real After Effects curve, same as everywhere else. What the fix
-bought is frames 19 to 23, now exactly flat and needing nothing. Worst error
-rose from 0.1000 px to 0.4503 px and stayed inside the 0.5 tolerance - fewer
-corrective keys means more residual, which is the trade the tolerance is for.
+this file. Two things to expect from it after the feather work: `feathered`
+arrives in Nuke with **more vertices than the artist drew** - three anchors sit
+mid-segment, so three vertices are inserted to hold them - and the import warns
+saying so. The subdivision is exact, so its geometry should not move.
+
+Run 2026-08-21, before the feather work: `mixed` went from 5 authored + 15
+corrective at tolerance 0.5 to 5 + 11, which is in line with every other moving
+shape rather than an outlier. The prediction beforehand was "roughly 3" and was
+wrong; it counted only the false hold and forgot that segment 12 to 18 still
+needs a cubic fitted to a real After Effects curve, same as everywhere else.
+What the fix bought is frames 19 to 23, now exactly flat and needing nothing.
+Worst error rose from 0.1000 px to 0.4503 px and stayed inside the 0.5
+tolerance - fewer corrective keys means more residual, which is the trade the
+tolerance is for.
 
 What still has to be run by hand, and what to look for:
 

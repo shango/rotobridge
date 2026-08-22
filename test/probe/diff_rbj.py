@@ -51,6 +51,43 @@ def diff_keys(old, new, name, out):
                           b[frame].get("ease")))
 
 
+def diff_anchors(old, new, note):
+    """The `anchored` feather layer, spec/rbj-v2-draft.md section 6.3.
+
+    Compared by position rather than by index: `t` is what identifies an
+    anchor, and the list is sorted by it, so an anchor added at the front
+    would otherwise report as every entry having changed.
+
+    This is geometry, not a label. `t` is a position along the path and
+    `feather` is a distance in pixels, and both move by float epsilon for the
+    same reasons a vertex does.
+    """
+    a = dict((round(e["t"], 9), e) for e in old.get("feather_points", ()))
+    b = dict((round(e["t"], 9), e) for e in new.get("feather_points", ()))
+    for t in sorted(set(a) | set(b)):
+        if t not in a:
+            note("anchor added at t %g, feather %g" % (t, b[t]["feather"]))
+        elif t not in b:
+            note("anchor dropped at t %g, feather %g" % (t, a[t]["feather"]))
+        elif a[t]["feather"] != b[t]["feather"]:
+            note("anchor at t %g feather %g -> %g"
+                 % (t, a[t]["feather"], b[t]["feather"]))
+
+
+def summarise(frames, total):
+    """Which frames a per-frame difference happened on, said briefly.
+
+    A feather layer that changed model changed on all 25 frames, and printing
+    that 25 times buries the one line that says which model. The tool exists
+    to make a diff readable, so it says the count instead.
+    """
+    if len(frames) == total:
+        return "on every frame"
+    if len(frames) <= 3:
+        return "at frame " + ", ".join(str(f) for f in frames)
+    return "at %d frames, first %s" % (len(frames), frames[0])
+
+
 def worst_geometry(old, new, name, out):
     """Worst per-point distance over every frame, or None if incomparable.
 
@@ -62,7 +99,16 @@ def worst_geometry(old, new, name, out):
         out.append("%s: frame set differs" % name)
         return None
     worst, where = 0.0, None
-    for frame in sorted(old["frames"], key=int):
+    ordered = sorted(old["frames"], key=int)
+    # Per-frame differences are gathered rather than printed, because the ones
+    # that matter here are the ones that repeat: a shape whose feather model
+    # changed says the same thing on every frame it has.
+    seen = {}
+
+    def note(message, frame):
+        seen.setdefault(message, []).append(frame)
+
+    for frame in ordered:
         pa = old["frames"][frame]["points"]
         pb = new["frames"][frame]["points"]
         if len(pa) != len(pb):
@@ -75,10 +121,15 @@ def worst_geometry(old, new, name, out):
                     d = abs(pa[i][vec][axis] - pb[i][vec][axis])
                     if d > worst:
                         worst, where = d, "%s point %d %s" % (frame, i, vec)
-        if pa[i].get("feather") != pb[i].get("feather"):
-            out.append("%s frame %s point %d: feather %s -> %s"
-                       % (name, frame, i, pa[i].get("feather"),
-                          pb[i].get("feather")))
+            if pa[i].get("feather") != pb[i].get("feather"):
+                note("point %d: feather %s -> %s"
+                     % (i, pa[i].get("feather"), pb[i].get("feather")), frame)
+        diff_anchors(old["frames"][frame], new["frames"][frame],
+                     lambda m, f=frame: note(m, f))
+
+    for message in sorted(seen):
+        out.append("%s: %s %s"
+                   % (name, message, summarise(seen[message], len(ordered))))
     if where:
         out.append("%s: geometry worst %.4e px at frame %s"
                    % (name, worst, where))
