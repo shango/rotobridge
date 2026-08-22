@@ -6,7 +6,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
   linear     closed=True  feather=none      falloff=smooth
   eased      closed=True  feather=none      falloff=smooth
   mixed      closed=True  feather=none      falloff=smooth
-  feathered  closed=True  feather=per_point falloff=smooth
+  feathered  closed=True  feather=anchored  falloff=smooth
   offgrid    closed=True  feather=none      falloff=smooth
   opened     closed=False feather=none      falloff=smooth
 
@@ -18,14 +18,14 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
     feathered  4 authored, 21 corrective
     offgrid    5 authored, 20 corrective
     opened     4 authored, 21 corrective
-  warning: mask 'feathered': 3 feather point(s) sat mid-segment and were snapped to the nearer vertex; Nuke can only anchor feather at a vertex
-  warning: mask 'feathered': two feather points resolved to vertex 3; kept radius 12 and dropped 0
+  warning: mask 'feathered': feather is anchored along the path rather than at vertices, which only .rbj version 2 can express, so this file is version 2 and a version 1 reader will refuse it. Nothing is lost; under version 1 this mask's feather was being moved to the nearest vertex
   warning: mask 'opened' is an open spline, which produces no alpha as an After Effects mask; the geometry is carried but no stroke width or end caps are
   warning: mask 'mixed': 1 key(s) hold the mask path while the layer moves under it, so the shape is not flat there and the hold is not carried as one. Geometry is unaffected; what is lost is a held key the artist could edit
   warning: mask 'offgrid': a key sat 0.400 of a frame off the grid and was snapped to frame 10; .rbj keys are whole frames
   warning: shape 'opened' is an open spline from After Effects; the geometry is exact but what it renders as across applications is unverified
   warning: shape 'eased': 3 key(s) carry authored ease. Nuke's roto curves cannot hold it, so the shape arrives as a dense bake and the keyframe timing is not editable downstream. Geometry is unaffected
   warning: shape 'mixed': 1 key(s) carry a different interpolation on each side, which a Nuke key cannot hold - one type governs the whole key. They were set smooth and the drift pass corrected the positions
+  warning: shape 'feathered': 3 vertices were inserted to hold feather anchors that sat mid-segment. The subdivision is exact, so the shape has not moved - it has more points than the artist drew because Nuke can only anchor feather at a vertex
 
 --- did the open spline arrive open? ---
   linear     open=False
@@ -35,7 +35,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
   linear     worst 2.9755e-05 px
   eased      worst 6.0934e-05 px
   mixed      worst 2.4414e-05 px
-  feathered  worst 6.1035e-05 px
+  feathered  worst 6.1035e-05 px  (+3 vertices inserted to hold feather anchors)
   offgrid    worst 6.1035e-05 px
   opened     worst 3.0518e-05 px
   worst overall 6.1035e-05 px (feathered)
@@ -83,6 +83,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
 --- what the crossing changed, field by field ---
   mixed      frame 12  interp {'in': 'linear', 'out': 'ease'} -> {'in': 'ease', 'out': 'ease'}
   mixed      frame 18  interp {'in': 'ease', 'out': 'hold'} -> {'in': 'linear', 'out': 'hold'}
+  feathered  feather_model    'anchored' -> 'per_point'
 
 === VERDICT ===
 PASS - an After Effects .rbj opens in Nuke and comes back out

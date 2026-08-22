@@ -1179,17 +1179,33 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    **Until then an anchored After Effects file is better than the snap, not
    known to be exact.** Do not claim exact.
 
-   **The one host step left: re-export `test/golden/ae_scene.rbj`.** Its
-   `feathered` mask has anchors at `seg + rel` of `[0.25, 0.75, 2.5, 3.0]`, so
-   it now comes out `anchored`. **Expect four warnings, not five** - the two
-   snap warnings go away because nothing is snapped or dropped any more, and
-   one arrives saying the file is version 2. `test/probe/README.md`,
-   "Re-exporting the scene golden", carries the full predicted diff and has
-   been updated to four; the line worth watching for is
-   `anchor added at t 3, feather 0`, which is the authored zero-width corner v1
-   was discarding. Re-run the crossing after it: `feathered` will arrive in
-   Nuke with three more vertices than the artist drew, and the import will warn
-   saying so.
+   **Golden re-exported and the crossing re-run, 2026-08-22. Section 6 is
+   closed except for the measurement below.** The diff was the one
+   `test/probe/README.md` predicted before the run, line for line: four
+   warnings not five, `feathered` `per_point -> anchored`, its four anchors at
+   t 0.25 / 0.75 / 2.5 / 3.0 on every frame, its points giving up their
+   feather, and **no vertex differing on any frame**. `anchor added at t 3,
+   feather 0` is in the file - the zero-width corner v1 was overwriting with
+   the radius-12 anchor 150 px away.
+
+   Crossing, Nuke 17.1v1: `feathered` arrives with **3 inserted vertices**, its
+   geometry at 6.1035e-05 px - the same float32 floor as every other shape -
+   and **the same 12 corrective keys at tolerance 0.5 as before**. The extra
+   vertices cost nothing here, because these anchors hold still relative to the
+   path; section 6.5's warning about sliding anchors costing keys is about a
+   case this fixture does not contain.
+
+   **`test_ae_to_nuke.py` had to be fixed and the failure is worth keeping.**
+   It compared the Nuke shape's points against the file's index by index, which
+   an anchored shape breaks by construction - 7 points in Nuke against 4 in the
+   file, reported as 379 px of geometry loss. The importer was right the whole
+   time; the test was measuring the mismatch. It now builds the expected ring
+   from the file with `expected_centres`, evaluating each inserted position
+   from the **Bernstein form** rather than the de Casteljau the importer
+   splits with, so a split that is wrong in its own terms cannot pass by
+   agreeing with itself. Verified independently before touching the test:
+   `insert_anchor_vertices` against Bernstein over all 25 frames of the real
+   golden is 2.2737e-13 px.
 
    `test/probe/diff_rbj.py` was taught the anchored layer for that check
    (`ebaa2f4`): anchors compared by `t` rather than index, reported as geometry

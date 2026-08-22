@@ -25,7 +25,7 @@ question and none of them answers another's:
 Reading the key list off the dense import and calling it key preservation is
 the mistake this docstring exists to prevent.
 """
-import os, sys, traceback
+import math, os, sys, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -50,6 +50,67 @@ lines = []
 def say(t=""):
     lines.append(t)
     sys.stdout.write(t + "\n")
+
+def bezier(points, i, j, u):
+    """One .rbj segment at parameter u, straight from the Bernstein form.
+
+    Deliberately not the de Casteljau the importer splits with: a split that
+    is wrong in its own terms must not be able to pass by agreeing with
+    itself.
+    """
+    b0 = points[i]["c"]
+    b1 = [points[i]["c"][k] + points[i]["out"][k] for k in (0, 1)]
+    b2 = [points[j]["c"][k] + points[j]["in"][k] for k in (0, 1)]
+    b3 = points[j]["c"]
+    v = 1.0 - u
+    return [v * v * v * b0[k] + 3 * v * v * u * b1[k]
+            + 3 * v * u * u * b2[k] + u * u * u * b3[k] for k in (0, 1)]
+
+
+def expected_centres(spec, record):
+    """Where every Nuke control point of one frame should sit.
+
+    For most shapes that is the file's own vertices, in order. For an
+    `anchored` one it is not: Nuke can only anchor feather at a vertex, so the
+    importer inserts one at every mid-segment anchor (spec/rbj-v2-draft.md
+    section 6.5) and the ring comes back longer than the file's point list.
+    Comparing index by index there measures the mismatch and nothing else -
+    which it did, at 379 px, until this existed.
+    """
+    points = record["points"]
+    if spec["feather_model"] != "anchored":
+        return [p["c"] for p in points]
+    n = len(points)
+    anchors = sorted(record["feather_points"], key=lambda a: a["t"])
+    out = []
+    for i in range(n):
+        out.append(points[i]["c"])
+        for anchor in anchors:
+            t = float(anchor["t"])
+            segment = int(math.floor(t))
+            if segment == i and t != segment:
+                out.append(bezier(points, i, (i + 1) % n, t - segment))
+    return out
+
+
+def compare_centres(spec, el, failures, where):
+    """Worst centre error over every frame, and the frame it happened on."""
+    worst, at = 0.0, None
+    for key, record in spec["frames"].items():
+        want = expected_centres(spec, record)
+        if len(want) != len(el):
+            failures.append("shape '%s' has %d point(s) in Nuke, wanted %d "
+                            "at frame %s (%s)"
+                            % (spec["name"], len(el), len(want), key, where))
+            return worst, at
+        t = float(int(key))
+        for i, centre in enumerate(want):
+            pos = el[i].center.getPosition(t)
+            d = max(abs(pos.x - centre[0]), abs(pos.y - centre[1]))
+            if d > worst:
+                worst, at = d, int(key)
+    return worst, at
+
 
 def main():
     # A second golden can be named on the command line. `ae_static_ease.rbj`
@@ -115,15 +176,13 @@ def main():
         el = shapes.get(spec["name"])
         if el is None:
             continue
-        worst = 0.0
-        for key, record in spec["frames"].items():
-            at = float(int(key))
-            for i, point in enumerate(record["points"]):
-                pos = el[i].center.getPosition(at)
-                d = max(abs(pos.x - point["c"][0]), abs(pos.y - point["c"][1]))
-                if d > worst:
-                    worst = d
-        say("  %-10s worst %.4e px" % (spec["name"], worst))
+        worst, _ = compare_centres(spec, el, failures, "dense import")
+        extra = len(el) - len(spec["frames"][str(doc["range"][0])]["points"])
+        note = "" if not extra else "  (+%d %s inserted to hold feather " \
+                                    "anchors)" \
+                                    % (extra,
+                                       "vertex" if extra == 1 else "vertices")
+        say("  %-10s worst %.4e px%s" % (spec["name"], worst, note))
         if worst > worst_all:
             worst_all, worst_where = worst, spec["name"]
     say("  worst overall %.4e px (%s)" % (worst_all, worst_where))
@@ -159,14 +218,7 @@ def main():
         el = d_shapes.get(spec["name"])
         if el is None:
             continue
-        worst, at = 0.0, None
-        for key, record in spec["frames"].items():
-            t = float(int(key))
-            for i, point in enumerate(record["points"]):
-                pos = el[i].center.getPosition(t)
-                dd = max(abs(pos.x - point["c"][0]), abs(pos.y - point["c"][1]))
-                if dd > worst:
-                    worst, at = dd, int(key)
+        worst, at = compare_centres(spec, el, failures, "tolerance 0.5")
         flag = "  <-- OVER TOLERANCE" if worst > 0.5 else ""
         say("    %-10s worst %.4f px at frame %s%s"
             % (spec["name"], worst, at, flag))
