@@ -357,7 +357,28 @@ are now fixed and **a six-shape import has run in After Effects and passed**.
 
 "Before" is six separate single-shape imports, because six at once could not run
 at all. "After" is one import of all six, which is itself the confirmation of
-bug 1. Three things in that table are worth reading twice:
+bug 1.
+
+**The table above is against the PRE-re-export golden. Five of its six rows
+survived the re-export unchanged; `mixed` did not.** Re-measured in After
+Effects 2026-08-22 against the current `ae_scene.rbj`: `linear` 11 corrective /
+0.0002 px at 19, `eased` 20, `feathered` 3 / 0.2148 px at 8, `offgrid` 4 /
+0.3809 px at 13 and `opened` 3 / 0.2584 px at 16 all come back to the digit -
+`feathered` included, which went from `per_point` to `anchored` between the two
+runs and is the strongest confirmation available that the re-export moved no
+vertex. **`mixed` is now 6 corrective and 0.2007 px at frame 17**, against 11
+and 0.1000 px at 16, because the re-export moved its hold from frame 12 to 18.
+
+**So the "two hosts agree to a thousandth of a pixel on `mixed`" result below is
+superseded, and what replaced it is not a disagreement.** Nuke reads the same
+file as 11 corrective and 0.4503 px at frame 10 (committed in
+`phase6/ae_to_nuke_report.txt`, and re-run 2026-08-22 to confirm it is not a
+regression). The gap is the documented one: a key that is `linear` in and `hold`
+out cannot exist in Nuke, so Nuke sets it smooth and buys the positions back
+with corrective keys, while After Effects represents it exactly and needs five
+fewer. Both are inside the 0.5 px tolerance. The shapes that still agree across
+the two hosts are the ones carrying no per-side key - `feathered` 0.2148 against
+0.2143, `opened` 0.2584 against 0.2577. Three things in that table are worth reading twice:
 
 - **`feathered` went from 18 corrective keys and a residual nothing could
   remove, to 3 and the second-cheapest shape in the file.** It was never
