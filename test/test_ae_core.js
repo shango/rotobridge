@@ -775,6 +775,159 @@ describe("rbj", function () {
         eq(joined(e).indexOf("feather_model") > -1, true, joined(e));
     });
 
+    it("accepts anchored feather at version 2", function () {
+        // spec/rbj-v2-draft.md section 6. The Python mirror of this whole
+        // block is TestAnchoredFeather.
+        var doc = anchored();
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("accepts two anchors on one segment", function () {
+        // The case that decided the design: no per-point field can hold two
+        // values for one point, so this is not a field that could be widened.
+        var doc = anchored([{ t: 1.25, feather: 30 }, { t: 1.75, feather: -15 }]);
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("rejects anchored feather in a file that says version 1", function () {
+        var doc = anchored();
+        doc.version = 1;
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("needs version 2") > -1, true, joined(e));
+    });
+
+    it("versionFor stamps 2 on an anchored shape", function () {
+        eq(rbj.versionFor(anchored().shapes), 2);
+    });
+
+    it("versionFor leaves a per_point file at 1", function () {
+        // Section 6.7: only the files that were being damaged pay the
+        // compatibility cost.
+        var doc = minimal();
+        doc.shapes[0].feather_model = "per_point";
+        eachPoint(doc, function (pt) { pt.feather = 4; });
+        eq(rbj.versionFor(doc.shapes), 1);
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("rejects a point carrying feather under anchored", function () {
+        var doc = anchored();
+        doc.shapes[0].frames["1"].points[0].feather = 3;
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("two places to look") > -1, true, joined(e));
+    });
+
+    it("rejects a frame with no feather_points under anchored", function () {
+        var doc = anchored();
+        delete doc.shapes[0].frames["2"].feather_points;
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("missing feather_points") > -1, true, joined(e));
+    });
+
+    it("rejects feather_points on a shape that is not anchored", function () {
+        var doc = minimal();
+        doc.shapes[0].frames["1"].feather_points = [];
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("not 'anchored'") > -1, true, joined(e));
+    });
+
+    it("rejects an anchor count that changes across frames", function () {
+        var doc = anchored();
+        doc.shapes[0].frames["2"].feather_points.pop();
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("feather_points count changes") > -1, true,
+           joined(e));
+        eq(joined(e).indexOf("2 at frame 1") > -1, true, joined(e));
+        eq(joined(e).indexOf("1 at frame 2") > -1, true, joined(e));
+    });
+
+    it("accepts zero anchors as a count", function () {
+        var doc = anchored([]);
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("rejects t at the vertex count on a closed shape", function () {
+        // Section 6.4: t = n names the same anchor as t = 0 and must be
+        // written as 0, so the upper bound is exclusive.
+        var doc = anchored([{ t: 3, feather: 1 }]);
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("expected 0 to 3") > -1, true, joined(e));
+    });
+
+    it("accepts t just below the vertex count on a closed shape", function () {
+        var doc = anchored([{ t: 2.999, feather: 1 }]);
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("accepts t at the last vertex on an open shape", function () {
+        // One segment fewer, and the path genuinely ends there.
+        var doc = anchored([{ t: 2, feather: 1 }]);
+        doc.shapes[0].closed = false;
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("rejects t past the last vertex on an open shape", function () {
+        var doc = anchored([{ t: 2.5, feather: 1 }]);
+        doc.shapes[0].closed = false;
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("expected 0 to 2") > -1, true, joined(e));
+    });
+
+    it("rejects a negative t", function () {
+        var doc = anchored([{ t: -0.5, feather: 1 }]);
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("expected 0 to 3") > -1, true, joined(e));
+    });
+
+    it("rejects anchors out of t order", function () {
+        var doc = anchored([{ t: 2.5, feather: 1 }, { t: 0.5, feather: 2 }]);
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("ordered by t ascending") > -1, true, joined(e));
+    });
+
+    it("accepts two anchors sharing one t", function () {
+        // Ascending, not strictly ascending. Two anchors at one vertex is
+        // precisely what section 6.1 says v1 cannot express.
+        var doc = anchored([{ t: 1, feather: 12 }, { t: 1, feather: 0 }]);
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("rejects an anchor with no t", function () {
+        var doc = anchored([{ feather: 1 }]);
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("missing t") > -1, true, joined(e));
+    });
+
+    it("rejects an anchor with no feather", function () {
+        var doc = anchored([{ t: 1 }]);
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("missing feather") > -1, true, joined(e));
+    });
+
+    it("accepts a feather_offset on an anchor", function () {
+        var doc = anchored([{ t: 1.5, feather: 4, feather_offset: [1, -2] }]);
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
+    it("rejects a malformed feather_offset on an anchor", function () {
+        var doc = anchored([{ t: 1.5, feather: 4, feather_offset: [1] }]);
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("two-element array") > -1, true, joined(e));
+    });
+
+    it("rejects a non-finite t", function () {
+        var doc = anchored([{ t: Infinity, feather: 1 }]);
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("not finite") > -1, true, joined(e));
+    });
+
+    it("rejects feather_points that is not an array", function () {
+        var doc = anchored();
+        doc.shapes[0].frames["1"].feather_points = { t: 1 };
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("expected an array") > -1, true, joined(e));
+    });
+
     it("rejects a non-finite number rather than writing NaN", function () {
         // Neither NaN nor Infinity is legal JSON (spec 2.2), and no parser is
         // required to accept them.
@@ -832,6 +985,44 @@ function minimal() {
             frames: { "1": frame(), "2": frame() }
         }]
     };
+}
+
+function eachPoint(doc, fn) {
+    var frames = doc.shapes[0].frames;
+    for (var key in frames) {
+        if (!Object.prototype.hasOwnProperty.call(frames, key)) { continue; }
+        for (var i = 0; i < frames[key].points.length; i++) {
+            fn(frames[key].points[i]);
+        }
+    }
+}
+
+function anchored(entries) {
+    /* `minimal()` with its feather layer moved into feather_points. Defaults
+     * to one mid-segment anchor and one on a later segment, which is the shape
+     * of what run 3 read off a real After Effects mask. */
+    if (entries === undefined) {
+        entries = [{ t: 0.25, feather: 30 }, { t: 2.5, feather: -15 }];
+    }
+    var doc = minimal();
+    doc.version = 2;
+    doc.shapes[0].feather_model = "anchored";
+    var frames = doc.shapes[0].frames;
+    for (var key in frames) {
+        if (!Object.prototype.hasOwnProperty.call(frames, key)) { continue; }
+        var copy = [];
+        for (var i = 0; i < entries.length; i++) {
+            var out = {};
+            for (var m in entries[i]) {
+                if (Object.prototype.hasOwnProperty.call(entries[i], m)) {
+                    out[m] = entries[i][m];
+                }
+            }
+            copy[copy.length] = out;
+        }
+        frames[key].feather_points = copy;
+    }
+    return doc;
 }
 
 /* --- report ------------------------------------------------------------- */

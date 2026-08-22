@@ -623,6 +623,183 @@ class TestOpenSplines(unittest.TestCase):
                          geom.outward_normals(square, closed=True))
 
 
+class TestAnchoredFeather(unittest.TestCase):
+    """spec/rbj-v2-draft.md section 6. The schema half.
+
+    `anchored` exists because After Effects puts feather anchors mid-segment
+    and can put two on one segment, which no per-point member can hold. These
+    tests are about the file being able to say that; whether an exporter
+    chooses to is section 6.7 and lives with the exporter.
+    """
+
+    def anchored_doc(self, *anchors):
+        """The valid three-point triangle, with its feather layer moved."""
+        doc = valid_doc()
+        doc["version"] = rbj.VERSION_ANCHORED_FEATHER
+        shape = doc["shapes"][0]
+        shape["feather_model"] = "anchored"
+        entries = list(anchors) or [{"t": 0.25, "feather": 30.0},
+                                    {"t": 2.5, "feather": -15.0}]
+        for frame in shape["frames"].values():
+            frame["feather_points"] = [dict(e) for e in entries]
+        return doc
+
+    def reject(self, doc, expect):
+        errs = rbj.validate(doc)
+        self.assertTrue(errs, "expected a hard failure mentioning %r" % expect)
+        self.assertIn(expect, " | ".join(errs), "errors were: %s" % errs)
+
+    def test_an_anchored_shape_validates_at_version_2(self):
+        self.assertEqual(rbj.validate(self.anchored_doc()), [])
+
+    def test_two_anchors_on_one_segment_are_legal(self):
+        # The case that decided the whole design: run 3 read two feather points
+        # on one segment of a seven-vertex shape, and no per-point field can
+        # hold two values for one point.
+        self.assertEqual(rbj.validate(self.anchored_doc(
+            {"t": 1.25, "feather": 30.0},
+            {"t": 1.75, "feather": -15.0})), [])
+
+    def test_an_anchored_document_round_trips_through_the_writer(self):
+        doc = self.anchored_doc()
+        self.assertEqual(rbj.loads(rbj.dumps(doc)), doc)
+
+    def test_anchored_needs_version_2(self):
+        doc = self.anchored_doc()
+        doc["version"] = 1
+        self.reject(doc, "needs version 2")
+
+    def test_version_for_stamps_2_on_an_anchored_shape(self):
+        self.assertEqual(rbj.version_for(self.anchored_doc()["shapes"]), 2)
+
+    def test_version_for_leaves_per_point_at_1(self):
+        # Section 6.7: the compatibility cost is paid only by the files that
+        # were being damaged. A vertex-anchored file is still a v1 file.
+        doc = valid_doc()
+        doc["shapes"][0]["feather_model"] = "per_point"
+        for frame in doc["shapes"][0]["frames"].values():
+            for pt in frame["points"]:
+                pt["feather"] = 4.0
+        self.assertEqual(rbj.version_for(doc["shapes"]), 1)
+        self.assertEqual(rbj.validate(doc), [])
+
+    def test_a_point_may_not_carry_feather_under_anchored(self):
+        doc = self.anchored_doc()
+        doc["shapes"][0]["frames"]["10"]["points"][0]["feather"] = 3.0
+        self.reject(doc, "two places to look is one too many")
+
+    def test_a_frame_must_carry_feather_points_under_anchored(self):
+        doc = self.anchored_doc()
+        del doc["shapes"][0]["frames"]["11"]["feather_points"]
+        self.reject(doc, "missing feather_points")
+
+    def test_feather_points_are_forbidden_under_per_point(self):
+        doc = valid_doc()
+        doc["shapes"][0]["feather_model"] = "per_point"
+        for frame in doc["shapes"][0]["frames"].values():
+            for pt in frame["points"]:
+                pt["feather"] = 4.0
+            frame["feather_points"] = [{"t": 0.5, "feather": 1.0}]
+        self.reject(doc, "not 'anchored'")
+
+    def test_feather_points_are_forbidden_under_none(self):
+        doc = valid_doc()
+        doc["shapes"][0]["frames"]["10"]["feather_points"] = []
+        self.reject(doc, "not 'anchored'")
+
+    def test_the_count_must_not_change_between_frames(self):
+        doc = self.anchored_doc()
+        doc["shapes"][0]["frames"]["11"]["feather_points"].pop()
+        self.reject(doc, "feather_points count changes across frames")
+
+    def test_the_count_error_names_both_frames(self):
+        doc = self.anchored_doc()
+        doc["shapes"][0]["frames"]["11"]["feather_points"].pop()
+        joined = " | ".join(rbj.validate(doc))
+        self.assertIn("2 at frame 10", joined)
+        self.assertIn("1 at frame 11", joined)
+
+    def test_zero_anchors_is_a_legal_count(self):
+        # Section 6.3 says so, and adds that such a shape should be `none`
+        # instead. "Should" is section 2 advice to a writer, not a rule a
+        # reader may reject a file over.
+        doc = self.anchored_doc()
+        for frame in doc["shapes"][0]["frames"].values():
+            frame["feather_points"] = []
+        self.assertEqual(rbj.validate(doc), [])
+
+    def test_t_at_the_vertex_count_is_out_of_range_on_a_closed_shape(self):
+        # Section 6.4: t = n names the same anchor as t = 0 and must be
+        # written as 0, so the upper bound is exclusive.
+        self.reject(self.anchored_doc({"t": 3.0, "feather": 1.0}),
+                    "expected 0 to 3")
+
+    def test_t_just_below_the_vertex_count_is_in_range(self):
+        self.assertEqual(
+            rbj.validate(self.anchored_doc({"t": 2.999, "feather": 1.0})), [])
+
+    def test_t_at_the_last_vertex_is_in_range_on_an_open_shape(self):
+        # One segment fewer, and the path genuinely ends on its last vertex,
+        # so there the bound is inclusive.
+        doc = self.anchored_doc({"t": 2.0, "feather": 1.0})
+        doc["shapes"][0]["closed"] = False
+        self.assertEqual(rbj.validate(doc), [])
+
+    def test_t_past_the_last_vertex_is_out_of_range_on_an_open_shape(self):
+        doc = self.anchored_doc({"t": 2.5, "feather": 1.0})
+        doc["shapes"][0]["closed"] = False
+        self.reject(doc, "expected 0 to 2")
+
+    def test_a_negative_t_is_out_of_range(self):
+        self.reject(self.anchored_doc({"t": -0.5, "feather": 1.0}),
+                    "expected 0 to 3")
+
+    def test_anchors_must_be_ordered_by_t_ascending(self):
+        self.reject(self.anchored_doc({"t": 2.5, "feather": 1.0},
+                                      {"t": 0.5, "feather": 2.0}),
+                    "ordered by t ascending")
+
+    def test_equal_t_values_are_not_a_disorder(self):
+        # Ascending, not strictly ascending: two anchors at one vertex is the
+        # per-point case that section 6.1 says v1 cannot express, and it is
+        # exactly what `anchored` is for.
+        self.assertEqual(rbj.validate(self.anchored_doc(
+            {"t": 1.0, "feather": 12.0},
+            {"t": 1.0, "feather": 0.0})), [])
+
+    def test_an_anchor_needs_a_t(self):
+        self.reject(self.anchored_doc({"feather": 1.0}), "missing t")
+
+    def test_an_anchor_needs_a_feather(self):
+        self.reject(self.anchored_doc({"t": 1.0}), "missing feather")
+
+    def test_an_anchor_may_carry_a_feather_offset(self):
+        self.assertEqual(rbj.validate(self.anchored_doc(
+            {"t": 1.5, "feather": 4.0, "feather_offset": [1.0, -2.0]})), [])
+
+    def test_a_malformed_feather_offset_is_caught(self):
+        self.reject(self.anchored_doc(
+            {"t": 1.5, "feather": 4.0, "feather_offset": [1.0]}),
+            "expected a two-element array")
+
+    def test_a_non_finite_t_is_caught(self):
+        self.reject(self.anchored_doc({"t": float("inf"), "feather": 1.0}),
+                    "not finite")
+
+    def test_feather_points_must_be_an_array(self):
+        doc = self.anchored_doc()
+        doc["shapes"][0]["frames"]["10"]["feather_points"] = {"t": 1.0}
+        self.reject(doc, "expected an array")
+
+    def test_a_zero_radius_anchor_is_authored_not_absent(self):
+        # Section 6.3 and v1 section 11.1. The golden scene depends on it: the
+        # `feathered` mask pins a corner to zero width on purpose, and the v1
+        # snap discarded exactly that value.
+        self.assertEqual(rbj.validate(self.anchored_doc(
+            {"t": 1.5, "feather": 12.0},
+            {"t": 3.0 - 1e-9, "feather": 0.0})), [])
+
+
 class TestGoldenNukeExport(unittest.TestCase):
     """A real Nuke export, validated with no Nuke present.
 
@@ -1354,6 +1531,22 @@ class TestEs3CrossCheck(unittest.TestCase):
         doc = valid_doc()
         doc["version"] = rbj.VERSION_OPEN_SPLINES
         doc["shapes"][0]["closed"] = False
+        self.assertEqual(rbj.loads(self.es3_rewrite(doc)), doc)
+
+    def test_anchored_feather_survives_the_other_implementation(self):
+        # Both readers gate `anchored` on the version and both writers decide
+        # the version the same way, so a disagreement here is a file After
+        # Effects writes and Nuke refuses to open. The mid-segment t and the
+        # two-on-one-segment pair are the cases v1 could not carry at all.
+        doc = valid_doc()
+        doc["version"] = rbj.VERSION_ANCHORED_FEATHER
+        doc["shapes"][0]["feather_model"] = "anchored"
+        anchors = [{"t": 0.25, "feather": 30.0},
+                   {"t": 1.25, "feather": -15.0},
+                   {"t": 1.75, "feather": 0.0},
+                   {"t": 2.5, "feather": 12.0, "feather_offset": [1.0, -2.0]}]
+        for frame in doc["shapes"][0]["frames"].values():
+            frame["feather_points"] = [dict(a) for a in anchors]
         self.assertEqual(rbj.loads(self.es3_rewrite(doc)), doc)
 
     def test_field_order_is_preserved(self):

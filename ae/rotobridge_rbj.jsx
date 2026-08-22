@@ -37,19 +37,31 @@
     /* spec/rbj-v2-draft.md section 2: a writer emits the lowest version that
      * can express the file, not the highest it implements. */
     rbj.VERSION_OPEN_SPLINES = 2;
+    rbj.VERSION_ANCHORED_FEATHER = 2;
     rbj.MAX_VERSION = 2;
 
     rbj.versionFor = function (shapes) {
+        /* Section 6.7 keeps the anchored clause narrow: the exporter writes
+         * `anchored` only where the snap would lose something, so a file whose
+         * feather already sits on vertices is still a v1 file. */
         for (var i = 0; i < shapes.length; i++) {
             if (shapes[i]["closed"] === false) {
                 return rbj.VERSION_OPEN_SPLINES;
+            }
+            if (shapes[i]["feather_model"] === "anchored") {
+                return rbj.VERSION_ANCHORED_FEATHER;
             }
         }
         return rbj.VERSION;
     };
 
     rbj.BLENDS = ["union", "difference", "intersection"];
-    rbj.FEATHER_MODELS = ["per_point", "none"];
+    /* spec/rbj-v2-draft.md section 6.2: three exclusive models. `anchored`
+     * moves the whole per-point feather layer into the frame's own
+     * `feather_points`, because After Effects anchors feather anywhere along a
+     * segment and can put two anchors on one segment - which no per-point
+     * member can hold, so this is a new list rather than a widened field. */
+    rbj.FEATHER_MODELS = ["per_point", "anchored", "none"];
     rbj.FALLOFFS = ["linear", "smooth"];
     rbj.INTERPS = ["hold", "linear", "ease"];
 
@@ -299,13 +311,21 @@
         var model = enumOf(errs, where, shape, "feather_model",
                            rbj.FEATHER_MODELS);
         enumOf(errs, where, shape, "feather_falloff", rbj.FALLOFFS);
+        if (model === "anchored" && version !== null
+                && version < rbj.VERSION_ANCHORED_FEATHER) {
+            errs[errs.length] = where + ": feather_model is 'anchored', which"
+                + " needs version " + rbj.VERSION_ANCHORED_FEATHER + "; this"
+                + " file declares version " + version
+                + " (spec/rbj-v2-draft.md section 6.2)";
+        }
 
         var frameKeys = validateFrames(errs, where, shape["frames"],
-                                       framesExpected, model);
+                                       framesExpected, model, closed);
         validateKeys(errs, where, shape["keys"], frameKeys);
     }
 
-    function validateFrames(errs, where, frames, framesExpected, model) {
+    function validateFrames(errs, where, frames, framesExpected, model,
+                            closed) {
         /* Returns the frame keys present, or null.
          *
          * Null means the dense layer was unusable, so callers must not go on to
@@ -376,14 +396,21 @@
         var shapeErrs = [];
         var counts = {};
         var countList = [];
+        var anchorCounts = {};
+        var anchorList = [];
         for (var f = 0; f < wellFormed.length; f++) {
             if (shapeErrs.length > MAX_ERRORS_PER_SHAPE) { break; }
             var key = wellFormed[f];
-            var n = validateFrameRecord(shapeErrs, where + " frame " + key,
-                                        frames[key], model);
+            var got = validateFrameRecord(shapeErrs, where + " frame " + key,
+                                          frames[key], model, closed);
+            var n = got[0];
             if (n !== null && !hasOwn(counts, n)) {
                 counts[n] = key;
                 countList[countList.length] = n;
+            }
+            if (got[1] !== null && !hasOwn(anchorCounts, got[1])) {
+                anchorCounts[got[1]] = key;
+                anchorList[anchorList.length] = got[1];
             }
         }
 
@@ -407,15 +434,33 @@
                 + " no correct interpolation between two counts";
         }
 
+        /* Section 6.3 defers to section 7.3's reasoning about vertices: two
+         * different counts have no correct interpolation between them, and
+         * that is as true of the anchors as of the points they hang off. */
+        if (anchorList.length > 1) {
+            anchorList.sort(byNumber);
+            var aParts = [];
+            for (var a = 0; a < anchorList.length; a++) {
+                aParts[aParts.length] = anchorList[a] + " at frame "
+                    + anchorCounts[anchorList[a]];
+            }
+            errs[errs.length] = where + ": feather_points count changes across"
+                + " frames (" + aParts.join(", ") + "); there is no correct"
+                + " interpolation between two counts (spec/rbj-v2-draft.md"
+                + " section 6.3)";
+        }
+
         return present;
     }
 
-    function validateFrameRecord(errs, where, rec, model) {
-        /* Returns the vertex count, or null if the record is unusable. */
+    function validateFrameRecord(errs, where, rec, model, closed) {
+        /* Returns `[vertex count, feather anchor count]`, either of which is
+         * null when that layer was unusable and the caller should not compare
+         * it across frames. */
         if (!isObj(rec)) {
             errs[errs.length] = where + " is " + show(rec)
                 + ", expected an object";
-            return null;
+            return [null, null];
         }
 
         var opacity = num(errs, where, rec, "opacity");
@@ -429,17 +474,90 @@
         if (!isArray(points)) {
             errs[errs.length] = where + ": points is " + show(points)
                 + ", expected an array";
-            return null;
+            return [null, null];
         }
         if (!points.length) {
             errs[errs.length] = where + ": points is empty";
-            return null;
+            return [null, null];
         }
 
         for (var i = 0; i < points.length; i++) {
             validatePoint(errs, where + " point " + i, points[i], model);
         }
-        return points.length;
+        return [points.length,
+                validateFeatherPoints(errs, where, rec, model, closed,
+                                      points.length)];
+    }
+
+    function validateFeatherPoints(errs, where, rec, model, closed, nPoints) {
+        /* The `anchored` feather layer, spec section 6.3. Returns its count.
+         *
+         * Required exactly when the model is `anchored` and forbidden
+         * otherwise, which is section 2's rule that a file says what it means:
+         * an empty list under `per_point` and an absent one would be two
+         * spellings of the same nothing. */
+        var present = hasOwn(rec, "feather_points");
+        if (model !== "anchored") {
+            if (present && model !== null) {
+                errs[errs.length] = where + ": feather_points is present but"
+                    + " feather_model is " + show(model) + ", not 'anchored'";
+            }
+            return null;
+        }
+        if (!present) {
+            errs[errs.length] = where + ": missing feather_points, which"
+                + " feather_model 'anchored' requires";
+            return null;
+        }
+
+        var anchors = rec["feather_points"];
+        if (!isArray(anchors)) {
+            errs[errs.length] = where + ": feather_points is " + show(anchors)
+                + ", expected an array";
+            return null;
+        }
+
+        /* Section 6.4. A closed shape has one segment per vertex, and t = n
+         * names the same anchor as t = 0, so the upper bound is exclusive and
+         * must be written as 0. An open shape has one segment fewer and
+         * genuinely ends on its last vertex, so there the bound is inclusive.
+         *
+         * A `closed` that is neither true nor false has already been reported
+         * by the caller. Reading it as closed here takes the wider of the two
+         * bounds, so the one real error does not drag a range error behind
+         * it. */
+        var isOpen = closed === false;
+        var limit = isOpen ? nPoints - 1 : nPoints;
+        var prev = null;
+        for (var i = 0; i < anchors.length; i++) {
+            var awhere = where + " feather_points[" + i + "]";
+            if (!isObj(anchors[i])) {
+                errs[errs.length] = awhere + " is " + show(anchors[i])
+                    + ", expected an object";
+                continue;
+            }
+            var t = num(errs, awhere, anchors[i], "t");
+            if (t !== null) {
+                var over = isOpen ? t > limit : t >= limit;
+                if (t < 0.0 || over) {
+                    errs[errs.length] = awhere + ": t is " + show(t)
+                        + ", expected 0 to " + limit + " on "
+                        + (isOpen ? "an open" : "a closed") + " shape of "
+                        + nPoints + " point(s)";
+                } else if (prev !== null && t < prev) {
+                    errs[errs.length] = awhere + ": t is " + show(t)
+                        + ", which is below the previous anchor's " + show(prev)
+                        + "; feather_points is ordered by t ascending"
+                        + " (spec/rbj-v2-draft.md section 6.3)";
+                }
+                prev = t;
+            }
+            num(errs, awhere, anchors[i], "feather");
+            if (hasOwn(anchors[i], "feather_offset")) {
+                vec2(errs, awhere, anchors[i], "feather_offset");
+            }
+        }
+        return anchors.length;
     }
 
     function validatePoint(errs, where, pt, model) {
@@ -459,6 +577,11 @@
             errs[errs.length] = where + ": feather is present but feather_model"
                 + " is 'none'; a zero under 'none' is indistinguishable from an"
                 + " authored zero-width point";
+        } else if (model === "anchored" && hasFeather) {
+            errs[errs.length] = where + ": feather is present but feather_model"
+                + " is 'anchored', which carries the whole feather layer in the"
+                + " frame's feather_points; two places to look is one too many"
+                + " (spec/rbj-v2-draft.md section 6.2)";
         }
 
         if (hasOwn(pt, "feather_offset")) {

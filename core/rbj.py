@@ -21,10 +21,17 @@ VERSION = 1
 # express the file, not the highest it implements, so a file with no open spline
 # is still a v1 file and still opens in a v1 reader.
 VERSION_OPEN_SPLINES = 2
+VERSION_ANCHORED_FEATHER = 2
 MAX_VERSION = 2
 
 BLENDS = ("union", "difference", "intersection")
-FEATHER_MODELS = ("per_point", "none")
+# spec/rbj-v2-draft.md section 6.2: three exclusive models, not layers.
+# `per_point` is Nuke's - one value per vertex - and is what v1 froze.
+# `anchored` puts the feather layer in the frame's own `feather_points`, keyed
+# by a position along the path, because After Effects anchors feather anywhere
+# on a segment and can put two anchors on one segment. No point member can hold
+# that, which is why this is a new list rather than a widened field.
+FEATHER_MODELS = ("per_point", "anchored", "none")
 FALLOFFS = ("linear", "smooth")
 INTERPS = ("hold", "linear", "ease")
 
@@ -200,13 +207,19 @@ def _validate_shape(errs, index, shape, frames_expected, version):
     _enum(errs, where, shape, "blend", BLENDS)
     model = _enum(errs, where, shape, "feather_model", FEATHER_MODELS)
     _enum(errs, where, shape, "feather_falloff", FALLOFFS)
+    if model == "anchored" and version is not None \
+            and version < VERSION_ANCHORED_FEATHER:
+        errs.append("%s: feather_model is 'anchored', which needs version %d; "
+                    "this file declares version %d (spec/rbj-v2-draft.md "
+                    "section 6.2)"
+                    % (where, VERSION_ANCHORED_FEATHER, version))
 
     frame_keys = _validate_frames(errs, where, shape.get("frames"),
-                                  frames_expected, model)
+                                  frames_expected, model, closed)
     _validate_keys(errs, where, shape.get("keys"), frame_keys)
 
 
-def _validate_frames(errs, where, frames, frames_expected, model):
+def _validate_frames(errs, where, frames, frames_expected, model, closed):
     """Validate the dense layer. Returns the frame keys present, or None.
 
     None means the dense layer was unusable, so callers should not go on to
@@ -239,13 +252,17 @@ def _validate_frames(errs, where, frames, frames_expected, model):
     ordered = sorted((k for k in present if k not in malformed), key=int)
     shape_errs = []
     counts = {}
+    anchor_counts = {}
     for key in ordered:
         if len(shape_errs) > MAX_ERRORS_PER_SHAPE:
             break
-        n = _validate_frame_record(shape_errs, "%s frame %s" % (where, key),
-                                   frames[key], model)
+        n, anchors = _validate_frame_record(shape_errs,
+                                            "%s frame %s" % (where, key),
+                                            frames[key], model, closed)
         if n is not None:
             counts.setdefault(n, key)
+        if anchors is not None:
+            anchor_counts.setdefault(anchors, key)
 
     errs.extend(shape_errs[:MAX_ERRORS_PER_SHAPE])
     if len(shape_errs) > MAX_ERRORS_PER_SHAPE:
@@ -258,14 +275,29 @@ def _validate_frames(errs, where, frames, frames_expected, model):
                     "represent this and there is no correct interpolation "
                     "between two counts" % (where, detail))
 
+    # spec section 6.3 defers to section 7.3's reasoning about vertices: two
+    # different counts have no correct interpolation between them, and that is
+    # as true of feather anchors as of the points they hang off.
+    if len(anchor_counts) > 1:
+        detail = ", ".join("%d at frame %s" % (n, anchor_counts[n])
+                           for n in sorted(anchor_counts))
+        errs.append("%s: feather_points count changes across frames (%s); "
+                    "there is no correct interpolation between two counts "
+                    "(spec/rbj-v2-draft.md section 6.3)" % (where, detail))
+
     return present
 
 
-def _validate_frame_record(errs, where, rec, model):
-    """Validate one frame. Returns its vertex count, or None if unusable."""
+def _validate_frame_record(errs, where, rec, model, closed):
+    """Validate one frame.
+
+    Returns `(vertex count, feather anchor count)`, either of which is None
+    when that layer was unusable and the caller should not compare it across
+    frames.
+    """
     if not isinstance(rec, dict):
         errs.append("%s is %r, expected an object" % (where, rec))
-        return None
+        return None, None
 
     opacity = _num(errs, where, rec, "opacity")
     if opacity is not None and not (0.0 <= opacity <= 1.0):
@@ -275,14 +307,75 @@ def _validate_frame_record(errs, where, rec, model):
     points = rec.get("points")
     if not isinstance(points, list):
         errs.append("%s: points is %r, expected an array" % (where, points))
-        return None
+        return None, None
     if not points:
         errs.append("%s: points is empty" % where)
-        return None
+        return None, None
 
     for i, pt in enumerate(points):
         _validate_point(errs, "%s point %d" % (where, i), pt, model)
-    return len(points)
+    return len(points), _validate_feather_points(errs, where, rec, model,
+                                                 closed, len(points))
+
+
+def _validate_feather_points(errs, where, rec, model, closed, n_points):
+    """The `anchored` feather layer (spec section 6.3). Returns its count.
+
+    Required exactly when the model is `anchored` and forbidden otherwise,
+    which is section 2's rule that a file says what it means: an empty list
+    under `per_point` and an absent one would be two spellings of nothing.
+    """
+    present = "feather_points" in rec
+    if model != "anchored":
+        if present and model is not None:
+            errs.append("%s: feather_points is present but feather_model is "
+                        "%r, not 'anchored'" % (where, model))
+        return None
+    if not present:
+        errs.append("%s: missing feather_points, which feather_model "
+                    "'anchored' requires" % where)
+        return None
+
+    anchors = rec["feather_points"]
+    if not isinstance(anchors, list):
+        errs.append("%s: feather_points is %r, expected an array"
+                    % (where, anchors))
+        return None
+
+    # Section 6.4. A closed shape has one segment per vertex, and t = n names
+    # the same anchor as t = 0, so the upper bound is exclusive and must be
+    # written as 0. An open shape has one segment fewer and genuinely ends on
+    # its last vertex, so there the bound is inclusive.
+    #
+    # A `closed` that is neither true nor false has already been reported by
+    # the caller. Reading it as closed here takes the wider of the two bounds,
+    # so the one real error does not drag a range error along behind it.
+    is_open = closed is False
+    limit = float(n_points - 1) if is_open else float(n_points)
+    prev = None
+    for i, anchor in enumerate(anchors):
+        awhere = "%s feather_points[%d]" % (where, i)
+        if not isinstance(anchor, dict):
+            errs.append("%s is %r, expected an object" % (awhere, anchor))
+            continue
+        t = _num(errs, awhere, anchor, "t")
+        if t is not None:
+            over = t > limit if is_open else t >= limit
+            if t < 0.0 or over:
+                errs.append("%s: t is %r, expected 0 to %g on %s shape of "
+                            "%d point(s)"
+                            % (awhere, t, limit,
+                               "an open" if is_open else "a closed", n_points))
+            elif prev is not None and t < prev:
+                errs.append("%s: t is %r, which is below the previous anchor's "
+                            "%r; feather_points is ordered by t ascending "
+                            "(spec/rbj-v2-draft.md section 6.3)"
+                            % (awhere, t, prev))
+            prev = t
+        _num(errs, awhere, anchor, "feather")
+        if "feather_offset" in anchor:
+            _vec2(errs, awhere, anchor, "feather_offset")
+    return len(anchors)
 
 
 def _validate_point(errs, where, pt, model):
@@ -300,6 +393,11 @@ def _validate_point(errs, where, pt, model):
         errs.append("%s: feather is present but feather_model is 'none'; a zero "
                     "under 'none' is indistinguishable from an authored "
                     "zero-width point" % where)
+    elif model == "anchored" and has_feather:
+        errs.append("%s: feather is present but feather_model is 'anchored', "
+                    "which carries the whole feather layer in the frame's "
+                    "feather_points; two places to look is one too many "
+                    "(spec/rbj-v2-draft.md section 6.2)" % where)
 
     if "feather_offset" in pt:
         if not has_feather:
@@ -378,15 +476,22 @@ def _validate_interp(errs, where, key):
 def version_for(shapes):
     """The lowest `version` that can express `shapes`.
 
-    Open splines need version 2 (spec/rbj-v2-draft.md section 3); everything
-    else is still a v1 file and must still say so, or every existing reader
-    rejects a file it could have read. One implementation, shared by both
-    exporters, because two writers deciding this independently is how they
-    drift apart.
+    Open splines need version 2 (spec/rbj-v2-draft.md section 3) and so does
+    anchored feather (section 6.2); everything else is still a v1 file and must
+    still say so, or every existing reader rejects a file it could have read.
+    One implementation, shared by both exporters, because two writers deciding
+    this independently is how they drift apart.
+
+    Section 6.7 is what keeps the anchored clause from swallowing every file
+    with feather in it: the exporter decides `per_point` against `anchored` by
+    whether the snap would lose anything, and only the files that were being
+    damaged pay the compatibility cost.
     """
     for shape in shapes:
         if shape.get("closed") is False:
             return VERSION_OPEN_SPLINES
+        if shape.get("feather_model") == "anchored":
+            return VERSION_ANCHORED_FEATHER
     return VERSION
 
 

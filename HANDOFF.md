@@ -1112,11 +1112,22 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    decision is taken - the user said yes on 2026-08-21 and the delta is written:
    `feather_model: anchored`, a per-frame `feather_points` list keyed by a
    single `t` in segment units, and a de Casteljau split in the Nuke importer.
-   **Nothing of it is implemented.** `FEATHER_MODELS` in `core/rbj.py` is still
-   `("per_point", "none")`, `version_for` knows only the `closed` clause, the AE
-   exporter still calls `geom.snapFeatherPoints` unconditionally, and there is
-   no split. Order: schema in both implementations, then `version_for`, then the
-   AE exporter, then the Nuke importer.
+
+   **Schema and `version_for`: done, 2026-08-21.** Both implementations carry
+   `anchored`, the `feather_points` validator, and the version clause, and they
+   are checked against each other by
+   `TestEs3CrossCheck.test_anchored_feather_survives_the_other_implementation`.
+   51 new tests across `TestAnchoredFeather` in `test/test_core.py` and the
+   matching block in `test/test_ae_core.js`.
+
+   **Still to do, in order: the AE exporter, then the Nuke importer.** The
+   exporter still calls `geom.snapFeatherPoints` unconditionally and needs
+   section 6.7's decision - `per_point` and version 1 when every anchor already
+   sits on its own vertex, `anchored` and version 2 otherwise - so the
+   compatibility cost is paid only by the files that were being damaged. The
+   importer needs the de Casteljau split of section 6.5, the once-per-shape
+   warning naming how many vertices were inserted, and the crossing-case
+   fallback to `snapFeatherPoints`, which is why that function stays.
 
    **One thing is unmeasured and it gates exactness, not the work.** Is AE's
    `featherRelSegLocs` a bezier parameter or an arc-length fraction? Section 6.4
