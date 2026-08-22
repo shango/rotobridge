@@ -93,11 +93,26 @@ def black():
     return node
 
 
-def imported(doc, ground, tolerance=0.0):
+def imported(doc, ground, tolerance=0.0, subset=None):
     """The document as a Roto node, grounded, at the given tolerance."""
-    node, warnings, _ = rbi.import_document(doc, tolerance=tolerance)
+    node, warnings, _ = rbi.import_document(doc, tolerance=tolerance,
+                                            subset=subset)
     node.setInput(0, ground)
     return node, warnings
+
+
+def closed_names(doc):
+    """The shapes both applications can put a matte on the frame for.
+
+    After Effects produces no alpha at all from an open mask path and Nuke
+    draws one as a stroke at the node's default width, which is measured and
+    recorded in spec/rbj-v2-draft.md section 8. So an open spline in this
+    comparison contributes a Nuke-only stroke against an empty region of the
+    After Effects render: a large, known difference that says nothing about
+    the crossing and would read as a Phase 5 failure. It is held out here and
+    named in the report rather than silently dropped.
+    """
+    return [s["name"] for s in doc["shapes"] if s["closed"]]
 
 
 def square(ground, dx=0.0):
@@ -287,22 +302,38 @@ def main():
         say()
         say("  What is needed, from the comp test/probe/setup_ae_scene.jsx")
         say("  built - the same one ae_scene.rbj was exported from:")
-        say("    - render frames %d to %d of that comp as a matte sequence,"
+        say("    - render frames %d to %d of the layer 'RotoBridge test'"
             % (first, last))
-        say("      straight alpha, no colour management, 16-bit or float;")
+        say("      ALONE, soloed. The comp also carries 'RotoBridge static',")
+        say("      whose masks are not in this file, and their alpha would")
+        say("      measure as geometry Nuke was never given;")
+        say("    - a matte sequence, straight alpha, 16-bit or float;")
         say("    - EXR or PNG, numbered by the comp's own frame numbers;")
         say("    - re-run this file with the pattern as the second argument,")
-        say("      for example ...\\ae_matte.####.exr, and a frame offset as")
+        say("      for example ...\\ae_matte_####.exr, and a frame offset as")
         say("      the third if the numbering does not start at %d." % first)
         say()
-        say("  The comparison is against ALPHA. A matte rendered into RGB as")
-        say("  luminance will read as zero everywhere and look like a pass,")
-        say("  which is why the identity check above exists.")
+        say("  test/probe/probe_ae_phase5.jsx does all of that in one run and")
+        say("  reports the pattern and the offset to pass back here.")
+        say()
+        say("  The comparison is against ALPHA, and a render with none does")
+        say("  not quietly pass: measured in Nuke 17.1v1 on 2026-08-22, a")
+        say("  matte carrying no alpha reads as 0.0708 of the frame differing")
+        say("  on frame 12, seven times the budget. A wrong render fails")
+        say("  loudly. What it does not do is fail INFORMATIVELY, so check")
+        say("  the channels line above before reading a failure as geometry.")
         return failures
 
     say("  matte    %s" % ae_matte)
+    wanted = closed_names(doc)
+    held = [s["name"] for s in doc["shapes"] if not s["closed"]]
+    if held:
+        say("  held out %s - After Effects renders no alpha from an open mask"
+            % ", ".join(held))
+        say("           path and Nuke strokes one, so the difference would be")
+        say("           that limitation rather than the crossing")
     ground = black()
-    nuke_side, _ = imported(doc, ground)
+    nuke_side, _ = imported(doc, ground, subset=wanted)
     read = nuke.createNode("Read", inpanel=False)
     read["file"].setValue(ae_matte)
     read["first"].setValue(frames[0] + ae_offset)

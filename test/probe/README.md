@@ -405,11 +405,28 @@ is worth in the render, and the answer is nothing an artist can see.
 
 **What After Effects has to produce** for the fourth section, from the comp
 `setup_ae_scene.jsx` built - the same one `ae_scene.rbj` came from: frames 0 to
-24 as a matte sequence, **straight alpha**, no colour management, 16-bit or
-float, EXR or PNG, numbered by the comp's own frame numbers. The comparison is
-against **alpha**; a matte rendered into RGB as luminance reads as zero
-everywhere and would look like a pass, which is exactly what section 1 exists
-to make impossible to misread.
+24 of the layer **`RotoBridge test` alone, soloed**, as a matte sequence,
+**straight alpha**, 16-bit or float, EXR or PNG, numbered by the comp's own
+frame numbers. `probe_ae_phase5.jsx` does all of that in one run and reports
+the pattern and frame offset to pass back - see "The last After Effects run"
+below.
+
+**Soloing is not a nicety.** The comp also carries `RotoBridge static`, whose
+masks 7 and 8 are not in this file, and an imported `RotoBridge` layer from any
+earlier run. Their alpha would measure as geometry Nuke was never given.
+
+**The open spline is held out of the comparison, on the Nuke side.** After
+Effects renders no alpha at all from an open mask path and Nuke strokes one at
+the node's default width, so `opened` would contribute a Nuke-only stroke
+against empty film. That is spec/rbj-v2-draft.md section 8's known limitation
+rather than anything about the crossing, and measuring it here would read as a
+Phase 5 failure. `closed_names()` names what it holds out in the report.
+
+The comparison is against **alpha**, and a render with none does not quietly
+pass: measured 2026-08-22, a matte carrying no alpha reads as **0.0708 of the
+frame** differing on frame 12, seven times the budget. What a wrong render
+fails to be is *informative* - so read the report's `channels` line before
+reading a failure as geometry.
 
 ### Two host facts this cost a probe to learn
 
@@ -422,6 +439,47 @@ harness that builds a tree per shape or per frame has to be written around this.
 **A Roto with no input carries only its shapes' bounding box.** `nuke.sample`
 outside it raises rather than returning 0, and an average is taken over the
 wrong area. Ground it on a `Constant` and the frame is the frame.
+
+## The last After Effects run
+
+`test/probe/probe_ae_phase5.jsx`. Everything still open in this project needs a
+person in front of After Effects, and it is four separate things. This does all
+four in one run and writes `rotobridge_phase5_probe.txt` beside the project.
+
+Run it with the `setup_ae_scene.jsx` comp built, open and frontmost:
+`File > Scripts > Run Script File...`. Sections 2 and 3 are read-only; section 1
+adds a render queue item and, if you say yes, renders. Nothing in it touches a
+mask.
+
+| Section | What it settles |
+|---|---|
+| 1. the matte | Solos `RotoBridge test`, configures the output module, renders, then **reads the folder back** and prints the pattern and frame offset to hand `test_ae_to_nuke_render.py`. Closes Phase 5, `ff` and section 6.4. |
+| 2. `File.open("a")` | Appends twice to a temp file and reads it back. The one call in the adapters no test can reach. |
+| 3. the `mixed` hold key | Prints every key of every mask named `mixed`, per side, and names the layer. |
+| 4. the eight-shape golden | Instructions only, and optional. |
+
+**Why it reads the folder back rather than predicting the filenames.** Whether
+After Effects numbers a sequence by the comp's frames or from zero is a setting,
+and the Nuke test takes a frame offset for exactly that reason. Measuring the
+numbering costs one `getFiles` and removes the question.
+
+**The format comes from a template, not from `setSettings`.** After Effects
+documents `Format` as readable and not settable, so the script lists what
+`om.templates` offers on this host, picks the first matching EXR or PNG, and
+records the list in the report. `Channels` and `Color` are settable and are the
+two that decide whether the file carries an alpha and whether it is straight;
+they are set separately so a host refusing one still applies the other.
+
+**`OutputModule` goes stale when its settings change**, which Adobe documents
+and this script honours by re-fetching after every write. That is the same
+hazard as the stale mask handles that broke the first multi-shape import, and
+the same shape as Nuke's `append()` copying into the tree. Three APIs, one rule:
+do not hold what you handed to a host.
+
+**Section 2 has three outcomes, not two.** Append working and `open("a")`
+failing are the obvious ones; the third is `"a"` silently truncating, which
+would mean every import erases the record of the last. The script distinguishes
+them by reading the file back rather than by trusting the return of `open`.
 
 ## AE feather point order
 

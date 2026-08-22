@@ -94,16 +94,25 @@ criteria acceptance criterion 2: under 0.01 of pixels past 0.01 alpha delta
 
   What is needed, from the comp test/probe/setup_ae_scene.jsx
   built - the same one ae_scene.rbj was exported from:
-    - render frames 0 to 24 of that comp as a matte sequence,
-      straight alpha, no colour management, 16-bit or float;
+    - render frames 0 to 24 of the layer 'RotoBridge test'
+      ALONE, soloed. The comp also carries 'RotoBridge static',
+      whose masks are not in this file, and their alpha would
+      measure as geometry Nuke was never given;
+    - a matte sequence, straight alpha, 16-bit or float;
     - EXR or PNG, numbered by the comp's own frame numbers;
     - re-run this file with the pattern as the second argument,
-      for example ...\ae_matte.####.exr, and a frame offset as
+      for example ...\ae_matte_####.exr, and a frame offset as
       the third if the numbering does not start at 0.
 
-  The comparison is against ALPHA. A matte rendered into RGB as
-  luminance will read as zero everywhere and look like a pass,
-  which is why the identity check above exists.
+  test/probe/probe_ae_phase5.jsx does all of that in one run and
+  reports the pattern and the offset to pass back here.
+
+  The comparison is against ALPHA, and a render with none does
+  not quietly pass: measured in Nuke 17.1v1 on 2026-08-22, a
+  matte carrying no alpha reads as 0.0708 of the frame differing
+  on frame 12, seven times the budget. A wrong render fails
+  loudly. What it does not do is fail INFORMATIVELY, so check
+  the channels line above before reading a failure as geometry.
 
 === VERDICT ===
 PASS - the measurement is sound; the crossing itself is not yet measured

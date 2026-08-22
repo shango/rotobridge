@@ -18,8 +18,9 @@ The AE ease question is closed as a "cannot", not a "not yet". Feather anchoring
 closed 2026-08-22, and the durable import record with it. **Phase 5's Nuke half
 is built and passing** (`test/test_ae_to_nuke_render.py`, 2026-08-22), with the
 measurement checked against arithmetic before it is trusted. **All that is left
-in the project is one matte sequence rendered out of After Effects** - it
-closes Phase 5, `ff`, and section 6.4 at once.
+in the project is one After Effects run** - it closes Phase 5, `ff`, and
+section 6.4 at once, and `test/probe/probe_ae_phase5.jsx` collapses it and the
+three other host-blocked loose ends into that single visit.
 
 ## Status
 
@@ -771,7 +772,9 @@ Both host applications are **Windows-side**; this repo lives in WSL.
 
   Synced there 2026-08-21, along with `test/probe/setup_ae_scene.jsx`, which
   lives in the same folder. Re-copy after any edit under `ae/`, for the same
-  reason the probe needs it.
+  reason the probe needs it. `test/probe/probe_ae_phase5.jsx` goes to the same
+  desktop folder and is standalone - it includes nothing, so it runs from
+  anywhere.
 
 ## Nuke is the hub, and that reorders everything, 2026-08-21
 
@@ -1248,10 +1251,33 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
 
    **What is still needed from After Effects**, and it is the whole of what is
    left: frames 0 to 24 of the `setup_ae_scene.jsx` comp as a matte sequence,
-   straight alpha, no colour management, EXR or PNG, numbered by the comp's
-   own frames. Then re-run with the pattern as the second argument. The
-   comparison is against **alpha** - a matte rendered into RGB as luminance
-   reads zero everywhere and looks like a pass.
+   straight alpha, EXR or PNG, numbered by the comp's own frames. Then re-run
+   with the pattern as the second argument.
+   **`test/probe/probe_ae_phase5.jsx` does that in one run**, 2026-08-22, and
+   reports the pattern and the frame offset by reading the output folder back
+   rather than predicting it.
+
+   Building that script turned up two things about the comparison that were
+   wrong in every earlier description of it, and both would have been read as
+   Phase 5 failures:
+
+   - **The layer has to be soloed.** The comp also carries `RotoBridge
+     static`, whose masks 7 and 8 are not in `ae_scene.rbj`, and an imported
+     `RotoBridge` layer from any earlier run. Their alpha would measure as
+     geometry Nuke was never given.
+   - **The open spline is held out, on the Nuke side.** After Effects renders
+     no alpha at all from an open mask path and Nuke strokes one at the node's
+     default width, so `opened` would be a Nuke-only stroke against empty film.
+     `closed_names()` in the harness holds it out and the report names it.
+     Verified in Nuke: the subset builds exactly the five closed shapes.
+
+   **And the standing warning about a bad render was wrong in mechanism.** It
+   said a matte with no alpha "reads as zero everywhere and looks like a pass".
+   Measured 2026-08-22: it reads as **0.0708 of the frame** differing on frame
+   12, seven times the budget, because the difference is then Nuke's own matte
+   against nothing. A wrong render fails loudly. What it does not do is fail
+   *informatively*, which is what the report's `channels` line is for.
+   Corrected in the harness and in `test/probe/README.md`.
 
    Two questions are waiting on exactly that render and should not be guessed
    at before it:
@@ -1311,7 +1337,10 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    mock honours it, but no host run has exercised it. If it turns out
    unsupported the import still lands and warns once per import; the fallback
    would be read-then-write through the existing `ae.readText` / `ae.writeText`.
-   Worth two minutes the next time anyone is in front of After Effects.
+   **Section 2 of `test/probe/probe_ae_phase5.jsx` answers it** - and it looks
+   for three outcomes rather than two, because `"a"` silently truncating would
+   mean every import erases the record of the last one, and the return of
+   `open` would not say so. It reads the file back.
 
 4. **Ease-then-type ordering, the last Phase 4 loose end, and a drift number
    cannot answer it.** `setTemporalEaseAtKey` forces a key to BEZIER and the
@@ -1323,7 +1352,10 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    now frame 18, not frame 12** - the re-export moved the hold to where the
    composite actually stands still, so a check aimed at 12 would fail on
    correct behaviour. Low risk: the code does ease first and types after,
-   which is the documented order.
+   which is the documented order. **Section 3 of
+   `test/probe/probe_ae_phase5.jsx` reads it off the key** - every key of every
+   mask named `mixed`, per side, with the layer named, since the authored mask
+   has three keys and an imported one has five.
 
    Optional, not blocking: `test/golden/ae_scene.rbj` is the **six**-shape
    export and predates masks 7 and 8, whose export is a separate golden
