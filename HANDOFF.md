@@ -1137,14 +1137,31 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    falls back to the v1 snap with a warning saying so. That is the case section
    6.8 keeps `snapFeatherPoints` around for.
 
-   **Still to do, in order: the AE importer, then the Nuke importer.** The AE
-   importer is not optional and is not in the draft's own ordering: the
-   exporter can now write a file the AE importer would silently read as
-   featherless, and `test/golden/ae_scene.rbj`'s `feathered` mask is exactly
-   such a shape the moment it is re-exported. **Do not re-export the golden
-   until the AE importer reads `anchored`.** The Nuke importer then needs the
-   de Casteljau split of section 6.5, the once-per-shape warning naming how
-   many vertices were inserted, and the crossing-case fallback to the snap.
+   **AE importer: done, 2026-08-21.** `geom.feather_points_from_anchors` /
+   `RB.geom.featherPointsFromAnchors` is the inverse, mirrored and tested both
+   ways including the host's `(i, 0)` to `(i-1, 1)` rename. Into After Effects
+   this is the easy direction: the host anchors feather anywhere along a
+   segment, so every entry lands where the file says and nothing is snapped,
+   split or dropped. The round trip is covered end to end by
+   `test/test_ae_import.js`, "keeps anchored feather where the artist put it" -
+   the mid-segment anchor and the authored zero both survive, which is the
+   round trip that could not be written before.
+
+   The drift pass needed nothing: `featherByAnchor` already keyed on `seg + rel`
+   for an unrelated reason (the 27 px phantom), and that is the same invariant
+   section 6.4 stores.
+
+   **Still to do: the Nuke importer.** Section 6.5's de Casteljau split, the
+   once-per-shape warning naming how many vertices were inserted, and the
+   crossing-case fallback to `snapFeatherPoints`, which is why that function
+   stays. Until it lands, an anchored file opens in After Effects and not in
+   Nuke, which is backwards for a product whose hub is Nuke.
+
+   **Re-export `test/golden/ae_scene.rbj` once the Nuke importer is in.** Its
+   `feathered` mask has anchors at `seg + rel` of `[0.25, 0.75, 2.5, 3.0]`, so
+   it will come out `anchored` and the two snap warnings will disappear -
+   changing the alert's warning count again, and `test/probe/README.md` says
+   five. Re-run the crossing after it.
 
    **One thing is unmeasured and it gates exactness, not the work.** Is AE's
    `featherRelSegLocs` a bezier parameter or an arc-length fraction? Section 6.4

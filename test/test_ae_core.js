@@ -378,6 +378,58 @@ describe("geom.featherAnchors", function () {
     });
 });
 
+describe("geom.featherPointsFromAnchors", function () {
+    // spec/rbj-v2-draft.md section 6, back into After Effects. The Python
+    // mirror is TestFeatherPointsFromAnchors.
+
+    it("splits t into the segment and the fraction", function () {
+        var made = geom.featherPointsFromAnchors([{ t: 2.5, feather: 12 }]);
+        deepEq([made.segLocs, made.relLocs, made.radii, made.types],
+               [[2], [0.5], [12], [0]]);
+    });
+
+    it("pins an integral t to the start of its own segment", function () {
+        var made = geom.featherPointsFromAnchors([{ t: 3.0, feather: 1 }]);
+        deepEq([made.segLocs, made.relLocs], [[3], [0]]);
+    });
+
+    it("takes the type from the sign", function () {
+        var made = geom.featherPointsFromAnchors(
+            [{ t: 0, feather: 5 }, { t: 1, feather: -5 },
+             { t: 2, feather: 0 }]);
+        deepEq(made.types, [0, 1, 0]);
+    });
+
+    it("keeps both anchors that share one t", function () {
+        var made = geom.featherPointsFromAnchors(
+            [{ t: 3, feather: 0 }, { t: 3, feather: 12 }]);
+        deepEq([made.segLocs, made.radii], [[3, 3], [0, 12]]);
+    });
+
+    it("round trips with featherAnchors", function () {
+        var anchors = [{ t: 0.25, feather: 30 }, { t: 0.75, feather: -15 },
+                       { t: 2.5, feather: 12 }, { t: 3.0, feather: 0 }];
+        var made = geom.featherPointsFromAnchors(anchors);
+        deepEq(geom.featherAnchors(made.segLocs, made.relLocs, made.radii, 7),
+               anchors);
+    });
+
+    it("survives the host's rename of a vertex anchor", function () {
+        // AE hands (i, 0) back as (i-1, 1). Reading that must give the t that
+        // was written, or a re-export moves every vertex anchor.
+        var anchors = [{ t: 4.0, feather: 5 }];
+        var made = geom.featherPointsFromAnchors(anchors);
+        deepEq(geom.featherAnchors([made.segLocs[0] - 1], [1.0],
+                                   made.radii, 7), anchors);
+    });
+
+    it("gives four empty arrays for no anchors", function () {
+        var made = geom.featherPointsFromAnchors([]);
+        deepEq([made.segLocs, made.relLocs, made.radii, made.types],
+               [[], [], [], []]);
+    });
+});
+
 describe("geom.featherPointsFromVertices", function () {
     it("pins each vertex to the start of its own segment", function () {
         var got = geom.featherPointsFromVertices([1.0, -2.0]);

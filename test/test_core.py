@@ -1542,6 +1542,64 @@ class TestFeatherAnchors(unittest.TestCase):
                                 "seg %d rel %s gave t %r" % (seg, rel, t))
 
 
+class TestFeatherPointsFromAnchors(unittest.TestCase):
+    """spec/rbj-v2-draft.md section 6, back into After Effects.
+
+    The easy direction: the host anchors feather anywhere along a segment, so
+    every entry lands exactly where the file says. Nuke's direction is 6.5 and
+    has to insert vertices to manage the same thing.
+    """
+
+    def test_t_splits_into_the_segment_and_the_fraction(self):
+        segs, rels, radii, types = geom.feather_points_from_anchors(
+            [{"t": 2.5, "feather": 12.0}])
+        self.assertEqual((segs, rels, radii), ([2], [0.5], [12.0]))
+        self.assertEqual(types, [0])
+
+    def test_an_integral_t_pins_to_the_start_of_its_own_segment(self):
+        segs, rels, _, _ = geom.feather_points_from_anchors(
+            [{"t": 3.0, "feather": 1.0}])
+        self.assertEqual((segs, rels), ([3], [0.0]))
+
+    def test_the_type_follows_the_sign(self):
+        # A point's direction cannot be changed after creation, so the host has
+        # to be handed the right one up front.
+        _, _, _, types = geom.feather_points_from_anchors(
+            [{"t": 0.0, "feather": 5.0}, {"t": 1.0, "feather": -5.0},
+             {"t": 2.0, "feather": 0.0}])
+        self.assertEqual(types, [0, 1, 0])
+
+    def test_two_anchors_at_one_t_both_survive(self):
+        segs, rels, radii, _ = geom.feather_points_from_anchors(
+            [{"t": 3.0, "feather": 0.0}, {"t": 3.0, "feather": 12.0}])
+        self.assertEqual((segs, rels, radii), ([3, 3], [0.0, 0.0],
+                                               [0.0, 12.0]))
+
+    def test_it_round_trips_with_feather_anchors(self):
+        # The two halves of section 6 in the same process. Run 3's shape, out
+        # to the host's four arrays and back.
+        anchors = [{"t": 0.25, "feather": 30.0},
+                   {"t": 0.75, "feather": -15.0},
+                   {"t": 2.5, "feather": 12.0},
+                   {"t": 3.0, "feather": 0.0}]
+        segs, rels, radii, _ = geom.feather_points_from_anchors(anchors)
+        self.assertEqual(geom.feather_anchors(segs, rels, radii, 7), anchors)
+
+    def test_the_hosts_rename_survives_the_round_trip(self):
+        # After Effects hands (i, 0) back as (i-1, 1). Reading that must give
+        # the t that was written, or a re-export moves every vertex anchor.
+        anchors = [{"t": 4.0, "feather": 5.0}]
+        segs, rels, radii, _ = geom.feather_points_from_anchors(anchors)
+        renamed_segs = [s - 1 for s in segs]
+        renamed_rels = [1.0 for _ in rels]
+        self.assertEqual(geom.feather_anchors(renamed_segs, renamed_rels,
+                                              radii, 7), anchors)
+
+    def test_no_anchors_gives_four_empty_arrays(self):
+        self.assertEqual(geom.feather_points_from_anchors([]),
+                         ([], [], [], []))
+
+
 class TestFeatherPointsFromVertices(unittest.TestCase):
     """The way back: one scalar per vertex to After Effects' four arrays."""
 

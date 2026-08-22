@@ -365,6 +365,35 @@ def feather_anchors(seg_locs, rel_locs, radii, vertex_count, closed=True):
     return anchors
 
 
+def feather_points_from_anchors(anchors):
+    """`feather_points` (spec 6.3) back to the arrays After Effects wants.
+
+    Returns `(seg_locs, rel_locs, radii, types)`. The inverse of
+    `feather_anchors`, and the easy direction: After Effects anchors feather
+    anywhere along a segment, so every entry lands exactly where the file says
+    and nothing is snapped, split or dropped.
+
+    `t = segment + fraction`, so the split is the floor and the remainder. A
+    `t` that is exactly integral is written as `(t, 0.0)`, the start of its own
+    segment - the host renames that to `(t-1, 1.0)` on the way back out and
+    `feather_anchors` reads either spelling as the same number.
+
+    `types` follows the sign for the reason `feather_points_from_vertices`
+    gives: a point's direction cannot be changed after creation, so the host
+    has to be handed the right one up front.
+    """
+    seg_locs, rel_locs, radii, types = [], [], [], []
+    for anchor in anchors:
+        t = float(anchor["t"])
+        segment = math.floor(t)
+        d = float(anchor["feather"])
+        seg_locs.append(int(segment))
+        rel_locs.append(t - segment)
+        radii.append(d)
+        types.append(0 if d >= 0.0 else 1)
+    return seg_locs, rel_locs, radii, types
+
+
 def feather_points_from_vertices(feather):
     """One signed scalar per vertex to the arrays After Effects wants.
 

@@ -50,6 +50,11 @@ function near(got, want, places, note) {
     }
 }
 function ok(cond, note) { if (!cond) { fail(note || "expected true"); } }
+function deepEq(got, want, note) {
+    var g = JSON.stringify(got);
+    var w = JSON.stringify(want);
+    if (g !== w) { fail((note ? note + ": " : "") + g + " !== " + w); }
+}
 function has(haystack, needle, note) {
     for (var i = 0; i < haystack.length; i++) {
         if (String(haystack[i]).indexOf(needle) > -1) { return haystack[i]; }
@@ -450,6 +455,34 @@ describe("round trip", function () {
         eq(pts[1].feather, 0);
     });
 
+    it("keeps anchored feather where the artist put it", function () {
+        // spec/rbj-v2-draft.md section 6, both halves in one process. Under v1
+        // the radius-12 anchor would have been dragged to vertex 3 on the way
+        // out and would come back there, and the authored zero would be gone
+        // entirely - so this is the round trip that could not be written
+        // before.
+        var r = roundTrip({
+            mask: {
+                pathAt: function (t) {
+                    var sh = movingSquare(t);
+                    sh.featherSegLocs = [0, 2, 3, 3];
+                    sh.featherRelSegLocs = [0.25, 0.5, 0.0, 0.0];
+                    sh.featherRadii = [30, 12, 0, -15];
+                    return sh;
+                }
+            }
+        });
+        eq(r.first.shapes[0].feather_model, "anchored");
+        eq(r.second.shapes[0].feather_model, "anchored");
+        eq(r.first.version, 2);
+        eq(r.second.version, 2);
+        deepEq(r.second.shapes[0].frames["0"].feather_points,
+               r.first.shapes[0].frames["0"].feather_points);
+        deepEq(r.second.shapes[0].frames["0"].feather_points,
+               [{ t: 0.25, feather: 30 }, { t: 2.5, feather: 12 },
+                { t: 3, feather: -15 }, { t: 3, feather: 0 }]);
+    });
+
     it("survives a transformed source layer", function () {
         // The export goes layer -> comp and the import comes back comp ->
         // layer. If either affine were wrong the geometry would land somewhere
@@ -670,6 +703,121 @@ describe("import per-point feather", function () {
         eq(seen["1.0000"], -15, "vertex 1");
         eq(seen["2.0000"], 0, "vertex 2");
         eq(seen["3.0000"], 12, "vertex 3");
+    });
+});
+
+/* --- anchored feather ----------------------------------------------------- */
+
+describe("import anchored feather", function () {
+    // spec/rbj-v2-draft.md section 6. Into After Effects this is the easy
+    // direction: the host anchors feather anywhere along a segment, so every
+    // entry lands where the file says and nothing is snapped or split. The
+    // hard direction is Nuke's, section 6.5.
+    var LAST = 4;
+
+    function anchoredDoc(anchors) {
+        var frames = {};
+        for (var f = 0; f <= LAST; f++) {
+            var pts = [];
+            for (var i = 0; i < 4; i++) {
+                pts[i] = { "c": [100 + (i === 1 || i === 2 ? 200 : 0),
+                                 100 + (i >= 2 ? 200 : 0)],
+                           "in": [0, 0], "out": [0, 0] };
+            }
+            frames[String(f)] = { "opacity": 1.0, "feather_uniform": [0, 0],
+                                  "points": pts,
+                                  "feather_points": anchors };
+        }
+        var sides = { "in": "linear", "out": "linear" };
+        return JSON.stringify({
+            "format": "rotobridge", "version": 2,
+            "source": { "app": "test", "app_version": "1", "width": 1920,
+                        "height": 1080, "pixel_aspect": 1, "fps": 24 },
+            "range": [0, LAST], "warnings": [],
+            "shapes": [{ "name": "anchored", "closed": true, "blend": "union",
+                         "feather_model": "anchored",
+                         "feather_falloff": "smooth",
+                         "frames": frames,
+                         "keys": [{ "frame": 0, "interp": sides },
+                                  { "frame": LAST, "interp": sides }] }]
+        });
+    }
+
+    function anchorsOnHost(host) {
+        /* Keyed by seg + rel, which is invariant under the host's rename -
+         * the same invariant the file stores and `deviation` compares on. */
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Shape");
+        var got = prop.valueAtTime(0, false);
+        var seen = {};
+        for (var i = 0; i < (got.featherRadii || []).length; i++) {
+            var pos = (Number(got.featherSegLocs[i])
+                       + Number(got.featherRelSegLocs[i])) % 4;
+            seen[pos.toFixed(4)] = Number(got.featherRadii[i]);
+        }
+        return seen;
+    }
+
+    it("puts a mid-segment anchor where the file says", function () {
+        // Under v1 this arrived at vertex 1, a quarter of a segment away.
+        var host = importInto(anchoredDoc([{ t: 0.75, feather: 20 }]),
+                              { workAreaDuration: (LAST + 1) / 24 });
+        eq(anchorsOnHost(host)["0.7500"], 20);
+    });
+
+    it("keeps two anchors that share one vertex", function () {
+        // The case v1 could not carry at all: it kept the larger radius and
+        // discarded the other, which on the golden scene was an authored zero.
+        var host = importInto(anchoredDoc([{ t: 3.0, feather: 0 },
+                                           { t: 3.0, feather: 12 }]),
+                              { workAreaDuration: (LAST + 1) / 24 });
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Shape");
+        var got = prop.valueAtTime(0, false);
+        eq(got.featherRadii.length, 2);
+    });
+
+    it("carries the run 3 shape's anchors intact", function () {
+        var host = importInto(anchoredDoc([{ t: 0.25, feather: 30 },
+                                           { t: 0.75, feather: -15 },
+                                           { t: 2.5, feather: 12 },
+                                           { t: 3.0, feather: 0 }]),
+                              { workAreaDuration: (LAST + 1) / 24 });
+        var seen = anchorsOnHost(host);
+        eq(seen["0.2500"], 30);
+        eq(seen["0.7500"], -15);
+        eq(seen["2.5000"], 12);
+        eq(seen["3.0000"], 0);
+    });
+
+    it("sets the type from the sign, which cannot be changed later",
+       function () {
+        var host = importInto(anchoredDoc([{ t: 0.5, feather: 8 },
+                                           { t: 1.5, feather: -8 }]),
+                              { workAreaDuration: (LAST + 1) / 24 });
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Shape");
+        var got = prop.valueAtTime(0, false);
+        eq(got.featherTypes.join(","), "0,1");
+    });
+
+    it("does not invent drift out of an anchored feather layer", function () {
+        // The same trap `per_point` fell into: the host reorders its arrays
+        // between keys, and a comparison by array index reads that as motion.
+        // Nothing here moves, so the pass must find nothing to correct.
+        var host = importInto(anchoredDoc([{ t: 0.25, feather: 30 },
+                                           { t: 0.75, feather: -15 },
+                                           { t: 2.5, feather: 12 }]),
+                              { workAreaDuration: (LAST + 1) / 24 });
+        has(host.alerts, "0 corrective");
+    });
+
+    it("leaves no point carrying feather", function () {
+        // Under `anchored` the point layer is empty by definition, and a
+        // per_point reading of the same file would have written zeros.
+        var host = importInto(anchoredDoc([{ t: 0.5, feather: 8 }]),
+                              { workAreaDuration: (LAST + 1) / 24 });
+        eq(anchorsOnHost(host)["0.5000"], 8);
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Shape");
+        eq(prop.valueAtTime(0, false).featherRadii.length, 1,
+           "one anchor in the file, one on the host");
     });
 });
 

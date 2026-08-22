@@ -377,6 +377,35 @@ var RB = (function () {
         return anchors;
     };
 
+    RB.geom.featherPointsFromAnchors = function (anchors) {
+        /* `feather_points` (spec section 6.3) back to the arrays After Effects
+         * wants: {segLocs, relLocs, radii, types}.
+         *
+         * The inverse of `featherAnchors`, and the easy direction - AE anchors
+         * feather anywhere along a segment, so every entry lands exactly where
+         * the file says and nothing is snapped, split or dropped.
+         *
+         * t = segment + fraction, so the split is the floor and the remainder.
+         * An integral t is written as (t, 0.0), the start of its own segment;
+         * the host renames that to (t-1, 1.0) on the way back out, and
+         * `featherAnchors` reads either spelling as the same number.
+         *
+         * `types` follows the sign, for the reason featherPointsFromVertices
+         * gives: a point's direction cannot be changed after creation. */
+        var segLocs = [], relLocs = [], radii = [], types = [];
+        for (var i = 0; i < anchors.length; i++) {
+            var t = Number(anchors[i]["t"]);
+            var segment = Math.floor(t);
+            var d = Number(anchors[i]["feather"]);
+            segLocs[i] = segment;
+            relLocs[i] = t - segment;
+            radii[i] = d;
+            types[i] = d >= 0.0 ? 0 : 1;
+        }
+        return { segLocs: segLocs, relLocs: relLocs, radii: radii,
+                 types: types };
+    };
+
     RB.geom.featherPointsFromVertices = function (feather) {
         /* Returns {segLocs, relLocs, radii, types}, one entry per vertex, each
          * point pinned to the start of its own vertex's segment.

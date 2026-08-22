@@ -170,14 +170,24 @@
         shape.outTangents = outTangents;
         shape.closed = closed;
 
+        /* Two feather models reach the same four arrays, and this is the host
+         * that can take either without losing anything - spec/rbj-v2-draft.md
+         * section 6 exists because After Effects anchors feather anywhere
+         * along a segment and .rbj v1 could only say "at a vertex".
+         *
+         * `per_point` pins one point per vertex to the start of its own
+         * segment; `anchored` puts each one where the file says. A point's
+         * direction cannot be changed after creation, so in both cases the
+         * type has to be right up front rather than corrected afterwards. */
+        var made = null;
         if (model === "per_point") {
-            /* One feather point per vertex, pinned to the start of its own
-             * segment, signed radius carrying the direction. A point's
-             * direction cannot be changed after creation, so the type has to be
-             * right up front rather than corrected afterwards. */
-            var made = geom.featherPointsFromVertices(feather);
+            made = geom.featherPointsFromVertices(feather);
+        } else if (model === "anchored") {
+            made = geom.featherPointsFromAnchors(record["feather_points"]);
+        }
+        if (made) {
             var flat = [];
-            for (var f = 0; f < feather.length; f++) { flat[f] = 0; }
+            for (var f = 0; f < made.radii.length; f++) { flat[f] = 0; }
             shape.featherSegLocs = made.segLocs;
             shape.featherRelSegLocs = made.relLocs;
             shape.featherRadii = made.radii;
