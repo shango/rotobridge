@@ -58,6 +58,19 @@ function has(haystack, needle, note) {
     fail((note ? note + ": " : "") + "no entry containing " + JSON.stringify(needle)
          + " in:\n      " + haystack.join("\n      "));
 }
+function hasNot(haystack, needle, note) {
+    for (var i = 0; i < haystack.length; i++) {
+        if (haystack[i].indexOf(needle) > -1) {
+            fail((note ? note + ": " : "") + "unexpected entry containing "
+                 + JSON.stringify(needle) + ": " + haystack[i]);
+        }
+    }
+}
+function deepEq(got, want, note) {
+    var g = JSON.stringify(got);
+    var w = JSON.stringify(want);
+    if (g !== w) { fail((note ? note + ": " : "") + g + " !== " + w); }
+}
 
 /* --- loading the adapters ------------------------------------------------ */
 
@@ -387,20 +400,88 @@ describe("feather", function () {
         eq(pts[3].feather, 12, "vertex 3");
     });
 
-    it("warns when a point was mid-segment", function () {
+    it("says anchored when a point was mid-segment", function () {
+        // spec/rbj-v2-draft.md section 6.7. Under v1 this was snapped to the
+        // nearer vertex and warned about; the anchor is now carried where the
+        // artist put it, and the price is that the file is version 2.
         var doc = runExport(mock.install(withFeatherPoints({
             segLocs: [0], relLocs: [0.7], radii: [5]
         })));
-        has(doc.warnings, "snapped to the nearer vertex");
-        eq(doc.shapes[0].frames["0"].points[1].feather, 5);
+        eq(doc.shapes[0].feather_model, "anchored");
+        eq(doc.version, 2);
+        deepEq(doc.shapes[0].frames["0"].feather_points,
+               [{ t: 0.7, feather: 5 }]);
+        eq(RB.util.hasOwn(doc.shapes[0].frames["0"].points[0], "feather"),
+           false, "anchored means no point carries feather");
+        has(doc.warnings, "a version 1 reader will refuse it");
+        hasNot(doc.warnings, "snapped to the nearer vertex");
     });
 
-    it("warns when two points collide, keeping the larger", function () {
+    it("says anchored when two points share a vertex", function () {
+        // The case that decided the design: v1 kept the larger radius and
+        // discarded the other, so an authored zero-width point disappeared.
         var doc = runExport(mock.install(withFeatherPoints({
             segLocs: [0, 0], relLocs: [0.0, 0.0], radii: [2, -9]
         })));
-        has(doc.warnings, "two feather points resolved to");
-        eq(doc.shapes[0].frames["0"].points[0].feather, -9);
+        eq(doc.shapes[0].feather_model, "anchored");
+        deepEq(doc.shapes[0].frames["0"].feather_points,
+               [{ t: 0, feather: -9 }, { t: 0, feather: 2 }]);
+        hasNot(doc.warnings, "two feather points resolved to");
+    });
+
+    it("stays per_point and version 1 when every anchor is on a vertex",
+       function () {
+        // The other half of section 6.7, and the more important half: the
+        // compatibility cost is paid only by the files that were being
+        // damaged. Nothing here needs anchoring, so nothing about the file
+        // changes.
+        var doc = runExport(mock.install(withFeatherPoints({
+            segLocs: [0, 2], relLocs: [0.0, 1.0], radii: [4, -6]
+        })));
+        eq(doc.shapes[0].feather_model, "per_point");
+        eq(doc.version, 1);
+        eq(RB.util.hasOwn(doc.shapes[0].frames["0"], "feather_points"), false);
+        eq(doc.shapes[0].frames["0"].points[0].feather, 4);
+        eq(doc.shapes[0].frames["0"].points[3].feather, -6);
+        hasNot(doc.warnings, "version 2");
+    });
+
+    it("falls back to the snap when the anchor count changes", function () {
+        // Section 6.3 fixes the count across frames for the reason section 7.3
+        // gives about vertices, so a shape that gains a feather point partway
+        // cannot be anchored at all. v1's behaviour is the fallback, which is
+        // why snapFeatherPoints does not go away, and it says so.
+        var spec = basic({
+            mask: {
+                pathAt: function (t) {
+                    var sh = movingSquare(t);
+                    sh.featherSegLocs = t > 0 ? [0, 2] : [0];
+                    sh.featherRelSegLocs = t > 0 ? [0.7, 0.0] : [0.7];
+                    sh.featherRadii = t > 0 ? [5, 9] : [5];
+                    return sh;
+                }
+            }
+        });
+        var doc = runExport(mock.install(spec));
+        eq(doc.shapes[0].feather_model, "per_point");
+        eq(doc.version, 1);
+        has(doc.warnings, "number of feather points changes between frames");
+        has(doc.warnings, "snapped to the nearer vertex");
+    });
+
+    it("keeps the anchor list ordered on every frame", function () {
+        // The host regroups its arrays by type on in-between frames, and
+        // section 6.3 requires ascending t, so every frame is sorted.
+        var doc = runExport(mock.install(withFeatherPoints({
+            segLocs: [3, 0, 2], relLocs: [0.5, 0.5, 0.5], radii: [1, 2, 3]
+        })));
+        var frames = doc.shapes[0].frames;
+        for (var key in frames) {
+            if (!RB.util.hasOwn(frames, key)) { continue; }
+            var pts = frames[key].feather_points;
+            deepEq([pts[0].t, pts[1].t, pts[2].t], [0.5, 2.5, 3.5],
+                   "frame " + key);
+        }
     });
 
     it("carries falloff once per shape", function () {

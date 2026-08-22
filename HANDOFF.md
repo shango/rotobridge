@@ -1120,14 +1120,31 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    51 new tests across `TestAnchoredFeather` in `test/test_core.py` and the
    matching block in `test/test_ae_core.js`.
 
-   **Still to do, in order: the AE exporter, then the Nuke importer.** The
-   exporter still calls `geom.snapFeatherPoints` unconditionally and needs
-   section 6.7's decision - `per_point` and version 1 when every anchor already
-   sits on its own vertex, `anchored` and version 2 otherwise - so the
-   compatibility cost is paid only by the files that were being damaged. The
-   importer needs the de Casteljau split of section 6.5, the once-per-shape
-   warning naming how many vertices were inserted, and the crossing-case
-   fallback to `snapFeatherPoints`, which is why that function stays.
+   **AE exporter: done, 2026-08-21.** `geom.feather_anchors` /
+   `RB.geom.featherAnchors` is the lossless reading, mirrored and tested over
+   run 3's own vectors; `finishFeather` makes section 6.7's decision. The snap
+   still runs on every frame, because which reading the file carries is a
+   per-shape question and this is a per-frame loop - so both are computed and
+   the loser is deleted. That is also what keeps a vertex-aligned file
+   byte-identical to what v1 wrote.
+
+   **Two writers' warnings moved.** The mid-segment and collision warnings used
+   to fire inside the frame loop; they now fire from `finishFeather`, because
+   under `anchored` nothing is snapped and nothing is dropped and warning about
+   it would describe damage the file does not take.
+
+   **A shape whose anchor count changes between frames cannot be anchored** and
+   falls back to the v1 snap with a warning saying so. That is the case section
+   6.8 keeps `snapFeatherPoints` around for.
+
+   **Still to do, in order: the AE importer, then the Nuke importer.** The AE
+   importer is not optional and is not in the draft's own ordering: the
+   exporter can now write a file the AE importer would silently read as
+   featherless, and `test/golden/ae_scene.rbj`'s `feathered` mask is exactly
+   such a shape the moment it is re-exported. **Do not re-export the golden
+   until the AE importer reads `anchored`.** The Nuke importer then needs the
+   de Casteljau split of section 6.5, the once-per-shape warning naming how
+   many vertices were inserted, and the crossing-case fallback to the snap.
 
    **One thing is unmeasured and it gates exactness, not the work.** Is AE's
    `featherRelSegLocs` a bezier parameter or an arc-length fraction? Section 6.4

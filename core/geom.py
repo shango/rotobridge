@@ -321,6 +321,50 @@ def snap_feather_points(seg_locs, rel_locs, radii, vertex_count):
     return {"feather": feather, "snapped": snapped, "dropped": dropped}
 
 
+def feather_anchors(seg_locs, rel_locs, radii, vertex_count, closed=True):
+    """After Effects feather points as the `feather_points` of spec 6.3.
+
+    Returns a list of `{"t", "feather"}` sorted by `t` ascending. This is the
+    lossless reading: `snap_feather_points` above resolves the same input onto
+    vertices and is what v1 files carry, at the cost the draft's section 6.1
+    measures. Both are kept, because a file whose anchors already sit on
+    vertices is still a v1 file (section 6.7) and the snap is still the
+    fallback for a destination that cannot take extra vertices.
+
+    `t = segment + fraction` (section 6.4). One number rather than the pair the
+    host reports, because the pair is not stable: After Effects renames a point
+    written at `(i, 0)` to `(i-1, 1)` and regroups the arrays by feather type
+    when the shape is read between keyframes. Both transformations preserve the
+    sum, which is why the sum is what the format stores.
+
+    On a closed shape `t = vertex_count` names the same anchor as `t = 0` and
+    section 6.4 requires the latter, so it wraps.
+
+    **Sorted per frame, independently.** The host's array order is not stable
+    across frames - that same regrouping - so there is no index to carry an
+    anchor's identity from one frame to the next, and sorting is the only thing
+    that produces the ascending order section 6.3 requires. It also means this
+    function cannot see two anchors crossing: the sorted sequence is monotone
+    by construction. Section 6.5 puts the detection on the reader, which has
+    the whole file at once and can watch the feather values jump.
+
+    The tie-break on `feather` is for determinism rather than meaning. Two
+    anchors at one `t` are interchangeable in the format, and re-exporting the
+    same scene should not produce a different file because the host grouped
+    its arrays differently.
+    """
+    anchors = []
+    for i in range(len(radii)):
+        t = int(seg_locs[i]) + float(rel_locs[i])
+        if closed:
+            t = math.fmod(t, float(vertex_count))
+            if t < 0.0:
+                t += float(vertex_count)
+        anchors.append({"t": t, "feather": float(radii[i])})
+    anchors.sort(key=lambda a: (a["t"], a["feather"]))
+    return anchors
+
+
 def feather_points_from_vertices(feather):
     """One signed scalar per vertex to the arrays After Effects wants.
 

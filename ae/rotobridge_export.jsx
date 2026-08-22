@@ -148,16 +148,24 @@
         return points;
     }
 
-    function applyFeather(entry, path, points, state, warn) {
-        /* Resolve this frame's feather points onto the vertices.
+    function applyFeather(path, points, state) {
+        /* Read this frame's feather points, both ways. Returns the anchored
+         * reading (spec/rbj-v2-draft.md section 6.3); the snapped one is
+         * written onto `points` as it always was.
          *
-         * After Effects places a feather point anywhere along a segment; .rbj
-         * carries one signed scalar per vertex (prd.md section 9.3). Feather
-         * points live on the `Shape` the path evaluates to, so they animate
-         * with it and have to be read inside the frame loop like everything
-         * else here. */
+         * Both, because which one the file carries is a per-shape decision
+         * (section 6.7) and this is a per-frame reading. The shape does not
+         * know until every frame is in whether the snap would lose anything,
+         * so `finishFeather` chooses and throws the other away.
+         *
+         * Feather points live on the `Shape` the path evaluates to, so they
+         * animate with it and have to be read inside the frame loop like
+         * everything else here. */
         var radii = path.featherRadii;
-        if (!radii || !radii.length) { return; }
+        if (!radii || !radii.length) {
+            state.anchorCounts[0] = true;
+            return [];
+        }
 
         state.sawFeather = true;
         var got = geom.snapFeatherPoints(path.featherSegLocs,
@@ -167,17 +175,21 @@
             points[i]["feather"] = got.feather[i];
         }
 
-        if (got.snapped.length) {
-            warn("mask '" + entry.name + "': " + got.snapped.length
-                 + " feather point(s) sat mid-segment and were snapped to the"
-                 + " nearer vertex; Nuke can only anchor feather at a vertex");
+        /* What the snap would cost, recorded rather than warned about: under
+         * `anchored` nothing is snapped and nothing is dropped, so warning
+         * here would describe damage the file does not end up taking. */
+        if (got.snapped.length > state.snapped) {
+            state.snapped = got.snapped.length;
         }
         for (var d = 0; d < got.dropped.length; d++) {
-            var drop = got.dropped[d];
-            warn("mask '" + entry.name + "': two feather points resolved to"
-                 + " vertex " + drop.vertex + "; kept radius " + drop.kept
-                 + " and dropped " + drop.radius);
+            state.dropped[state.dropped.length] = got.dropped[d];
         }
+
+        var anchors = geom.featherAnchors(path.featherSegLocs,
+                                          path.featherRelSegLocs,
+                                          radii, points.length, state.closed);
+        state.anchorCounts[anchors.length] = true;
+        return anchors;
     }
 
     function bake(comp, shapes, frames, warn) {
@@ -191,7 +203,8 @@
         var s;
         for (s = 0; s < shapes.length; s++) {
             headers[s] = shapeHeader(shapes[s], warn);
-            states[s] = { sawFeather: false, vertexCount: null, closed: null };
+            states[s] = { sawFeather: false, vertexCount: null, closed: null,
+                          snapped: 0, dropped: [], anchorCounts: {} };
         }
 
         for (var f = 0; f < frames.length; f++) {
@@ -236,14 +249,14 @@
                         + " cannot represent a changing vertex count and there"
                         + " is no correct interpolation between two");
                 }
-                applyFeather(entry, path, points, states[s], warn);
+                var anchors = applyFeather(path, points, states[s]);
 
                 var opacity = ae.maskProp(entry.mask, ae.MASK_OPACITY)
                                 .valueAtTime(t, false);
                 var feather = ae.maskProp(entry.mask, ae.MASK_FEATHER)
                                 .valueAtTime(t, false);
 
-                headers[s]["frames"][String(frame)] = {
+                var record = {
                     /* Opacity is a percentage in the host and a 0-1 fraction in
                      * the format (spec section 7.2). Uniform feather is read
                      * per frame because it animates - run 6 measured a keyed
@@ -253,6 +266,14 @@
                     "feather_uniform": [Number(feather[0]), Number(feather[1])],
                     "points": points
                 };
+                if (anchors.length) {
+                    /* Kept only if the shape ends up `anchored`; finishFeather
+                     * deletes it otherwise, which is what keeps a file whose
+                     * anchors already sit on vertices byte-identical to what
+                     * v1 wrote (section 6.7). */
+                    record["feather_points"] = anchors;
+                }
+                headers[s]["frames"][String(frame)] = record;
             }
         }
 
@@ -269,23 +290,60 @@
                      + " geometry is carried but no stroke width or end caps"
                      + " are");
             }
-            finishFeather(headers[s], states[s]);
+            finishFeather(headers[s], states[s], shapes[s].name, warn);
         }
         return headers;
     }
 
-    function finishFeather(header, state) {
+    function countsAgree(counts) {
+        /* One anchor count across every frame, which section 6.3 requires for
+         * the reason section 7.3 gives about vertices. A shape that fails this
+         * cannot be `anchored` at all and takes the v1 snap instead, which is
+         * the fallback section 6.8 keeps `snapFeatherPoints` around for. */
+        var seen = 0;
+        for (var n in counts) {
+            if (RB.util.hasOwn(counts, n)) { seen += 1; }
+        }
+        return seen <= 1;
+    }
+
+    function stripFeather(frames, points_too) {
+        for (var key in frames) {
+            if (!RB.util.hasOwn(frames, key)) { continue; }
+            delete frames[key]["feather_points"];
+            if (!points_too) { continue; }
+            var points = frames[key]["points"];
+            for (var i = 0; i < points.length; i++) {
+                delete points[i]["feather"];
+            }
+        }
+    }
+
+    function finishFeather(header, state, name, warn) {
         /* `feather_model` is a per-shape member but feather points are a
          * per-frame reading, so it can only be decided once every frame is in.
+         * Section 6.7 is the decision, and it turns on one question: would the
+         * snap lose anything?
          *
          * Under `per_point` the spec requires `feather` on every point of every
          * frame, so frames that had no feather points are filled with zeros -
          * which is also what they mean. Under `none` the member must be absent
          * entirely, because a zero written under `none` is indistinguishable
-         * from an authored zero-width point. */
+         * from an authored zero-width point. Under `anchored` no point carries
+         * `feather` at all: two places to look is one too many. */
         var frames = header["frames"];
         var key, i, points;
         if (!state.sawFeather) {
+            stripFeather(frames, true);
+            return;
+        }
+
+        var lossy = state.snapped > 0 || state.dropped.length > 0;
+        if (lossy && countsAgree(state.anchorCounts)) {
+            /* Section 6.7: only a shape the snap would damage becomes a v2
+             * file, so the compatibility cost is paid by exactly the files
+             * that were being wrecked and by nothing else. */
+            header["feather_model"] = "anchored";
             for (key in frames) {
                 if (!RB.util.hasOwn(frames, key)) { continue; }
                 points = frames[key]["points"];
@@ -293,9 +351,18 @@
                     delete points[i]["feather"];
                 }
             }
+            warn("mask '" + name + "': feather is anchored along the path"
+                 + " rather than at vertices, which only .rbj version 2 can"
+                 + " express, so this file is version 2 and a version 1 reader"
+                 + " will refuse it. Nothing is lost; under version 1 this"
+                 + " mask's feather was being moved to the nearest vertex");
             return;
         }
+
+        /* The v1 reading, and now the only path that can lose something, so
+         * this is where the losses are finally said out loud. */
         header["feather_model"] = "per_point";
+        stripFeather(frames, false);
         for (key in frames) {
             if (!RB.util.hasOwn(frames, key)) { continue; }
             points = frames[key]["points"];
@@ -304,6 +371,23 @@
                     points[i]["feather"] = 0.0;
                 }
             }
+        }
+        if (lossy && !countsAgree(state.anchorCounts)) {
+            warn("mask '" + name + "': the number of feather points changes"
+                 + " between frames, which no .rbj version can carry - there is"
+                 + " no correct interpolation between two counts - so the"
+                 + " anchors were snapped to vertices as version 1 does");
+        }
+        if (state.snapped) {
+            warn("mask '" + name + "': " + state.snapped
+                 + " feather point(s) sat mid-segment and were snapped to the"
+                 + " nearer vertex; Nuke can only anchor feather at a vertex");
+        }
+        for (var d = 0; d < state.dropped.length; d++) {
+            var drop = state.dropped[d];
+            warn("mask '" + name + "': two feather points resolved to"
+                 + " vertex " + drop.vertex + "; kept radius " + drop.kept
+                 + " and dropped " + drop.radius);
         }
     }
 

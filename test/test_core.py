@@ -1450,6 +1450,98 @@ class TestFeatherPointSnapping(unittest.TestCase):
         self.assertEqual(got["dropped"], [])
 
 
+class TestFeatherAnchors(unittest.TestCase):
+    """spec/rbj-v2-draft.md section 6.4, the lossless reading of run 3's data.
+
+    `TestFeatherPointSnapping` covers what v1 does with the same input. These
+    are the same vectors, kept side by side deliberately: the pair is the
+    measurement of what section 6 is worth.
+    """
+
+    def test_the_run_3_shape_keeps_every_anchor_where_it_was(self):
+        # Four points on a seven-vertex mask: three mid-segment, two on the
+        # same segment, one radius of exactly zero. v1 moves the radius-12
+        # anchor 150 px to reach vertex 3 and discards the authored zero.
+        anchors = geom.feather_anchors([0, 0, 2, 3], [0.25, 0.75, 0.5, 0.0],
+                                       [30.0, -15.0, 12.0, 0.0], 7)
+        self.assertEqual(anchors, [{"t": 0.25, "feather": 30.0},
+                                   {"t": 0.75, "feather": -15.0},
+                                   {"t": 2.5, "feather": 12.0},
+                                   {"t": 3.0, "feather": 0.0}])
+
+    def test_two_anchors_on_one_segment_both_survive(self):
+        # The pair v1 has to drop one of, because no per-point member can hold
+        # two values for one point.
+        anchors = geom.feather_anchors([2, 2], [0.25, 0.75], [8.0, -3.0], 5)
+        self.assertEqual([a["t"] for a in anchors], [2.25, 2.75])
+
+    def test_t_is_the_segment_plus_the_fraction(self):
+        self.assertEqual(geom.feather_anchors([3], [0.5], [1.0], 8)[0]["t"],
+                         3.5)
+
+    def test_the_wraparound_spelling_of_a_vertex_is_the_same_anchor(self):
+        # After Effects renames a point written at (i, 0) to (i-1, 1). Both
+        # spellings must produce one t, or the same authored shape exports as
+        # two different files depending on when it was read.
+        at_start = geom.feather_anchors([4], [0.0], [5.0], 7)
+        as_renamed = geom.feather_anchors([3], [1.0], [5.0], 7)
+        self.assertEqual(at_start, as_renamed)
+
+    def test_the_last_segment_end_wraps_to_zero_on_a_closed_shape(self):
+        # Section 6.4: t = n names the same anchor as t = 0 and must be
+        # written as 0, which is also what the validator enforces.
+        anchors = geom.feather_anchors([6], [1.0], [5.0], 7)
+        self.assertEqual(anchors[0]["t"], 0.0)
+
+    def test_an_open_shape_does_not_wrap(self):
+        # It has one segment fewer and genuinely ends on its last vertex, so
+        # t = n - 1 is a real position rather than another name for 0.
+        anchors = geom.feather_anchors([5], [1.0], [5.0], 7, closed=False)
+        self.assertEqual(anchors[0]["t"], 6.0)
+
+    def test_the_result_is_ordered_by_t_ascending(self):
+        # The host regroups its arrays by feather type when the shape is read
+        # between keyframes, so read order is not ascending and cannot be
+        # relied on. Section 6.3 requires ascending.
+        anchors = geom.feather_anchors([4, 0, 2], [0.5, 0.5, 0.5],
+                                       [1.0, 2.0, 3.0], 6)
+        self.assertEqual([a["t"] for a in anchors], [0.5, 2.5, 4.5])
+
+    def test_read_order_does_not_change_the_file(self):
+        # Same anchors, host arrays grouped the other way. Re-exporting one
+        # scene must not produce a different file.
+        first = geom.feather_anchors([0, 2, 4], [0.5, 0.5, 0.5],
+                                     [1.0, 2.0, 3.0], 6)
+        second = geom.feather_anchors([4, 2, 0], [0.5, 0.5, 0.5],
+                                      [3.0, 2.0, 1.0], 6)
+        self.assertEqual(first, second)
+
+    def test_two_anchors_at_one_t_are_ordered_deterministically(self):
+        first = geom.feather_anchors([1, 1], [0.0, 0.0], [12.0, 0.0], 5)
+        second = geom.feather_anchors([1, 1], [0.0, 0.0], [0.0, 12.0], 5)
+        self.assertEqual(first, second)
+        self.assertEqual([a["feather"] for a in first], [0.0, 12.0])
+
+    def test_a_zero_radius_anchor_is_carried(self):
+        # v1's collision rule discards it; that is the defect section 6.1
+        # measures. Here it is just another anchor.
+        anchors = geom.feather_anchors([3], [0.0], [0.0], 7)
+        self.assertEqual(anchors, [{"t": 3.0, "feather": 0.0}])
+
+    def test_no_feather_points_is_an_empty_list(self):
+        self.assertEqual(geom.feather_anchors([], [], [], 7), [])
+
+    def test_every_t_is_inside_the_range_the_validator_enforces(self):
+        # The two halves of section 6 have to agree, or the exporter writes
+        # files its own validator rejects.
+        n = 7
+        for seg in range(n):
+            for rel in (0.0, 0.25, 0.5, 0.75, 1.0):
+                t = geom.feather_anchors([seg], [rel], [1.0], n)[0]["t"]
+                self.assertTrue(0.0 <= t < float(n),
+                                "seg %d rel %s gave t %r" % (seg, rel, t))
+
+
 class TestFeatherPointsFromVertices(unittest.TestCase):
     """The way back: one scalar per vertex to After Effects' four arrays."""
 

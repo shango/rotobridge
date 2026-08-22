@@ -312,6 +312,72 @@ describe("geom.snapFeatherPoints", function () {
     });
 });
 
+describe("geom.featherAnchors", function () {
+    // spec/rbj-v2-draft.md section 6.4. The Python mirror is
+    // TestFeatherAnchors, over the same vectors.
+
+    it("keeps every anchor of the run 3 shape where it was", function () {
+        var got = geom.featherAnchors([0, 0, 2, 3], [0.25, 0.75, 0.5, 0.0],
+                                      [30, -15, 12, 0], 7);
+        deepEq(got, [{ t: 0.25, feather: 30 }, { t: 0.75, feather: -15 },
+                     { t: 2.5, feather: 12 }, { t: 3.0, feather: 0 }]);
+    });
+
+    it("keeps both anchors that share one segment", function () {
+        var got = geom.featherAnchors([2, 2], [0.25, 0.75], [8, -3], 5);
+        deepEq([got[0].t, got[1].t], [2.25, 2.75]);
+    });
+
+    it("reads the two spellings of a vertex as one anchor", function () {
+        // AE renames a point written at (i, 0) to (i-1, 1).
+        deepEq(geom.featherAnchors([4], [0.0], [5], 7),
+               geom.featherAnchors([3], [1.0], [5], 7));
+    });
+
+    it("wraps the last segment's end to zero on a closed shape", function () {
+        eq(geom.featherAnchors([6], [1.0], [5], 7)[0].t, 0);
+    });
+
+    it("does not wrap on an open shape", function () {
+        eq(geom.featherAnchors([5], [1.0], [5], 7, false)[0].t, 6);
+    });
+
+    it("orders by t ascending whatever the read order", function () {
+        var got = geom.featherAnchors([4, 0, 2], [0.5, 0.5, 0.5], [1, 2, 3], 6);
+        deepEq([got[0].t, got[1].t, got[2].t], [0.5, 2.5, 4.5]);
+    });
+
+    it("gives one file whichever way the host grouped its arrays", function () {
+        deepEq(geom.featherAnchors([0, 2, 4], [0.5, 0.5, 0.5], [1, 2, 3], 6),
+               geom.featherAnchors([4, 2, 0], [0.5, 0.5, 0.5], [3, 2, 1], 6));
+    });
+
+    it("orders two anchors at one t deterministically", function () {
+        deepEq(geom.featherAnchors([1, 1], [0, 0], [12, 0], 5),
+               geom.featherAnchors([1, 1], [0, 0], [0, 12], 5));
+    });
+
+    it("carries a zero radius as an authored anchor", function () {
+        deepEq(geom.featherAnchors([3], [0.0], [0], 7),
+               [{ t: 3, feather: 0 }]);
+    });
+
+    it("reads no feather points as an empty list", function () {
+        eq(geom.featherAnchors([], [], [], 7).length, 0);
+    });
+
+    it("puts every t inside the range the validator enforces", function () {
+        var rels = [0.0, 0.25, 0.5, 0.75, 1.0];
+        for (var seg = 0; seg < 7; seg++) {
+            for (var r = 0; r < rels.length; r++) {
+                var t = geom.featherAnchors([seg], [rels[r]], [1], 7)[0].t;
+                eq(t >= 0 && t < 7, true, "seg " + seg + " rel " + rels[r]
+                   + " gave t " + t);
+            }
+        }
+    });
+});
+
 describe("geom.featherPointsFromVertices", function () {
     it("pins each vertex to the start of its own segment", function () {
         var got = geom.featherPointsFromVertices([1.0, -2.0]);
