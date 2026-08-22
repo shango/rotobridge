@@ -631,6 +631,87 @@ var RB = (function () {
         return { keys: current, worst: result.worst, at: result.at };
     };
 
+    function linearError(dense, keys, frame, held) {
+        /* The worst component of what the destination will draw against the
+         * bake. Mirrors core/drift.py `_linear_error`.
+         *
+         * A straight line between the bracketing keys, except where the key
+         * before holds: `held` names the key frames whose outgoing side is
+         * `hold`, and a held segment is flat by definition (spec section
+         * 10.2). Measuring one as a line would report the whole travel of the
+         * next key as drift and buy keys to flatten something already flat -
+         * which is how a conform meaning to preserve holds would destroy them.
+         */
+        var target = dense[String(frame)];
+        var before = null, after = null;
+        var i;
+        for (i = 0; i < keys.length; i++) {
+            if (keys[i] <= frame) { before = keys[i]; }
+            else if (after === null) { after = keys[i]; }
+        }
+        var worst = 0.0, value;
+        if (before !== null && hasOwn(held, String(before))) {
+            var flat = dense[String(before)];
+            for (i = 0; i < target.length; i++) {
+                value = Math.abs(flat[i] - target[i]);
+                if (value > worst) { worst = value; }
+            }
+            return worst;
+        }
+        if (before === null || after === null) {
+            /* Outside the keyed span there is no line to draw: the destination
+             * holds the nearest key's value, which is what both hosts do
+             * beyond their first and last key. */
+            var held = dense[String(before === null ? after : before)];
+            for (i = 0; i < target.length; i++) {
+                value = Math.abs(held[i] - target[i]);
+                if (value > worst) { worst = value; }
+            }
+            return worst;
+        }
+
+        var ratio = (frame - before) / (after - before);
+        var low = dense[String(before)], high = dense[String(after)];
+        for (i = 0; i < target.length; i++) {
+            value = Math.abs(low[i] + (high[i] - low[i]) * ratio - target[i]);
+            if (value > worst) { worst = value; }
+        }
+        return worst;
+    }
+
+    RB.drift.linearFit = function (frames, dense, keys, tolerance, holds) {
+        /* The key frames a LINEAR sparse layer needs to reproduce the dense
+         * one. Mirrors core/drift.py `linear_fit`, which carries the full
+         * reasoning.
+         *
+         * The export side of the question correct() answers at import, and the
+         * same search: only the measure differs, and it needs no host, because
+         * what a straight line between two keys leaves on the frames between
+         * them is arithmetic on numbers the exporter already has.
+         *
+         * `dense` maps a frame to a flat array of every scalar the destination
+         * will interpolate - each point's centre, both tangents and its
+         * feather, end to end. Tangents and feather are measured on the same
+         * scale as vertices against the same tolerance, which is the rule the
+         * Nuke importer already applies: a tangent that drifts bends the
+         * rendered edge exactly as far as a vertex that drifts.
+         *
+         * Returns {keys, worst, at}, as correct() does.
+         */
+        var chosen = sortedInts(keys);
+        var held = {};
+        var h = sortedInts(holds || []);
+        for (var i = 0; i < h.length; i++) { held[String(h[i])] = true; }
+
+        function applyKeys(keyFrames) { chosen = sortedInts(keyFrames); }
+
+        function measure(frame) {
+            return linearError(dense, chosen, frame, held);
+        }
+
+        return RB.drift.correct(frames, keys, applyKeys, measure, tolerance);
+    };
+
 
     /* --- the durable import record ----------------------------------------
      *

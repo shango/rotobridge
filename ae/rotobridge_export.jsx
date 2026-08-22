@@ -30,6 +30,12 @@
      * around 1e-12 px in the test harness. */
     var AFFINE_TOLERANCE = 1e-4;
 
+    /* How far a conformed key may leave the dense layer. The same 0.5 px the
+     * importers default to and acceptance criterion 4 bounds, and measured in
+     * rendered pixels to cost nothing: at 0.5 px against 0, no pixel on any
+     * frame of the scene golden differs by more than 0.01 alpha. */
+    var CONFORM_TOLERANCE = 0.5;
+
     function collectShapes(comp, warn) {
         /* Every mask to export, paired with the layer it belongs to.
          *
@@ -570,6 +576,145 @@
         }
     }
 
+    function denseVectors(baked, frames) {
+        /* The dense layer as one flat array of numbers per frame: every scalar
+         * a destination will interpolate, in a fixed order. A shape's point
+         * count cannot change inside a range (spec section 7.3), so the order
+         * is the same on every frame and the comparison is component-wise. */
+        var dense = {};
+        for (var f = 0; f < frames.length; f++) {
+            var key = String(frames[f]);
+            var points = baked["frames"][key]["points"];
+            var flat = [];
+            for (var i = 0; i < points.length; i++) {
+                var point = points[i];
+                flat[flat.length] = point["c"][0];
+                flat[flat.length] = point["c"][1];
+                flat[flat.length] = point["in"][0];
+                flat[flat.length] = point["in"][1];
+                flat[flat.length] = point["out"][0];
+                flat[flat.length] = point["out"][1];
+                if (RB.util.hasOwn(point, "feather")) {
+                    flat[flat.length] = point["feather"];
+                }
+            }
+            dense[key] = flat;
+        }
+        return dense;
+    }
+
+    function anySide(ease) {
+        return RB.util.hasOwn(ease, "in") || RB.util.hasOwn(ease, "out");
+    }
+
+    function conformEase(keys, baked, frames, name, warn) {
+        /* Rewrite every `ease` side as `linear` and add the keys that costs.
+         *
+         * Nuke's roto curves have no vocabulary for After Effects' temporal
+         * ease at all - measured, `core/interp.to_nuke` and
+         * `test/probe/probe_nuke_ease.py`: under the cubic types Nuke
+         * recomputes a written slope, only interior keys honour an authored
+         * tangent, and the best fit to a real AE curve is about 77 px off on a
+         * 700 px travel. So an eased key crosses as a dense bake, and the
+         * compositor opens a shape keyed on every frame with nothing saying
+         * why. That cost is not avoidable; where it is paid is a choice.
+         *
+         * It is paid here, in the application that created the problem. The
+         * file that reaches Nuke is then already in Nuke's vocabulary and
+         * needs no correction at the other end, whatever tolerance the
+         * compositor imports at. Measured on a static layer, which is what
+         * roto actually sits on: an AE `linear` mask crosses with 0 corrective
+         * keys and an eased one with 22 over a 25-frame range.
+         *
+         * `hold` and `linear` are left exactly as they are. Both cross
+         * losslessly - `hold` maps to Nuke's step - and rewriting a hold as
+         * linear would turn a frozen interval into a slide and then need a key
+         * on every frame of it to flatten it again, which is paying keys to
+         * destroy something that already transfers for free.
+         *
+         * A shape with no eased side at all is returned untouched.
+         */
+        var i, side, name_;
+        var sides = ["in", "out"];
+        var eased = 0, authored = 0;
+        for (i = 0; i < keys.length; i++) {
+            for (side = 0; side < sides.length; side++) {
+                name_ = sides[side];
+                if (keys[i]["interp"][name_] !== RB.interp.EASE) { continue; }
+                eased += 1;
+                /* An `ease` entry is what separates a curve the artist drew
+                 * from one this exporter invented. A pinned endpoint or a
+                 * transform key has no authored side to read, so section 10.3
+                 * spells it `ease` with no parameters - "unknown, rely on the
+                 * drift pass". Both are conformed, because Nuke reads either
+                 * as cubic; only the first is worth telling the artist about,
+                 * since only the first loses something they made. */
+                if (RB.util.hasOwn(keys[i], "ease")
+                    && RB.util.hasOwn(keys[i]["ease"], name_)) {
+                    authored += 1;
+                }
+            }
+        }
+        if (!eased) { return keys; }
+
+        var byFrame = {};
+        var wanted = [];
+        var holds = [];
+        for (i = 0; i < keys.length; i++) {
+            byFrame[String(keys[i]["frame"])] = keys[i];
+            wanted[wanted.length] = keys[i]["frame"];
+            /* A held segment is flat by definition, so the fit must not price
+             * it as a straight line to the next key. Passing the holds through
+             * is what keeps the conform from paying keys to destroy them. */
+            if (keys[i]["interp"]["out"] === RB.interp.HOLD) {
+                holds[holds.length] = keys[i]["frame"];
+            }
+        }
+
+        var fit = RB.drift.linearFit(frames, denseVectors(baked, frames),
+                                     wanted, CONFORM_TOLERANCE, holds);
+        var out = [];
+        for (i = 0; i < fit.keys.length; i++) {
+            var frame = fit.keys[i];
+            var key = RB.util.hasOwn(byFrame, String(frame))
+                ? byFrame[String(frame)]
+                : { "frame": frame,
+                    "interp": { "in": RB.interp.LINEAR,
+                                "out": RB.interp.LINEAR } };
+            for (side = 0; side < sides.length; side++) {
+                if (key["interp"][sides[side]] === RB.interp.EASE) {
+                    key["interp"][sides[side]] = RB.interp.LINEAR;
+                    /* A side carries an `ease` entry only while its interp is
+                     * `ease` (spec section 10.3), so the parameters go with
+                     * the side that named them. */
+                    if (RB.util.hasOwn(key, "ease")) {
+                        delete key["ease"][sides[side]];
+                    }
+                }
+            }
+            if (RB.util.hasOwn(key, "ease") && !anySide(key["ease"])) {
+                delete key["ease"];
+            }
+            out[out.length] = key;
+        }
+
+        var added = out.length - keys.length;
+        if (authored) {
+            warn(name + ": " + authored + " key side(s) carried temporal ease,"
+                 + " which Nuke's roto curves cannot hold. They were rewritten"
+                 + " as linear and " + added + " key(s) added, so the path is"
+                 + " within " + CONFORM_TOLERANCE + " px of this comp on every"
+                 + " frame. What is lost is editable timing, not the shape");
+        } else if (added) {
+            warn(name + ": " + added + " key(s) added so a straight line"
+                 + " between keys stays within " + CONFORM_TOLERANCE + " px of"
+                 + " this comp on every frame. Nothing the artist authored"
+                 + " changed; the sparse layer now needs no correction"
+                 + " downstream");
+        }
+        return out;
+    }
+
     function sparseKeys(comp, entry, frames, baked, warn) {
         /* The `keys` array for one shape: which frames, and how each one
          * interpolates.
@@ -654,7 +799,7 @@
                  + " the hold is not carried as one. Geometry is unaffected;"
                  + " what is lost is a held key the artist could edit");
         }
-        return out;
+        return conformEase(out, baked, frames, name, warn);
     }
 
     function buildDocument(comp, warn) {

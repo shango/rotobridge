@@ -135,3 +135,79 @@ def _survey(frames, keys, measure, tolerance):
                 additions.append(run[len(run) // 2])
             additions.append(at)
     return additions, worst, worst_at
+
+
+def linear_fit(frames, dense, keys, tolerance, holds=None):
+    """The key frames a LINEAR sparse layer needs to reproduce the dense one.
+
+    The export side of the question `correct` answers at import, and the same
+    search: only the `measure` differs, and it needs no host, because what a
+    straight line between two keys leaves on the frames between them is
+    arithmetic on numbers the exporter already has.
+
+    `dense` maps a frame to a flat list of every scalar the destination will
+    interpolate - each point's centre, both tangents and its feather, laid end
+    to end. Flat because the comparison is component-wise and the container is
+    the caller's business; a fixed order because a shape's point count cannot
+    change inside a range (spec section 7.3). Tangents and feather are measured
+    on the same scale as vertices against the same tolerance, which is the rule
+    `nuke/rotobridge_import.py:_deviation` already applies: a tangent that
+    drifts bends the rendered edge exactly as far as a vertex that drifts.
+
+    Returns `(key_frames, worst, at)`, as `correct` does.
+
+    **What this is for.** An adapter whose host has an interpolation the
+    destination cannot hold can spend the keys here instead of leaving them to
+    be spent at the other end. After Effects' temporal ease is that case and
+    the only one measured: Nuke's roto curves have no vocabulary for it at all
+    (`core/interp.to_nuke`), so an eased key crosses as a dense bake and the
+    compositor meets a shape keyed on every frame with no explanation. Rewriting
+    it to linear before the file is written moves the cost to the application
+    that created it, and the file that arrives needs no correction.
+    """
+    held = set(int(f) for f in (holds or ()))
+    chosen = {"keys": sorted(set(int(f) for f in keys))}
+
+    def apply_keys(key_frames):
+        chosen["keys"] = sorted(int(f) for f in key_frames)
+
+    def measure(frame):
+        return _linear_error(dense, chosen["keys"], int(frame), held)
+
+    return correct(frames, keys, apply_keys, measure, tolerance)
+
+
+def _linear_error(dense, keys, frame, held=()):
+    """The worst component of what the destination will draw against the bake.
+
+    A straight line between the bracketing keys, except where the key before
+    holds: `holds` names the key frames whose outgoing side is `hold`, and a
+    held segment is flat by definition (spec section 10.2). Measuring one as a
+    line would report the whole travel of the next key as drift and buy keys to
+    flatten something already flat - which is how a conform that meant to
+    preserve holds would quietly destroy them.
+    """
+    target = dense[frame]
+    before, after = None, None
+    for key in keys:
+        if key <= frame:
+            before = key
+        elif after is None:
+            after = key
+    if before is not None and before in held:
+        low = dense[before]
+        return max([abs(low[i] - target[i]) for i in range(len(target))] or [0.0])
+    if before is None or after is None:
+        # Outside the keyed span there is no line to draw: the destination
+        # holds the nearest key's value, which is what both hosts do beyond
+        # their first and last key.
+        held = dense[after if before is None else before]
+        return max([abs(h - t) for h, t in zip(held, target)] or [0.0])
+
+    ratio = (frame - before) / float(after - before)
+    low, high = dense[before], dense[after]
+    worst = 0.0
+    for i in range(len(target)):
+        value = low[i] + (high[i] - low[i]) * ratio
+        worst = max(worst, abs(value - target[i]))
+    return worst

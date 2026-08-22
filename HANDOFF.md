@@ -713,6 +713,75 @@ Still genuinely unknown, and unchanged by this: whether After Effects behaves
 like Nuke over a held interval at all, since the AE import has never completed
 in the host. Do not restate the strong claim without measuring it.
 
+## The export conforms ease to linear, 2026-08-22
+
+**Decided by the user**, on the grounds that the Nuke artist should get an
+accurate spline without touching a tolerance control, and that After Effects is
+likely the only source application needing this reinterpretation - so the onus
+belongs on it. Implemented in `ae/rotobridge_export.jsx` `conformEase`, over
+`core/drift.linear_fit` / `RB.drift.linearFit`.
+
+**And a correction to what this file used to say.** The masks in
+`setup_ae_scene.jsx` sit on a scaled, rotating layer, which is why `linear`
+bows 13.2 px off its own chord and every shape there needs corrective keys.
+**That is a fixture property, not a roto property.** In production the layer is
+static and only the shape animates, so the derived-affine path barely matters
+and the corrective-key counts from the six-shape scene say almost nothing about
+what the tool costs. The numbers that do are masks 7 and 8, on `RotoBridge
+static`, crossing to Nuke at the default tolerance:
+
+| shape | authored | corrective | worst |
+|---|---|---|---|
+| `linear_static` | 2 | **0** | 0.0001 px |
+| `eased_static` | 3 | **22** | 0.0000 px |
+
+**Linear costs nothing and ease costs a key on every frame.** That is the whole
+problem, and it is one member of the vocabulary.
+
+**The rule is narrow on purpose.** Only `ease` sides are rewritten. `linear`
+already crosses exactly and `hold` maps to Nuke's step, so **rewriting a hold
+would be paying keys to destroy something that transfers for free**: a frozen
+interval becomes a slide, and the fit then buys a key on every frame of it to
+flatten it again. `linear_fit` takes the held key frames for exactly this
+reason and prices a held segment as flat. Both implementations have a test that
+fails without it.
+
+**Verified end to end on real host data, which the mock cannot produce.**
+`test/ae_mock.js` refuses to bake a bezier segment, so the only genuinely eased
+dense layer in the project is one After Effects really wrote. Applying the same
+rule to `test/golden/ae_static_ease.rbj` and crossing the result into Nuke
+17.1v1:
+
+    before   eased_static   3 authored, 22 corrective
+    after    eased_static  25 authored,  0 corrective, 0.0000 px
+
+Same 25 keys either way. The difference is that they are now in the file rather
+than manufactured at the far end, the count no longer depends on a tolerance
+the compositor chose, and Nuke's "carries authored ease" warning does not fire.
+
+**The cost, and it is real: an After Effects `.rbj` no longer carries an `ease`
+block at all.** Pinned endpoints and transform keys are spelled `ease` too
+(spec section 10.3, "parameters unknown"), so the conform fires on essentially
+every export and the vocabulary disappears from AE-written files. Consequences
+worth carrying forward:
+
+- **AE to `.rbj` to AE no longer reproduces authored ease timing.** It
+  reproduces the shape within 0.5 px on every frame. That is the same trade
+  Nuke has always taken, and the dense layer is still the ground truth - but
+  the 0 corrective / 0.0000 px round trip recorded under "Bezier ease, answered
+  in the host" was measured before this and describes the old behaviour.
+- **`interp.easeFromAe` is still live and still tested.** The presence of an
+  `ease` entry is what separates a curve the artist drew from one the exporter
+  invented, and only the first is warned about. A file whose only eased sides
+  are pinned endpoints is conformed silently, because nothing the artist made
+  was lost.
+- **The crossapp finding "a bare ease comes back carrying AE's default" is
+  retired.** It was true and is not any more: a parameterless key now stays
+  parameterless instead of acquiring influence 16.667 on the way through.
+
+**One line turns it off**: `CONFORM_TOLERANCE` in `ae/rotobridge_export.jsx`.
+Nothing else branches on it.
+
 ## Decisions made, so they are not relitigated
 
 **Phase 3 writes `ease` without parameters, on purpose - and reads no slopes

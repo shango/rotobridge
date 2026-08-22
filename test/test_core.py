@@ -2240,6 +2240,90 @@ class TestNukeImportRecord(_WithoutNuke):
         self.assertIn("could not be written", said[0])
 
 
+class TestLinearFit(unittest.TestCase):
+    """The export-side pass: what a LINEAR sparse layer costs.
+
+    Same search as `correct`, and the vectors below are the ones the ES3 mirror
+    is checked against in `TestEs3CrossCheck`.
+    """
+
+    def bow(self, peak, count=25):
+        """A parabola `peak` px off the chord between its ends."""
+        frames = list(range(count))
+        middle = (count - 1) / 2.0
+        return frames, {f: [f * 10.0,
+                            peak * (1.0 - ((f - middle) / middle) ** 2)]
+                        for f in frames}
+
+    def test_a_straight_line_needs_no_keys_beyond_its_ends(self):
+        frames = list(range(0, 25))
+        dense = {f: [f * 10.0, 0.0] for f in frames}
+        keys, worst, at = drift.linear_fit(frames, dense, [0, 24], 0.5)
+        self.assertEqual(keys, [0, 24])
+        self.assertEqual(worst, 0.0)
+        self.assertIsNone(at)
+
+    def test_a_bow_inside_tolerance_costs_nothing_either(self):
+        frames, dense = self.bow(0.4)
+        keys, worst, _ = drift.linear_fit(frames, dense, [0, 24], 0.5)
+        self.assertEqual(keys, [0, 24])
+        self.assertAlmostEqual(worst, 0.4)
+
+    def test_the_key_count_scales_with_the_bow_not_with_the_range(self):
+        # The number that answers "what does an ease cost": it is a property of
+        # how far the curve leaves its own chord, not of the interpolation
+        # having a name. A 144 px bow needs every frame; a 10 px bow needs nine.
+        counts = []
+        for peak in (2.0, 10.0, 144.0):
+            frames, dense = self.bow(peak)
+            counts.append(len(drift.linear_fit(frames, dense, [0, 24], 0.5)[0]))
+        self.assertEqual(counts, [3, 9, 25])
+
+    def test_it_converges_under_the_tolerance_it_was_given(self):
+        for peak in (2.0, 10.0, 144.0):
+            frames, dense = self.bow(peak)
+            _, worst, _ = drift.linear_fit(frames, dense, [0, 24], 0.5)
+            self.assertLessEqual(worst, 0.5, "peak %g" % peak)
+
+    def test_it_measures_every_component_not_only_the_first(self):
+        # Tangents and feather ride in the same flat vector as the vertex and
+        # are held to the same tolerance, which is the rule the Nuke importer's
+        # _deviation already applies.
+        frames = list(range(0, 5))
+        dense = {f: [0.0, 0.0, 0.0, 0.0, 0.0, float(f == 2) * 10.0]
+                 for f in frames}
+        keys, _, _ = drift.linear_fit(frames, dense, [0, 4], 0.5)
+        self.assertIn(2, keys)
+
+    def test_a_held_segment_is_flat_and_costs_nothing(self):
+        # The bug this pins: without `holds` the fit prices a held segment as a
+        # straight line to the next key, reports the whole jump as drift, and
+        # buys keys to flatten something already flat. A conform meant to
+        # preserve holds would destroy them.
+        frames = list(range(0, 5))
+        dense = {0: [0.0], 1: [0.0], 2: [0.0], 3: [0.0], 4: [100.0]}
+        self.assertEqual(drift.linear_fit(frames, dense, [0, 4], 0.5)[0],
+                         [0, 2, 3, 4])
+        self.assertEqual(
+            drift.linear_fit(frames, dense, [0, 4], 0.5, holds=[0])[0], [0, 4])
+
+    def test_a_hold_the_bake_contradicts_is_still_measured(self):
+        # The other half: `holds` is a claim about the segment, and where the
+        # bake disagrees the fit must not take the claim's word for it.
+        frames = list(range(0, 5))
+        dense = {f: [f * 25.0] for f in frames}
+        keys, worst, _ = drift.linear_fit(frames, dense, [0, 4], 0.5,
+                                          holds=[0])
+        self.assertGreater(len(keys), 2)
+        self.assertLessEqual(worst, 0.5)
+
+    def test_tolerance_zero_keys_every_frame(self):
+        frames, dense = self.bow(144.0)
+        keys, worst, at = drift.linear_fit(frames, dense, [0, 24], 0.0)
+        self.assertEqual(keys, frames)
+        self.assertIsNone(at)
+
+
 class TestEs3CrossCheck(unittest.TestCase):
     """What the ExtendScript writer produces, the Python reader must accept.
 
@@ -2417,9 +2501,14 @@ class TestEs3CrossCheck(unittest.TestCase):
         doc = rbj.loads(proc.stdout.decode("utf-8"))
         keys = doc["shapes"][0]["keys"]
         self.assertEqual([k["frame"] for k in keys], [0, 1, 2])
-        self.assertEqual(keys[1]["interp"], {"in": "ease", "out": "ease"})
-        self.assertAlmostEqual(keys[1]["ease"]["in"][0], 0.91176)
-        self.assertEqual(keys[1]["ease"]["out"], [1.0, 1.0])
+        # The bezier key arrives conformed. After Effects' temporal ease has no
+        # equivalent in a Nuke roto curve at all, so the exporter rewrites it as
+        # linear and buys back the shape with keys rather than writing
+        # parameters the destination cannot read. Nothing carries an `ease`
+        # block any more, which is why this asserts its absence.
+        self.assertEqual(keys[1]["interp"], {"in": "linear", "out": "linear"})
+        self.assertNotIn("ease", keys[1])
+        # `hold` is untouched, because Nuke's step holds it exactly.
         self.assertEqual(keys[2]["interp"], {"in": "linear", "out": "hold"})
 
     def test_feather_snapping_agrees_between_the_two_implementations(self):

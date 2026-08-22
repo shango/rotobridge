@@ -681,35 +681,64 @@ describe("export keys", function () {
         return keyedAt([at(0), at(1), at(2, over), at(3), at(4)]);
     }
 
-    it("calls an unrecognised interpolation type ease, not an error", function () {
-        // Spec section 10.3's bare `ease` is "smooth, parameters unknown, rely
-        // on the drift pass", which is a truthful description of a type this
-        // adapter has never seen.
+    it("conforms an unrecognised interpolation type rather than failing", function () {
+        // Spec section 10.3's bare `ease` is "smooth, parameters unknown", and
+        // a type this adapter has never seen is exactly that. Nuke reads any
+        // ease as cubic, so what leaves here is linear either way.
         var keys = keysOf(everyFrame({ inType: 9999, outType: 9999 }));
-        eq(keys[2].interp["in"], "ease");
-        eq(keys[2].interp["out"], "ease");
+        eq(keys[2].interp["in"], "linear");
+        eq(keys[2].interp["out"], "linear");
     });
 
-    it("divides ease influence by 100 and leaves speed alone", function () {
-        // The two numbers scale differently on purpose: influence is a
-        // percentage of the interval, speed is value-units per second.
+    it("strips the ease block a bezier key produced", function () {
+        // Reading it is still right and still tested - test_ae_core covers the
+        // factor of 100 and the speed passing through untouched. What changed
+        // is that the parameters no longer reach the file: Nuke's roto curves
+        // have no vocabulary for them, so the exporter spends the keys here
+        // instead of leaving a compositor to wonder why the shape is dense.
         var keys = keysOf(everyFrame({
             inType: BEZIER, outType: BEZIER,
             inEase: ease(0, 91.176), outEase: ease(1, 100)
         }));
-        eq(JSON.stringify(keys[2].ease["in"]), JSON.stringify([0.91176, 0]));
-        eq(JSON.stringify(keys[2].ease["out"]), JSON.stringify([1, 1]));
+        eq(keys[2].interp["in"], "linear");
+        eq(RB.util.hasOwn(keys[2], "ease"), false);
     });
 
-    it("writes an ease entry only for a side that is ease", function () {
-        // After Effects reports an ease on every key whatever its type - run 6
-        // read influence 16.667 off a LINEAR key - so reading unconditionally
-        // would write parameters that describe nothing, and the validator
-        // rejects an ease entry on a non-ease side.
-        var keys = keysOf(everyFrame({ inType: LINEAR, outType: BEZIER,
-                                       outEase: ease(0.5, 40) }));
-        eq(RB.util.hasOwn(keys[2].ease, "in"), false);
-        eq(JSON.stringify(keys[2].ease["out"]), JSON.stringify([0.4, 0.5]));
+    it("conforms the eased side and leaves the held one alone", function () {
+        // The rule is narrow on purpose. `hold` crosses losslessly - it maps
+        // to Nuke's step - so rewriting it as linear would turn a frozen
+        // interval into a slide and then buy a key on every frame of it to
+        // flatten it again: paying keys to destroy something that was free.
+        var keys = keysOf(everyFrame({ inType: BEZIER, outType: HOLD,
+                                       inEase: ease(0, 91.176) }));
+        eq(keys[2].interp["in"], "linear");
+        eq(keys[2].interp["out"], "hold");
+        eq(RB.util.hasOwn(keys[2], "ease"), false);
+    });
+
+    it("says what it conformed, and only when the artist authored it", function () {
+        var authored = mock.install(everyFrame({
+            inType: BEZIER, outType: BEZIER, inEase: ease(0, 91.176),
+            outEase: ease(0, 33.333)
+        }));
+        has(runExport(authored).warnings, "carried temporal ease");
+
+        // A pinned endpoint carries `ease` too, because nothing was authored
+        // there to read. Warning about that would report damage the file did
+        // not take.
+        var plain = runExport(mock.install(keyedAt([at(0), at(4)])));
+        var quiet = true;
+        for (var i = 0; i < plain.warnings.length; i++) {
+            if (/carried temporal ease/.test(plain.warnings[i])) { quiet = false; }
+        }
+        eq(quiet, true, "an unauthored ease is not reported as one");
+    });
+
+    it("leaves a shape with no eased side untouched", function () {
+        // Nothing to conform, nothing added, nothing said.
+        var keys = keysOf(everyFrame({ inType: LINEAR, outType: LINEAR }));
+        eq(keys.length, 5);
+        eq(keys[2].interp["out"], "linear");
     });
 
     it("pins both ends of the exported range", function () {
@@ -719,7 +748,8 @@ describe("export keys", function () {
         eq(keys.length, 3);
         eq(keys[0].frame, 0);
         eq(keys[2].frame, 4);
-        eq(keys[0].interp["out"], "ease", "a pinned end has nothing authored");
+        eq(keys[0].interp["out"], "linear",
+           "a pinned end has nothing authored, and conforms to linear");
     });
 
     it("drops keys outside the exported range", function () {
@@ -751,7 +781,8 @@ describe("export keys", function () {
         eq(keys.length, 4);
         eq(keys[1].frame, 1);
         eq(keys[2].frame, 3);
-        eq(keys[1].interp["out"], "ease", "nothing was authored on the path");
+        eq(keys[1].interp["out"], "linear",
+           "nothing was authored on the path, and it conforms to linear");
     });
 
     it("calls a synthetic key inside a held segment a hold", function () {
@@ -785,10 +816,11 @@ describe("export keys", function () {
         eq(keys[1].interp["out"], "hold");
     });
 
-    it("still calls a synthetic key on a moving segment an ease", function () {
+    it("does not call a synthetic key on a moving segment a hold", function () {
         // The other half of the same rule, and the reason it cannot simply be
         // "synthetic keys hold". Same shape of scene, no hold authored: the
-        // bake moves on every frame, so `ease` stays the honest answer.
+        // bake moves on every frame, so the segment is not flat. It leaves as
+        // `linear` rather than `ease` because the conform runs after.
         var spec = keyedAt([at(0), at(4)]);
         spec.layers[0].transformKeys = { "ADBE Position": [2 / 24] };
         var doc = runExport(mock.install(spec));
@@ -796,7 +828,7 @@ describe("export keys", function () {
         var moved = JSON.stringify(frames["3"].points)
                  !== JSON.stringify(frames["2"].points);
         eq(moved, true, "the bake moves across the segment");
-        eq(doc.shapes[0].keys[1].interp["out"], "ease");
+        eq(doc.shapes[0].keys[1].interp["out"], "linear");
     });
 
     it("refuses a hold the layer's motion contradicts", function () {
@@ -832,9 +864,16 @@ describe("export keys", function () {
         eq(moved, true, "the layer really moves the held path");
 
         var keys = doc.shapes[0].keys;
-        eq(keys.length, 2);
-        eq(keys[0].interp["out"], "ease");
+        eq(keys[0].interp["out"], "linear", "the contradicted hold is gone");
         has(doc.warnings, "hold");
+
+        // And the conform pays for the contradiction here rather than leaving
+        // it to the destination. The path is frozen while the layer moves, so
+        // the composite is not the straight line two keys would claim, and the
+        // fit puts keys in until it is. Before this the sparse layer said
+        // "straight from 0 to 4" and the importer's drift pass bought the
+        // same keys at the far end, where nobody could see why.
+        eq(keys.length > 2, true, "keys were added to match the bake");
     });
 
     it("ignores a transform property that cannot move geometry", function () {
@@ -845,11 +884,13 @@ describe("export keys", function () {
         eq(keysOf(spec).length, 2);
     });
 
-    it("gives an unkeyed mask two ease keys, not none", function () {
+    it("gives an unkeyed mask two keys, not none", function () {
+        // A static shape needs no key between them, so the conform adds
+        // nothing and the two endpoints leave as linear.
         var keys = keysOf(basic());
         eq(keys.length, 2);
-        eq(keys[0].interp["in"], "ease");
-        eq(keys[1].interp["out"], "ease");
+        eq(keys[0].interp["in"], "linear");
+        eq(keys[1].interp["out"], "linear");
     });
 });
 

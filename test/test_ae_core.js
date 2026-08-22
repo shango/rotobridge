@@ -690,6 +690,93 @@ HoldingHost.prototype.measure = function (frame) {
     return Math.abs(this.evaluate(frame) - this.truth(frame));
 };
 
+describe("drift.linearFit", function () {
+    /* The export-side pass: what a LINEAR sparse layer costs. The vectors are
+     * the ones `TestLinearFit` uses in test_core.py, because two
+     * implementations of one rule are worth having only if the same cases run
+     * through both. */
+
+    function bow(peak, count) {
+        if (count === undefined) { count = 25; }
+        var frames = [], dense = {};
+        var middle = (count - 1) / 2.0;
+        for (var f = 0; f < count; f++) {
+            frames[f] = f;
+            dense[String(f)] = [f * 10.0,
+                                peak * (1.0 - Math.pow((f - middle) / middle, 2))];
+        }
+        return { frames: frames, dense: dense };
+    }
+
+    it("leaves a straight line at two keys", function () {
+        var frames = [], dense = {};
+        for (var f = 0; f < 25; f++) {
+            frames[f] = f;
+            dense[String(f)] = [f * 10.0, 0.0];
+        }
+        var got = drift.linearFit(frames, dense, [0, 24], 0.5);
+        deepEq(got.keys, [0, 24]);
+        eq(got.worst, 0.0);
+        eq(got.at, null);
+    });
+
+    it("leaves a bow inside tolerance alone too", function () {
+        var b = bow(0.4);
+        var got = drift.linearFit(b.frames, b.dense, [0, 24], 0.5);
+        deepEq(got.keys, [0, 24]);
+        near(got.worst, 0.4, 6);
+    });
+
+    it("scales the key count with the bow, not with the range", function () {
+        var peaks = [2.0, 10.0, 144.0];
+        var counts = [];
+        for (var i = 0; i < peaks.length; i++) {
+            var b = bow(peaks[i]);
+            counts[i] = drift.linearFit(b.frames, b.dense, [0, 24], 0.5)
+                             .keys.length;
+        }
+        deepEq(counts, [3, 9, 25]);
+    });
+
+    it("measures every component, not only the first", function () {
+        // Tangents and feather ride in the same flat vector as the vertex and
+        // are held to the same tolerance.
+        var frames = [0, 1, 2, 3, 4], dense = {};
+        for (var f = 0; f < 5; f++) {
+            dense[String(f)] = [0, 0, 0, 0, 0, f === 2 ? 10.0 : 0.0];
+        }
+        var got = drift.linearFit(frames, dense, [0, 4], 0.5);
+        eq(RB.util.indexOf(got.keys, 2) > -1, true);
+    });
+
+    it("charges nothing for a held segment, and everything without the hold",
+       function () {
+        // Without `holds` the fit prices a held segment as a straight line to
+        // the next key and buys keys to flatten what is already flat - which
+        // is how a conform meant to preserve holds would destroy them.
+        var frames = [0, 1, 2, 3, 4];
+        var dense = { "0": [0.0], "1": [0.0], "2": [0.0], "3": [0.0],
+                      "4": [100.0] };
+        deepEq(drift.linearFit(frames, dense, [0, 4], 0.5).keys, [0, 2, 3, 4]);
+        deepEq(drift.linearFit(frames, dense, [0, 4], 0.5, [0]).keys, [0, 4]);
+    });
+
+    it("still measures a hold the bake contradicts", function () {
+        var frames = [0, 1, 2, 3, 4], dense = {};
+        for (var f = 0; f < 5; f++) { dense[String(f)] = [f * 25.0]; }
+        var got = drift.linearFit(frames, dense, [0, 4], 0.5, [0]);
+        eq(got.keys.length > 2, true);
+        eq(got.worst <= 0.5, true);
+    });
+
+    it("keys every frame at tolerance zero", function () {
+        var b = bow(144.0);
+        var got = drift.linearFit(b.frames, b.dense, [0, 24], 0.0);
+        deepEq(got.keys, b.frames);
+        eq(got.at, null);
+    });
+});
+
 describe("drift.correct over a monotone gap", function () {
     /* The gap whose worst frame is its own end. A key there shortens the run
      * instead of splitting it, so without the midpoint the pass walks backwards

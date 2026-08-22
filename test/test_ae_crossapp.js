@@ -265,20 +265,22 @@ describe("a dense Nuke file through the AE adapters", function () {
         eq(shape.vertices[0][1], 1556 - 365, "y is flipped about the height");
     });
 
-    it("gives a bare ease After Effects' default on the way back", function () {
-        /* Worth pinning because it is the one thing the crossing changes.
-         * Nuke's exporter writes `ease` with no parameters - spec section 10.3's
-         * "smooth, parameters unknown" - and the importer has to put some real
-         * curve on the key, so it uses AE's own default. Exporting that back is
-         * honest: the curve in the comp genuinely has influence 16.667 now. The
-         * dense layer is still the ground truth either way. */
+    it("no longer hands a bare ease back as a curve nobody drew", function () {
+        /* This used to be the one thing the crossing changed, and it was the
+         * honest reading at the time: Nuke writes `ease` with no parameters -
+         * spec section 10.3's "smooth, parameters unknown" - the AE importer
+         * has to put some real curve on the key, so it used AE's own default,
+         * and exporting that back wrote influence 16.667 into the file. A file
+         * that crossed twice was no longer parameterless.
+         *
+         * The export conform ends that. Nothing it writes carries an `ease`
+         * block at all, so a parameterless key stays parameterless, and the
+         * curve the destination draws is the one the fit measured rather than
+         * a default that arrived by accident. */
         var keys = trip.out.shapes[0].keys;
-        eq(keys.length, 20);
         for (var i = 0; i < keys.length; i++) {
-            eq(keys[i].interp["in"], "ease", "key " + i);
-            eq(keys[i].interp["out"], "ease", "key " + i);
-            near(keys[i].ease["in"][0], 0.16667, 6, "key " + i + " influence");
-            near(keys[i].ease["in"][1], 0, 6, "key " + i + " speed");
+            eq(keys[i].interp["in"], "linear", "key " + i);
+            eq(RB.util.hasOwn(keys[i], "ease"), false, "key " + i);
         }
     });
 
