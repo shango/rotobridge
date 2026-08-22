@@ -1108,10 +1108,12 @@ report.
 used to sit here is closed - see "Nuke is the hub" above. It is a "cannot", not
 a "not yet", and it is recorded in `core/interp.to_nuke`.
 
-1. **Implement `spec/rbj-v2-draft.md` section 6, feather anchors.** The format
-   decision is taken - the user said yes on 2026-08-21 and the delta is written:
-   `feather_model: anchored`, a per-frame `feather_points` list keyed by a
-   single `t` in segment units, and a de Casteljau split in the Nuke importer.
+1. **`spec/rbj-v2-draft.md` section 6, feather anchors: DONE 2026-08-21,**
+   all four layers, verified in Nuke. `feather_model: anchored`, a per-frame
+   `feather_points` list keyed by a single `t` in segment units, and a de
+   Casteljau split in the Nuke importer. What is left of this item is one host
+   run - re-export the scene golden - and one measurement that gates the
+   *claim* rather than the code, both at the bottom.
 
    **Schema and `version_for`: done, 2026-08-21.** Both implementations carry
    `anchored`, the `feather_points` validator, and the version clause, and they
@@ -1177,20 +1179,27 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    **Until then an anchored After Effects file is better than the snap, not
    known to be exact.** Do not claim exact.
 
-   **Re-export `test/golden/ae_scene.rbj`.** Its `feathered` mask has anchors
-   at `seg + rel` of `[0.25, 0.75, 2.5, 3.0]`, so it now comes out `anchored`
-   and the two snap warnings disappear - the alert's warning count changes
-   again, and `test/probe/README.md` currently says five. Expect **three**:
-   the two that remain are `opened` and `offgrid`, plus the `mixed` hold
-   warning, so five minus the two feather ones. Re-run the crossing after it;
-   `feathered` will arrive in Nuke with more vertices than the artist drew.
+   **The one host step left: re-export `test/golden/ae_scene.rbj`.** Its
+   `feathered` mask has anchors at `seg + rel` of `[0.25, 0.75, 2.5, 3.0]`, so
+   it now comes out `anchored`. **Expect four warnings, not five** - the two
+   snap warnings go away because nothing is snapped or dropped any more, and
+   one arrives saying the file is version 2. `test/probe/README.md`,
+   "Re-exporting the scene golden", carries the full predicted diff and has
+   been updated to four; the line worth watching for is
+   `anchor added at t 3, feather 0`, which is the authored zero-width corner v1
+   was discarding. Re-run the crossing after it: `feathered` will arrive in
+   Nuke with three more vertices than the artist drew, and the import will warn
+   saying so.
 
-   **One thing is unmeasured and it gates exactness, not the work.** Is AE's
-   `featherRelSegLocs` a bezier parameter or an arc-length fraction? Section 6.4
-   picks the parameter and pushes any conversion into the AE adapter, so the
-   implementation is not blocked - but on curved segments the two differ, and
-   until Phase 5 renders a comparison the result is "better than the snap",
-   not "exact". Do not claim exact.
+   `test/probe/diff_rbj.py` was taught the anchored layer for that check
+   (`ebaa2f4`): anchors compared by `t` rather than index, reported as geometry
+   rather than as labels, and repeated per-frame lines collapsed to
+   "on every frame" - a shape whose model changed says the same thing 25 times
+   and 200 lines of it buries the one line naming the model. It also fixes a
+   latent bug that only ever checked the last point of each frame, which was
+   harmless before and load-bearing now. Verified against the golden, against a
+   copy carrying exactly the predicted change, and against one with a single
+   anchor moved 0.05 on a single frame.
 
 2. **Phase 5, one direction.** AE to Nuke, rendered in Nuke, same plate. It was
    written as a symmetric comparison; it is not one any more. The Nuke-to-AE
