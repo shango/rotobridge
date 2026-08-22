@@ -367,6 +367,62 @@ keys every frame by definition (`prd.md` §8), so its key list says nothing abou
 key preservation; reading one off it produces a page of "losses" that are only
 dense mode working. Tolerance inf is the one that speaks to criterion 3.
 
+## Phase 5 render
+
+`test/test_ae_to_nuke_render.py` is the half of Phase 5 that needs nobody. It
+builds Nuke's matte from `test/golden/ae_scene.rbj` and measures it in rendered
+pixels, which is the unit acceptance criterion 2 is written in - "under 1% of
+pixels at >0.01 alpha delta" - and the only unit the two open questions (`ff`,
+and section 6.4's anchored-feather placement) are observable in.
+
+```bash
+rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
+  && mkdir -p "/mnt/c/Users/shann/rotobridge/rb" \
+  && cp -r core nuke test "/mnt/c/Users/shann/rotobridge/rb/"
+"/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
+    "C:\Users\shann\rotobridge\rb\test\test_ae_to_nuke_render.py" \
+    "C:\Users\shann\rotobridge\out\run"
+```
+
+A **second argument** points it at a matte sequence rendered out of After
+Effects and turns on the comparison that closes Phase 5; a **third** is a frame
+offset if that sequence is not numbered the way the comp is. Without them the
+first three sections still run and still mean something.
+
+**Status: PASS on 17.1v1**, 2026-08-22, sections 1 to 3. Report at
+`test/golden/nuke_probe/17.1v1/phase5/ae_to_nuke_render_report.txt`.
+
+| Section | Result |
+|---|---|
+| the chain against itself | `0.000000` on all 25 frames - the measurement can report zero |
+| the chain against arithmetic | a 4 px offset measured `0.00100418` against `0.00100418` computed by hand, so it can also report a number, and the right one |
+| what tolerance 0.5 costs the matte | **zero pixels past 0.01 alpha on any frame**, worst delta anywhere `0.000266` |
+| against AE's own render | NOT RUN - needs the matte sequence |
+
+The third row is a number this project did not have. Criterion 4 bounds the
+drift pass in pixels of **geometry** and is met at 0.465 px; this says what that
+is worth in the render, and the answer is nothing an artist can see.
+
+**What After Effects has to produce** for the fourth section, from the comp
+`setup_ae_scene.jsx` built - the same one `ae_scene.rbj` came from: frames 0 to
+24 as a matte sequence, **straight alpha**, no colour management, 16-bit or
+float, EXR or PNG, numbered by the comp's own frame numbers. The comparison is
+against **alpha**; a matte rendered into RGB as luminance reads as zero
+everywhere and would look like a pass, which is exactly what section 1 exists
+to make impossible to misread.
+
+### Two host facts this cost a probe to learn
+
+**Nuke NC hands Python at most 10 `Node` objects per script, cumulatively.** Not
+ten live nodes: a `nuke.toNode` on a node already held costs another one, and
+deleting a node does not give the budget back. `nuke.scriptClear()` is the only
+reset, and it also invalidates every `Node` object already handed out. Any
+harness that builds a tree per shape or per frame has to be written around this.
+
+**A Roto with no input carries only its shapes' bounding box.** `nuke.sample`
+outside it raises rather than returning 0, and an average is taken over the
+wrong area. Ground it on a `Constant` and the frame is the frame.
+
 ## AE feather point order
 
 Two probes, both about one number: importing `feathered` from

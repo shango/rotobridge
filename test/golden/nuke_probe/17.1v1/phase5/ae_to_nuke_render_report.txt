@@ -1,0 +1,109 @@
+Phase 5, the Nuke half: a rendered matte, measured
+======================================================================
+source   ae_scene.rbj
+         6 shape(s), frames 0 to 24, exported by After Effects 25.6x101
+format   2048x1556 = 3186688 pixels
+criteria acceptance criterion 2: under 0.01 of pixels past 0.01 alpha delta
+
+--- 1. the chain against itself ---
+  The same file imported twice. Anything but zero everywhere means
+  the measurement is wrong, and every later number with it.
+  frame   over delta   worst delta  at
+  0       0.000000     0.000000     (0, 0)
+  1       0.000000     0.000000     (0, 0)
+  2       0.000000     0.000000     (0, 0)
+  3       0.000000     0.000000     (0, 0)
+  4       0.000000     0.000000     (0, 0)
+  5       0.000000     0.000000     (0, 0)
+  6       0.000000     0.000000     (0, 0)
+  7       0.000000     0.000000     (0, 0)
+  8       0.000000     0.000000     (0, 0)
+  9       0.000000     0.000000     (0, 0)
+  10      0.000000     0.000000     (0, 0)
+  11      0.000000     0.000000     (0, 0)
+  12      0.000000     0.000000     (0, 0)
+  13      0.000000     0.000000     (0, 0)
+  14      0.000000     0.000000     (0, 0)
+  15      0.000000     0.000000     (0, 0)
+  16      0.000000     0.000000     (0, 0)
+  17      0.000000     0.000000     (0, 0)
+  18      0.000000     0.000000     (0, 0)
+  19      0.000000     0.000000     (0, 0)
+  20      0.000000     0.000000     (0, 0)
+  21      0.000000     0.000000     (0, 0)
+  22      0.000000     0.000000     (0, 0)
+  23      0.000000     0.000000     (0, 0)
+  24      0.000000     0.000000     (0, 0)
+  worst frame 0 at 0.000000 of pixels past 0.01 alpha
+  import warning: mask 'feathered': feather is anchored along the path rather than at vertices, which only .rbj version 2 can express, so this file is version 2 and a version 1 reader will refuse it. Nothing is lost; under version 1 this mask's feather was being moved to the nearest vertex
+  import warning: mask 'opened' is an open spline, which produces no alpha as an After Effects mask; the geometry is carried but no stroke width or end caps are
+  import warning: mask 'mixed': 1 key(s) hold the mask path while the layer moves under it, so the shape is not flat there and the hold is not carried as one. Geometry is unaffected; what is lost is a held key the artist could edit
+  import warning: mask 'offgrid': a key sat 0.400 of a frame off the grid and was snapped to frame 10; .rbj keys are whole frames
+  import warning: shape 'opened' is an open spline from After Effects; the geometry is exact but what it renders as across applications is unverified
+  import warning: shape 'eased': 3 key(s) carry authored ease. Nuke's roto curves cannot hold it, so the shape arrives as a dense bake and the keyframe timing is not editable downstream. Geometry is unaffected
+  import warning: shape 'mixed': 1 key(s) carry a different interpolation on each side, which a Nuke key cannot hold - one type governs the whole key. They were set smooth and the drift pass corrected the positions
+  import warning: shape 'feathered': 3 vertices were inserted to hold feather anchors that sat mid-segment. The subdivision is exact, so the shape has not moved - it has more points than the artist drew because Nuke can only anchor feather at a vertex
+
+--- 2. the chain against arithmetic ---
+  A 500 x 400 square against itself moved 4 px. The difference is
+  two 4 x 400 rectangles, which is a number this file computes
+  without asking Nuke. Section 1 alone would pass on a chain that
+  always says zero; this is what rules that out.
+  frame   over delta   worst delta  at
+  0       0.001004     1.000000     (400, 400)
+  worst frame 0 at 0.001004 of pixels past 0.01 alpha
+  expected 0.00100418 (2 x 4 x 400 px), measured 0.00100418
+
+--- 3. what the default tolerance costs the matte ---
+  The same file at tolerance 0 against tolerance 0.5. Criterion 4
+  bounds the drift pass in pixels of GEOMETRY and is met; this is
+  the same question asked in rendered pixels, which is the unit the
+  artist actually sees and the one criterion 2 is written in.
+  frame   over delta   worst delta  at
+  0       0.000000     0.000000     (0, 0)
+  1       0.000000     0.000266     (217, 417)
+  2       0.000000     0.000266     (217, 417)
+  3       0.000000     0.000266     (217, 417)
+  4       0.000000     0.000266     (217, 417)
+  5       0.000000     0.000266     (217, 417)
+  6       0.000000     0.000266     (217, 417)
+  7       0.000000     0.000266     (217, 417)
+  8       0.000000     0.000266     (217, 417)
+  9       0.000000     0.000266     (217, 417)
+  10      0.000000     0.000266     (217, 417)
+  11      0.000000     0.000266     (217, 417)
+  12      0.000000     0.000266     (217, 417)
+  13      0.000000     0.000266     (217, 417)
+  14      0.000000     0.000266     (217, 417)
+  15      0.000000     0.000266     (217, 417)
+  16      0.000000     0.000266     (217, 417)
+  17      0.000000     0.000266     (217, 417)
+  18      0.000000     0.000266     (217, 417)
+  19      0.000000     0.000266     (217, 417)
+  20      0.000000     0.000266     (217, 417)
+  21      0.000000     0.000266     (217, 417)
+  22      0.000000     0.000266     (217, 417)
+  23      0.000000     0.000266     (217, 417)
+  24      0.000000     0.000266     (217, 417)
+  worst frame 0 at 0.000000 of pixels past 0.01 alpha
+  the default tolerance costs 0.000000 of the frame at its worst, against a 0.01 budget
+
+--- 4. against After Effects' own render ---
+  NOT RUN. No matte sequence was given, so the crossing itself
+  is still unmeasured and Phase 5 is still open.
+
+  What is needed, from the comp test/probe/setup_ae_scene.jsx
+  built - the same one ae_scene.rbj was exported from:
+    - render frames 0 to 24 of that comp as a matte sequence,
+      straight alpha, no colour management, 16-bit or float;
+    - EXR or PNG, numbered by the comp's own frame numbers;
+    - re-run this file with the pattern as the second argument,
+      for example ...\ae_matte.####.exr, and a frame offset as
+      the third if the numbering does not start at 0.
+
+  The comparison is against ALPHA. A matte rendered into RGB as
+  luminance will read as zero everywhere and look like a pass,
+  which is why the identity check above exists.
+
+=== VERDICT ===
+PASS - the measurement is sound; the crossing itself is not yet measured

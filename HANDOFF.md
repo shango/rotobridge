@@ -15,9 +15,11 @@ turned out to produce no alpha from an open mask path at all.
 Then the project got a use case, and it reordered the work. **Nuke is the hub**
 and **the format has to be falsifiable** - see the two sections under Status.
 The AE ease question is closed as a "cannot", not a "not yet". Feather anchoring
-closed 2026-08-22, and the durable import record with it. **The frontier is now
-Phase 5, rendered pixels, and everything left needs a host in front of a
-person.**
+closed 2026-08-22, and the durable import record with it. **Phase 5's Nuke half
+is built and passing** (`test/test_ae_to_nuke_render.py`, 2026-08-22), with the
+measurement checked against arithmetic before it is trusted. **All that is left
+in the project is one matte sequence rendered out of After Effects** - it
+closes Phase 5, `ff`, and section 6.4 at once.
 
 ## Status
 
@@ -1220,11 +1222,54 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    copy carrying exactly the predicted change, and against one with a single
    anchor moved 0.05 on a single frame.
 
-2. **Phase 5, one direction.** AE to Nuke, rendered in Nuke, same plate. It was
-   written as a symmetric comparison; it is not one any more. The Nuke-to-AE
-   half is already exact at the document level (`test/test_ae_crossapp.js`) and
-   can stay there. Phase 5 is what validates the dense layer itself, and it is
-   the only thing that can catch `ff` and the motion-blur gap.
+2. **Phase 5, one direction. The Nuke half is BUILT and PASSING, 2026-08-22;
+   what is left is one render out of After Effects.** AE to Nuke, rendered in
+   Nuke, same plate. It was written as a symmetric comparison and is not one
+   any more: the Nuke-to-AE half is already exact at the document level
+   (`test/test_ae_crossapp.js`) and can stay there.
+
+   `test/test_ae_to_nuke_render.py` builds Nuke's matte from `ae_scene.rbj` and
+   measures it in the unit criterion 2 is written in - the fraction of pixels
+   past 0.01 alpha delta. Invocation in `test/probe/README.md` under "Phase 5
+   render"; report at `test/golden/nuke_probe/17.1v1/phase5/`.
+
+   **The measurement is verified before it is used, which is the part worth
+   keeping.** Section 1 imports the same file twice and must read zero
+   everywhere; section 2 measures a square moved 4 px against arithmetic done
+   in Python - 2 edges x 4 px x 400 px - and read `0.00100418` against
+   `0.00100418`. Section 1 alone would pass on a chain that always says zero,
+   which is exactly the chain that would declare the crossing perfect.
+
+   **Section 3 is a number this project did not have.** Tolerance 0 against
+   tolerance 0.5 on the same file: **no pixel on any frame differs by more
+   than 0.01 alpha**, worst delta anywhere 0.000266. Criterion 4 bounds the
+   drift pass at 0.465 px of *geometry*; this says what that is worth in the
+   render, and it is nothing an artist can see.
+
+   **What is still needed from After Effects**, and it is the whole of what is
+   left: frames 0 to 24 of the `setup_ae_scene.jsx` comp as a matte sequence,
+   straight alpha, no colour management, EXR or PNG, numbered by the comp's
+   own frames. Then re-run with the pattern as the second argument. The
+   comparison is against **alpha** - a matte rendered into RGB as luminance
+   reads zero everywhere and looks like a pass.
+
+   Two questions are waiting on exactly that render and should not be guessed
+   at before it:
+
+   - **AE ease ↔ Nuke `lslope` / `rslope` and `la` / `ra`.** Narrowed hard by
+     Phase 4 rather than answered. AE ease to `.rbj` and back is not merely a
+     measured factor of 100 now: `ae_static_ease.rbj` proved the whole curve
+     reconstructs, 135 px of bow rebuilt from three keys to 0.0000 px. So the
+     AE half is **exact and closed**, and everything unknown is on Nuke's side.
+     `core/interp.to_nuke` is the one function that changes, and it should not
+     change until a file has actually crossed and been rendered.
+   - **`ff`, Nuke's feather falloff.** Nuke defaults it to 1.0 and its API
+     never names the values; After Effects names both of its (`FFO_LINEAR`
+     7213, `FFO_SMOOTH` 7212). It round trips Nuke to Nuke because the same
+     rule runs both ways, so only a crossing file exposes it.
+
+   Section 6.4's anchored-feather question is the third, and it is the same
+   render that answers it.
 
 3. **A durable per-shape verification record: DONE 2026-08-22, both adapters,
    verified in Nuke.** Every import appends one to `<project>.rotobridge.txt` -
@@ -1286,11 +1331,12 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    the crossing test. `test/test_ae_to_nuke.py` reads `ae_scene.rbj`, so it
    would need re-running afterwards.
 
-**Both Nuke acceptance tests pass and are re-runnable without anyone**, most
-recently 2026-08-21 after the drift-gap change. Reports at
-`test/golden/nuke_probe/17.1v1/phase6/`. `test_nuke_roundtrip.py` covers Phases
-2, 3 and 6; `test_ae_to_nuke.py` is the AE-to-Nuke crossing. Sync, then run
-either:
+**All three Nuke tests pass and are re-runnable without anyone**, most recently
+2026-08-22. `test_nuke_roundtrip.py` covers Phases 2, 3, 6 and 7 and now the
+import record; `test_ae_to_nuke.py` is the AE-to-Nuke crossing at the document
+level; `test_ae_to_nuke_render.py` is the Phase 5 render measurement. Reports at
+`test/golden/nuke_probe/17.1v1/phase6/` and `.../phase5/`. Sync, then run any of
+them - the last argument is the output directory in every case:
 
 ```bash
 rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
@@ -1304,37 +1350,6 @@ mkdir -p "/mnt/c/Users/shann/rotobridge/out/run"
 
 The output directory must exist first - `test_ae_to_nuke.py` does not create it
 and fails at the end if it is missing.
-
-2. **Phase 5 - verify across both applications.** Same plate in both, comp AE's
-   matte against Nuke's at each import mode, confirm the tolerance bounds hold.
-   `test/test_ae_crossapp.js` already does the document-level half of the
-   Nuke-to-AE direction and finds it exact, so what is left for Phase 5 is what
-   a document comparison cannot reach: rendered pixels, and the AE-to-Nuke
-   direction. Two questions are waiting on exactly this and should not be
-   guessed at before it:
-
-   - **AE ease ↔ Nuke `lslope` / `rslope` and `la` / `ra`.** Narrowed hard by
-     Phase 4 rather than answered. AE ease to `.rbj` and back is not merely a
-     measured factor of 100 now: `ae_static_ease.rbj` proved the whole curve
-     reconstructs, 135 px of bow rebuilt from three keys to 0.0000 px. So the AE
-     half is **exact and closed**, and everything unknown is on Nuke's side.
-     `core/interp.to_nuke` is the one function that changes, and it should not
-     change until a file has actually crossed and been rendered.
-   - **`ff`, Nuke's feather falloff.** Nuke defaults it to 1.0 and its API never
-     names the values; After Effects names both of its (`FFO_LINEAR` 7213,
-     `FFO_SMOOTH` 7212). It round trips Nuke to Nuke because the same rule runs
-     both ways, so only a crossing file exposes it.
-
-3. **Phase 6 - extras. CLOSED, and open splines are done.** Both hosts have run
-   them: the Phase 6 section of `test/test_nuke_roundtrip.py` passes, and After
-   Effects carries one as data. `spec/rbj-v2-draft.md` is a **permanent draft**
-   by decision, not a document awaiting a freeze - see "Open splines may not be
-   worth a version number". Nothing here is outstanding, and no file should be
-   written with `version: 2` on purpose.
-
-   The inverted flag, mask expansion and richer ease fitting are still dropped
-   with a warning, which is the correct behaviour and is tested as such. See
-   `In flight` for why none of the three followed open splines into the draft.
 
 ## What Phase 4 decided, so it is not relitigated
 
@@ -1447,6 +1462,18 @@ Phase 1 encoded what it could; the rest is still on the adapters.
   baked into the exported points, so a layer that moves animates the geometry
   even when the path never does. On the AE side, read only the transform
   properties that move geometry - layer opacity is in the same group.
+- **Nuke NC hands Python at most 10 `Node` objects per script, cumulatively**
+  (measured 2026-08-22). Not ten live nodes: a `nuke.toNode` on a node already
+  held costs another one, and deleting a node does not give the budget back.
+  `nuke.scriptClear()` is the only reset, and it invalidates every `Node`
+  object already handed out. A harness that builds a tree per shape or per
+  frame has to be written around this - `test_ae_to_nuke_render.py` caches
+  every node in a local, reconfigures one Expression rather than adding a
+  second, and clears between sections.
+- **A Roto with no input carries only its shapes' bounding box.**
+  `nuke.sample` outside it raises rather than returning 0, and a frame-wide
+  average is taken over the wrong area. Ground it on a `Constant` and the
+  frame is the frame. This is why the render harness builds a black.
 - **`append()` copies into the tree.** The object you passed goes stale and
   raises "associated c++ object is NULL" when touched. Re-fetch the live child
   from its parent, and again after `knob.changed()`, which invalidates
