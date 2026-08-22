@@ -183,28 +183,28 @@
             say("");
             say("  output module templates this host offers:");
             var templates = om.templates;
-            var chosen = null, ext = null;
-            for (i = 0; i < templates.length; i++) {
-                say("    " + templates[i]);
-                if (chosen === null && /exr/i.test(templates[i])) {
-                    chosen = templates[i];
-                    ext = ".exr";
-                }
-            }
-            if (chosen === null) {
+            for (i = 0; i < templates.length; i++) { say("    " + templates[i]); }
+
+            /* Measured on After Effects 25.6x101: a stock install offers no
+             * EXR and no PNG template at all. What it does offer is 'TIFF
+             * Sequence with Alpha', which is a sequence and carries an alpha,
+             * and that is the whole requirement. Nuke reads it. */
+            var wanted = [/exr/i, /png/i, /tiff.*alpha/i, /sequence.*alpha/i];
+            var chosen = null, ext = ".tif";
+            for (k = 0; k < wanted.length && chosen === null; k++) {
                 for (i = 0; i < templates.length; i++) {
-                    if (/png/i.test(templates[i])) {
+                    if (wanted[k].test(templates[i])) {
                         chosen = templates[i];
-                        ext = ".png";
+                        ext = /exr/i.test(chosen) ? ".exr"
+                            : (/png/i.test(chosen) ? ".png" : ".tif");
                         break;
                     }
                 }
             }
             say("");
             if (chosen === null) {
-                both("  NO EXR OR PNG TEMPLATE. Set the format by hand: the"
-                     + " sequence must carry a straight alpha.");
-                ext = ".exr";
+                both("  NO SEQUENCE TEMPLATE CARRYING AN ALPHA. Set the format"
+                     + " by hand; the file has to have an alpha channel.");
             } else {
                 say("  applying template " + chosen);
                 if (attempt("applyTemplate('" + chosen + "')", function () {
@@ -219,14 +219,26 @@
             }
 
             /* Format is readable and not settable, which is why the template
-             * above is what picks it. Channels and Color are settable and are
-             * the two that decide whether the file carries an alpha at all and
-             * whether it is straight. They are set separately so that a host
-             * refusing one still applies the other. */
+             * above is what picks it. Channels, Color and Depth are settable
+             * only where the chosen format offers a choice: under H.264 all
+             * three come back "Property is read-only", because H.264 cannot
+             * carry an alpha and so there is nothing to choose. Measured
+             * 2026-08-22. Each is set on its own, so a host refusing one still
+             * applies the others, and a refusal here is reported rather than
+             * fatal - Channels is the only one that decides the measurement,
+             * and the template already carries it. */
             attempt("Channels = RGB + Alpha", function () {
                 om.setSettings({ "Channels": "RGB + Alpha" });
                 om = item.outputModule(1);
             });
+            attempt("Depth = Trillions of Colors", function () {
+                om.setSettings({ "Depth": "Trillions of Colors" });
+                om = item.outputModule(1);
+            });
+            /* Premultiplied against straight is an RGB distinction. The alpha
+             * channel carries the same numbers either way, and the comparison
+             * is against alpha, so this one is a preference and not a
+             * requirement. */
             attempt("Color = Straight (Unmatted)", function () {
                 om.setSettings({ "Color": "Straight (Unmatted)" });
                 om = item.outputModule(1);
@@ -243,6 +255,18 @@
             attempt("read the output module settings", function () {
                 dump(om.getSettings(GetSettingsFormat.STRING), "    ");
             });
+            /* What the host settled on, not what was asked for. After Effects
+             * rewrites the path to suit the format - an H.264 output module
+             * turned ae_matte_[####].exr into ae_matte.mp4 - so the prefix and
+             * the extension to look for afterwards have to be read back off
+             * the file it is actually going to write. */
+            var written_name = File.decode(om.file.name);
+            var brace = written_name.indexOf("[");
+            var prefix = brace > 0 ? written_name.substring(0, brace)
+                                   : written_name;
+            var dot = written_name.lastIndexOf(".");
+            if (dot > 0) { ext = written_name.substring(dot); }
+
             say("");
             say("  file             " + om.file.fsName);
             say("  time span        frame " + frameOf(item.timeSpanStart)
@@ -250,11 +274,16 @@
                 + " frame(s)");
             say("");
 
-            var go = confirm("Render " + (LAST - FIRST + 1)
+            if (brace < 0) {
+                both("  NOT A SEQUENCE. The output module resolved to "
+                     + written_name + ", which is one file rather than one per"
+                     + " frame. Rendering it would measure nothing.");
+                say("  Set the format to a sequence carrying an alpha by hand");
+                say("  and run this again. Sections 2 and 3 below still ran.");
+            } else if (confirm("Render " + (LAST - FIRST + 1)
                 + " frames now?\n\nAfter Effects will be busy until it"
                 + " finishes.\n\nNo leaves the item in the render queue,"
-                + " configured, for you to start by hand.");
-            if (go) {
+                + " configured, for you to start by hand.")) {
                 if (attempt("render", function () { rq.render(); })) {
                     rendered = true;
                 }
@@ -270,7 +299,8 @@
                  * reason - so measure the numbering instead of assuming it. */
                 var written = folder.getFiles(function (f) {
                     return (f instanceof File)
-                        && f.name.substring(0, BASENAME.length) === BASENAME;
+                        && File.decode(f.name).substring(0, prefix.length)
+                           === prefix;
                 });
                 written.sort();
                 say("  wrote            " + written.length + " file(s)");
@@ -278,14 +308,14 @@
                     say("  first            " + written[0].name);
                     say("  last             "
                         + written[written.length - 1].name);
-                    var digits = String(written[0].name).match(
+                    var digits = File.decode(written[0].name).match(
                         /([0-9]+)\.[A-Za-z]+$/);
                     if (digits) {
                         var hashes = "";
                         for (i = 0; i < digits[1].length; i++) {
                             hashes += "#";
                         }
-                        pattern = folder.fsName + "\\" + BASENAME + hashes
+                        pattern = folder.fsName + "\\" + prefix + hashes
                                   + ext;
                         offset = Number(digits[1]) - FIRST;
                     }
@@ -389,8 +419,9 @@
     say("  what setTemporalEaseAtKey had just set, and the mask renders");
     say("  smooth through an interval the artist froze.");
     say("");
-    say("  The authored mask on '" + SCENE_LAYER + "' has three keys; an");
-    say("  imported one has five. That is how to tell them apart below.");
+    say("  The authored mask on '" + SCENE_LAYER + "' has three keys. An");
+    say("  imported one has more - five authored plus one per corrective key");
+    say("  the drift pass landed. That is how to tell them apart below.");
     say("");
 
     function typeName(type) {

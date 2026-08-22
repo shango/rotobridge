@@ -266,6 +266,63 @@ spline from a Nuke source through the real importer under the mock builds the
 mask, reports 2 authored keys and 0 corrective, and raises the cross-host
 warning. That path is clean.
 
+### The second After Effects host run, 2026-08-22
+
+`test/probe/probe_ae_phase5.jsx`, four items in one visit. **Three closed, and
+the fourth was declined by the user: no matte is being rendered.** Report kept
+by the user at `Desktop/rotobridge_ae/rotobridge_phase5_probe.txt`.
+
+**`File.open("a")` APPENDS. The import record is sound.** Two records written
+and read back in order, in After Effects 25.6x101. This was the one call in the
+adapters no test could reach - `test/ae_mock.js` honoured `"a"` because the
+JavaScript Tools Guide documents it, not because a host had ever done it. The
+read-then-write fallback through `ae.readText` / `ae.writeText` is not needed
+and should not be built. The live import wrote its record the same run, to
+`ae_scene.rotobridge.txt` beside the `.rbj`, which is the unsaved-project
+anchor working as designed.
+
+**The `mixed` hold key survives the import, and so does every other side.**
+Frame 18 reads `BEZIER` in, `HOLD` out, so `setInterpolationTypeAtKey` after
+`setTemporalEaseAtKey` keeps what the ease call set. That closes the last Phase
+4 loose end. The stronger result is the whole key list, file against host:
+
+| frame | `.rbj` says | After Effects has |
+|---|---|---|
+| 0 | `linear` / `linear` | LINEAR / LINEAR |
+| 6 | `ease` / `ease` | BEZIER / BEZIER |
+| 12 | `linear` / `ease` | LINEAR / BEZIER |
+| 18 | `ease` / `hold` | BEZIER / HOLD |
+| 24 | `linear` / `linear` | LINEAR / LINEAR |
+
+Every authored key round trips per side, which is the Q9 model arriving intact
+in the host rather than only in the mock.
+
+**Two host facts about rendering, kept because they cost a run.**
+
+- **A stock After Effects 25.6x101 offers no EXR and no PNG output-module
+  template.** The sequence templates it has are `Alpha Only`,
+  `Multi-Machine Sequence`, `Photoshop` and `TIFF Sequence with Alpha`. Adobe
+  documents `Format` as readable and **not settable**, so a script can only
+  reach a format by applying a named template - the Output Module dialog does
+  offer OpenEXR by hand, but no script can select it. Anything automating a
+  render here has to go through `TIFF Sequence with Alpha`.
+- **`Channels` and `Color` are read-only when the format cannot offer a
+  choice.** Under the default H.264 both refuse with "Property is read-only",
+  because H.264 carries no alpha. They are settable once an alpha-capable
+  template is applied. So a refusal there is a symptom of the format, not of
+  the API.
+
+Also measured, and it changes an instruction that has been repeated since
+Phase 5 was written: **the project is ACEScg at 32 bpc, and that cannot move
+the measurement.** Alpha is not colour managed. "No colour management" was
+never a requirement; an alpha channel is.
+
+**Phase 5's rendered comparison is now a decision, not a blocker.** It is not
+waiting on anyone. `ff` and `spec/rbj-v2-draft.md` section 6.4 are observable
+only in rendered pixels, so both stay unmeasured for as long as that stands,
+and acceptance criterion 2 stays unmet. The Nuke half is built and passing and
+costs nothing to leave in place.
+
 ### AE to Nuke: the crossing works, measured in the host
 
 `test/test_ae_to_nuke.py`, run 2026-08-21, report committed at
@@ -1358,10 +1415,10 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    mock honours it, but no host run has exercised it. If it turns out
    unsupported the import still lands and warns once per import; the fallback
    would be read-then-write through the existing `ae.readText` / `ae.writeText`.
-   **Section 2 of `test/probe/probe_ae_phase5.jsx` answers it** - and it looks
-   for three outcomes rather than two, because `"a"` silently truncating would
-   mean every import erases the record of the last one, and the return of
-   `open` would not say so. It reads the file back.
+   **ANSWERED IN THE HOST 2026-08-22: `"a"` appends.** Two records written and
+   read back in order in After Effects 25.6x101, and the live import wrote its
+   own record the same run. The fallback is not needed and should not be
+   built. See "The second After Effects host run".
 
 4. **Ease-then-type ordering, the last Phase 4 loose end, and a drift number
    cannot answer it.** `setTemporalEaseAtKey` forces a key to BEZIER and the
@@ -1373,10 +1430,10 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    now frame 18, not frame 12** - the re-export moved the hold to where the
    composite actually stands still, so a check aimed at 12 would fail on
    correct behaviour. Low risk: the code does ease first and types after,
-   which is the documented order. **Section 3 of
-   `test/probe/probe_ae_phase5.jsx` reads it off the key** - every key of every
-   mask named `mixed`, per side, with the layer named, since the authored mask
-   has three keys and an imported one has five.
+   which is the documented order. **ANSWERED IN THE HOST 2026-08-22: frame 18
+   is still a HOLD, and every other side survives too.** The whole per-side key
+   list round trips - see the table in "The second After Effects host run".
+   Phase 4 has no loose ends left.
 
    Optional, not blocking: `test/golden/ae_scene.rbj` is the **six**-shape
    export and predates masks 7 and 8, whose export is a separate golden
