@@ -631,6 +631,155 @@ var RB = (function () {
         return { keys: current, worst: result.worst, at: result.at };
     };
 
+
+    /* --- the durable import record ----------------------------------------
+     *
+     * The mirror of `core/report.py`, and the one place in this file where the
+     * mirroring is the point rather than a convenience: an import record is a
+     * document written to settle an argument, so the two hosts have to produce
+     * the same one. `TestEs3CrossCheck` renders the same record on both sides
+     * and compares it byte for byte.
+     */
+
+    RB.report = {};
+
+    RB.report.RULE = repeatChar("-", 78);
+
+    RB.report.SUFFIX = ".rotobridge.txt";
+
+    RB.report.pathFor = function (anchor) {
+        /* The record that sits beside `anchor`. Mirrors `core.report.path_for`,
+         * including its hand-written `splitext`: only a dot in the last path
+         * component counts, and a leading dot is a name rather than an
+         * extension. Which file is the anchor is the adapter's decision; the
+         * naming is here so the two adapters cannot differ on it. */
+        var text = String(anchor);
+        var cut = text.lastIndexOf(".");
+        var slash = Math.max(text.lastIndexOf("/"), text.lastIndexOf("\\"));
+        if (cut > slash + 1) { text = text.substring(0, cut); }
+        return text + RB.report.SUFFIX;
+    };
+
+    var REPORT_LABEL = 15;
+
+    function repeatChar(c, n) {
+        var out = "";
+        for (var i = 0; i < n; i++) { out += c; }
+        return out;
+    }
+
+    function reportNum(value) {
+        /* A number spelled the way `core/report.py` spells it. `1.0 === 1`
+         * here and `repr(1.0)` is "1.0" there, which is the one accepted
+         * divergence between the two writers - and not one a shared document
+         * may carry, so whole numbers lose the trailing zero on both sides.
+         *
+         * Nothing has to be done on this side: `String(24)` is already "24".
+         * The function exists so the two implementations name the same rule in
+         * the same place. */
+        return String(Number(value));
+    }
+
+    function reportInt(value) { return String(Math.floor(Number(value))); }
+
+    function reportPixels(value) {
+        /* Four decimals, rounded half away from zero. Python's `%.4f` rounds
+         * half to even, so the rule is stated rather than inherited. */
+        var v = Number(value);
+        var scaled = Math.floor(Math.abs(v) * 10000.0 + 0.5);
+        var sign = (v < 0.0 && scaled) ? "-" : "";
+        var frac = String(scaled % 10000);
+        while (frac.length < 4) { frac = "0" + frac; }
+        return sign + String(Math.floor(scaled / 10000)) + "." + frac;
+    }
+
+    function reportRow(label, text) {
+        var padded = label;
+        while (padded.length < REPORT_LABEL) { padded += " "; }
+        return padded + text;
+    }
+
+    function reportTolerance(value) {
+        var v = Number(value);
+        if (v === Infinity) { return "unbounded (authored keys only)"; }
+        if (v === 0.0) { return "0 px (every frame keyed)"; }
+        return reportNum(v) + " px";
+    }
+
+    function reportShapeLine(shape) {
+        var line = "  " + shape.name + ": feather " + shape.feather_model
+            + ", " + reportInt(shape.points) + " point(s), "
+            + reportInt(shape.authored) + " authored key(s), "
+            + reportInt(shape.corrective) + " corrective";
+        if (shape.worst_frame === null) {
+            /* Both of the drift pass's silent cases: every frame was a key, or
+             * nothing between the keys moved. See `core/report.py`. */
+            return line + "; nothing drifted from the file";
+        }
+        return line + "; worst drift " + reportPixels(shape.residual)
+            + " px at frame " + reportInt(shape.worst_frame);
+    }
+
+    function reportWarnings(lines, subject, messages) {
+        if (!messages.length) {
+            /* Stated rather than omitted. "Nothing was lost" is a claim the
+             * record exists to support, and an absent section makes no claim
+             * at all. */
+            lines[lines.length] = "no warnings " + subject;
+            return;
+        }
+        lines[lines.length] = String(messages.length) + " warning"
+            + (messages.length === 1 ? "" : "s") + " " + subject + ":";
+        for (var i = 0; i < messages.length; i++) {
+            lines[lines.length] = "  - " + messages[i];
+        }
+    }
+
+    RB.report.render = function (record) {
+        /* One import as text, ending in a newline. See `core/report.py` for
+         * what a record carries; every field is required there and here. */
+        var src = record.source;
+        var first = Number(record.range[0]);
+        var last = Number(record.range[1]);
+        var offset = Math.floor(Number(record.offset));
+        var shapes = record.shapes;
+        var i;
+
+        var lines = [
+            RB.report.RULE,
+            "RotoBridge import record",
+            "",
+            reportRow("written", record.written),
+            reportRow("into", record.host),
+            reportRow("target", record.target),
+            "",
+            reportRow("source file", record.source_file),
+            reportRow("exported by", src.app + " " + src.app_version),
+            reportRow("format", ".rbj version " + reportInt(record.version)),
+            reportRow("source comp", reportInt(src.width) + " x "
+                      + reportInt(src.height) + " at " + reportNum(src.fps)
+                      + " fps, pixel aspect " + reportNum(src.pixel_aspect)),
+            reportRow("source frames", reportInt(first) + " to "
+                      + reportInt(last)),
+            reportRow("placed at", reportInt(first + offset) + " to "
+                      + reportInt(last + offset) + " (offset "
+                      + reportInt(offset) + ")"),
+            reportRow("tolerance", reportTolerance(record.tolerance)),
+            "",
+            String(shapes.length) + " shape(s):"
+        ];
+        for (i = 0; i < shapes.length; i++) {
+            lines[lines.length] = reportShapeLine(shapes[i]);
+        }
+        lines[lines.length] = "";
+        reportWarnings(lines, "recorded when the file was written",
+                       record.file_warnings);
+        lines[lines.length] = "";
+        reportWarnings(lines, "from this import", record.import_warnings);
+        lines[lines.length] = "";
+        return lines.join("\n") + "\n";
+    };
+
     return RB;
 }());
 

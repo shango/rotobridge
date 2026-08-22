@@ -478,6 +478,13 @@ function install(spec) {
         timeAssignments: 0,
         pointCalls: 0,
         written: null,
+        /* Appends land per path rather than in one slot: an import writes its
+         * record beside the project while the export writes the .rbj, and a
+         * test that could not tell them apart could not check either. */
+        appended: {},
+        /* Makes `open("a")` fail, which is the read-only folder an import
+         * record has to survive. */
+        recordFails: spec.recordFails || false,
         alerts: [],
         // Checked against undefined, not falsiness: a test that cancels the
         // dialog passes an explicit null, and `||` would hand it the default.
@@ -523,7 +530,11 @@ function install(spec) {
     };
     global.app = {
         version: spec.appVersion || "25.6x101",
-        project: { activeItem: host.comp },
+        /* `file` is null until a project is saved, which is the branch that
+         * puts the import record beside the .rbj instead. */
+        project: { activeItem: host.comp,
+                   file: spec.projectFile ? new FakeFile(spec.projectFile)
+                                          : null },
         beginUndoGroup: function () {},
         endUndoGroup: function () {}
     };
@@ -536,9 +547,16 @@ function install(spec) {
     }
     FakeFile.prototype.open = function (mode) {
         this._mode = mode;
-        return true;
+        return !(mode === "a" && host.recordFails);
     };
-    FakeFile.prototype.write = function (text) { host.written = text; };
+    FakeFile.prototype.write = function (text) {
+        if (this._mode === "a") {
+            host.appended[this.fsName] = (host.appended[this.fsName] || "")
+                + text;
+            return;
+        }
+        host.written = text;
+    };
     FakeFile.prototype.read = function () { return host.readable || ""; };
     FakeFile.prototype.close = function () { return true; };
     FakeFile.saveDialog = function () {

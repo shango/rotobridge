@@ -1030,6 +1030,85 @@ describe("import keys", function () {
     });
 });
 
+describe("the import record", function () {
+    function recorded(host) {
+        var paths = [];
+        for (var key in host.appended) {
+            if (Object.prototype.hasOwnProperty.call(host.appended, key)) {
+                paths[paths.length] = key;
+            }
+        }
+        eq(paths.length, 1, "expected exactly one record file, got "
+                            + paths.join(", "));
+        return { path: paths[0], text: host.appended[paths[0]] };
+    }
+
+    it("writes one beside the .rbj when the project is unsaved", function () {
+        var got = recorded(importInto(exported()));
+        eq(got.path, "/tmp/in.rotobridge.txt");
+        ok(got.text.indexOf(RB.report.RULE + "\nRotoBridge import record") === 0,
+           "the record opens with its own rule and header");
+        has([got.text], "Mask 1");
+        has([got.text], "After Effects 25.6x101");
+        has([got.text], "/tmp/in.rbj");
+    });
+
+    it("writes it beside the project once there is one", function () {
+        // Where it belongs: the record is about the comp holding the masks,
+        // and someone opening that comp should not have to know where the
+        // .rbj came from to find out what happened.
+        var got = recorded(importInto(exported(),
+                                      { projectFile: "/shots/ab_010_v012.aep" }));
+        eq(got.path, "/shots/ab_010_v012.rotobridge.txt");
+    });
+
+    it("names the record in the report alert", function () {
+        var host = importInto(exported());
+        has(host.alerts, "recorded in /tmp/in.rotobridge.txt");
+    });
+
+    it("carries what the drift pass measured", function () {
+        var got = recorded(importInto(exported()));
+        has([got.text], "1 shape(s):");
+        // This fixture's feather is uniform, which lives in the dense layer
+        // and not on a point, so the model really is `none`.
+        has([got.text], "Mask 1: feather none, 4 point(s), 2 authored key(s),"
+                        + " 0 corrective; nothing drifted from the file");
+        has([got.text], "tolerance      0.5 px");
+    });
+
+    it("says so when nothing was lost, in both directions", function () {
+        var got = recorded(importInto(exported()));
+        has([got.text], "no warnings recorded when the file was written");
+        has([got.text], "no warnings from this import");
+    });
+
+    it("does not erase the record of an earlier import", function () {
+        // The second import into a comp is not entitled to erase the evidence
+        // of the first, which is the whole difference between `"a"` and `"w"`.
+        var spec = emptyComp();
+        spec.readable = exported();
+        var host = mock.install(spec);
+        runImport(host);
+        runImport(host);
+        var text = host.appended["/tmp/in.rotobridge.txt"];
+        eq(text.split("RotoBridge import record").length - 1, 2);
+    });
+
+    it("survives a folder it cannot write to", function () {
+        // The masks are in the comp by the time the record is written. Losing
+        // the import over a read-only folder would be a worse failure than the
+        // one being reported.
+        var host = importInto(exported(), { recordFails: true });
+        eq(host.comp.layer(1)._masks.length, 1, "the masks still landed");
+        has(host.alerts, "could not be written");
+        for (var i = 0; i < host.alerts.length; i++) {
+            ok(String(host.alerts[i]).indexOf("recorded in") < 0,
+               "no record was claimed");
+        }
+    });
+});
+
 /* --- report ---------------------------------------------------------------- */
 
 if (failures.length) {

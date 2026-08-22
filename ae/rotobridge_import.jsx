@@ -467,9 +467,16 @@
                 authored += 1;
             }
         }
-        return { name: spec.name, authored: authored,
+        /* `worst_frame` is in **host** numbering, offset already applied, so
+         * that it names the frame an artist would look at. The drift pass
+         * works in source frames and has no offset to apply. */
+        return { name: spec.name,
+                 feather_model: spec.feather_model,
+                 points: spec.frames[String(frames[0])].points.length,
+                 authored: authored,
                  corrective: got.keys.length - authored,
-                 residual: got.worst, worstFrame: got.at };
+                 residual: got.worst,
+                 worst_frame: got.at === null ? null : got.at + offset };
     }
 
     /* --- opacity and uniform feather ---------------------------------------- */
@@ -616,6 +623,60 @@
         return out;
     }
 
+    function stamp(now) {
+        /* "2026-08-22 09:14:03", which is what `time.strftime` writes on the
+         * Nuke side. ExtendScript has no `strftime` and no `padStart`. */
+        function two(n) { return (n < 10 ? "0" : "") + n; }
+        return now.getFullYear() + "-" + two(now.getMonth() + 1) + "-"
+            + two(now.getDate()) + " " + two(now.getHours()) + ":"
+            + two(now.getMinutes()) + ":" + two(now.getSeconds());
+    }
+
+    function buildRecord(doc, file, comp, layer, built, offset, tolerance,
+                         warn) {
+        /* Everything this import knows, in the shape `RB.report` renders.
+         *
+         * The two warning lists stay apart: what the exporter already lost is
+         * evidence about the other application, and a record that ran them
+         * together would answer "which one dropped it?" with "one of them
+         * did". Mirrors `build_record` in `nuke/rotobridge_import.py`. */
+        return {
+            written: stamp(new Date()),
+            host: "After Effects " + app.version,
+            target: "comp '" + comp.name + "', layer '" + layer.name + "'",
+            source_file: file.fsName,
+            source: doc.source,
+            version: doc.version,
+            range: doc.range,
+            offset: offset,
+            tolerance: tolerance,
+            shapes: built.reports,
+            file_warnings: doc.warnings,
+            import_warnings: warn.messages
+        };
+    }
+
+    function writeRecord(record, file, warn) {
+        /* Append the record beside the project, or beside the .rbj when the
+         * project has never been saved. Returns the path, or null.
+         *
+         * A record that cannot be written is a warning and not an exception:
+         * the masks are already in the comp by the time this runs, and losing
+         * an import over a read-only folder would be a worse failure than the
+         * one being reported. */
+        var anchor = (app.project.file ? app.project.file.fsName : file.fsName);
+        var path = RB.report.pathFor(anchor);
+        try {
+            ae.appendText(new File(path), RB.report.render(record));
+        } catch (e) {
+            warn("the import record could not be written to " + path + " ("
+                 + (e.message || e) + "); this import is not recorded anywhere"
+                 + " but this dialog");
+            return null;
+        }
+        return path;
+    }
+
     function main() {
         var comp = ae.activeComp();
         var file = File.openDialog("Import RotoBridge .rbj", "*.rbj");
@@ -679,11 +740,18 @@
             var report = built.reports[i];
             var line = "  " + report.name + ": " + report.authored
                 + " authored key(s), " + report.corrective + " corrective";
-            if (report.worstFrame !== null) {
+            if (report.worst_frame !== null) {
                 line += "; worst drift " + report.residual.toFixed(4)
-                        + " px at frame " + (report.worstFrame + offset);
+                        + " px at frame " + report.worst_frame;
             }
             lines[lines.length] = line;
+        }
+        var recorded = writeRecord(
+            buildRecord(doc, file, comp, layer, built, offset, tolerance, warn),
+            file, warn.fn());
+        if (recorded) {
+            lines[lines.length] = "";
+            lines[lines.length] = "recorded in " + recorded;
         }
         if (doc.warnings.length) {
             lines[lines.length] = "";

@@ -26,7 +26,7 @@ def _bootstrap_core():
 
 _bootstrap_core()
 
-from core import drift, geom, interp, rbj, timing  # noqa: E402
+from core import drift, geom, interp, rbj, report, timing  # noqa: E402
 
 VIEW = "main"
 

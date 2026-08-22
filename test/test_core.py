@@ -27,11 +27,12 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import drift, geom, interp, rbj, timing
+from core import drift, geom, interp, rbj, report, timing
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
 GOLDEN_SQUARE = os.path.join(GOLDEN, "square.rbj")
@@ -1862,14 +1863,149 @@ class TestFeatherPointsFromVertices(unittest.TestCase):
 
 @unittest.skipUnless(NODE, "node is not installed; the ExtendScript port is "
                            "still covered by test/test_ae_core.js")
-class TestNukeAnchoredFeather(unittest.TestCase):
-    """The Nuke importer's section 6.5 policy, without Nuke.
+class TestImportRecord(unittest.TestCase):
+    """The durable import record (`core/report.py`).
 
-    `nuke/rotobridge_import.py` cannot be imported without the host, but the
-    two functions that decide what happens to an anchored shape touch only
-    `geom` and a `warn` callable. Stubbing the host modules is worth it for
-    one branch in particular: the crossing fallback is the case no one will
-    reach by hand, and an untested fallback is a fallback that does not work.
+    Rendering is the whole of it: an adapter hands over what it measured and
+    gets back the document it writes next to the host project. The mirror in
+    `ae/rotobridge_core.jsx` is held to the same output byte for byte by
+    `TestEs3CrossCheck`.
+    """
+
+    def record(self, **changes):
+        base = {
+            "written": "2026-08-22 09:14:03",
+            "host": "Nuke 17.1v1",
+            "target": "Roto1",
+            "source_file": "/shots/ab_010/roto/ab_010.rbj",
+            "source": {"app": "After Effects", "app_version": "25.6x101",
+                       "width": 1920, "height": 1080, "fps": 24.0,
+                       "pixel_aspect": 1.0},
+            "version": 2,
+            "range": [1, 25],
+            "offset": 0,
+            "tolerance": 0.5,
+            "shapes": [{"name": "feathered", "feather_model": "anchored",
+                        "points": 7, "authored": 25, "corrective": 0,
+                        "residual": 0.0, "worst_frame": 12}],
+            "file_warnings": [],
+            "import_warnings": [],
+        }
+        base.update(changes)
+        return base
+
+    def test_it_names_the_file_the_application_and_the_shape(self):
+        text = report.render(self.record())
+        for wanted in ("/shots/ab_010/roto/ab_010.rbj", "After Effects 25.6x101",
+                       "Nuke 17.1v1", "feathered", ".rbj version 2",
+                       "1920 x 1080 at 24 fps"):
+            self.assertIn(wanted, text)
+
+    def test_whole_numbers_lose_the_trailing_zero(self):
+        # The one accepted divergence between the two writers is how they
+        # spell 1.0, and a record is a document both hosts must produce
+        # identically. So neither spells it the JSON way.
+        text = report.render(self.record())
+        self.assertIn("at 24 fps, pixel aspect 1\n", text)
+        self.assertNotIn("24.0", text)
+
+    def test_the_offset_is_shown_as_the_frames_it_lands_on(self):
+        text = report.render(self.record(offset=100))
+        self.assertIn("source frames  1 to 25", text)
+        self.assertIn("placed at      101 to 125 (offset 100)", text)
+
+    def test_each_import_mode_is_named_rather_than_printed(self):
+        # `inf` is a legal tolerance and the two languages spell it
+        # differently, so no record carries either spelling.
+        self.assertIn("unbounded (authored keys only)",
+                      report.render(self.record(tolerance=float("inf"))))
+        self.assertIn("0 px (every frame keyed)",
+                      report.render(self.record(tolerance=0.0)))
+        self.assertIn("tolerance      0.5 px",
+                      report.render(self.record(tolerance=0.5)))
+
+    def test_a_shape_says_what_arrived_and_how_far_it_sits_from_the_file(self):
+        line = report.render(self.record(shapes=[
+            {"name": "plain", "feather_model": "per_point", "points": 4,
+             "authored": 5, "corrective": 3, "residual": 0.42105,
+             "worst_frame": 9}]))
+        self.assertIn("  plain: feather per_point, 4 point(s), 5 authored "
+                      "key(s), 3 corrective; worst drift 0.4211 px at frame 9",
+                      line)
+
+    def test_a_pixel_measurement_rounds_half_away_from_zero(self):
+        # `%.4f` rounds half to even and JavaScript's `toFixed` rounds half
+        # away from zero. 0.15625 is exactly representable, so it lands on the
+        # tie every time and the two would disagree if either language's
+        # default were used.
+        self.assertIn("worst drift 0.1563 px", report.render(self.record(
+            shapes=[{"name": "tie", "feather_model": "none", "points": 4,
+                     "authored": 5, "corrective": 1, "residual": 0.15625,
+                     "worst_frame": 9}])))
+
+    def test_a_shape_that_never_drifted_says_so(self):
+        # `worst_frame` is None when every frame is a key and also when no
+        # frame between the keys moved. A bare "0.0000 px at frame None" would
+        # read as a measurement that was taken at a frame that does not exist.
+        text = report.render(self.record(shapes=[
+            {"name": "dense", "feather_model": "none", "points": 4,
+             "authored": 25, "corrective": 0, "residual": 0.0,
+             "worst_frame": None}]))
+        self.assertIn("nothing drifted from the file", text)
+        self.assertNotIn("worst drift", text)
+
+    def test_the_two_warning_sets_stay_apart(self):
+        text = report.render(self.record(
+            file_warnings=["shape 'x': ease was dropped"],
+            import_warnings=["shape 'x': 3 vertices were inserted"]))
+        self.assertIn("1 warning recorded when the file was written:", text)
+        self.assertIn("  - shape 'x': ease was dropped", text)
+        self.assertIn("1 warning from this import:", text)
+        self.assertIn("  - shape 'x': 3 vertices were inserted", text)
+
+    def test_silence_is_stated_rather_than_omitted(self):
+        # An absent section makes no claim. "Nothing was lost" is the claim
+        # this document exists to support.
+        text = report.render(self.record())
+        self.assertIn("no warnings recorded when the file was written", text)
+        self.assertIn("no warnings from this import", text)
+
+    def test_a_record_appends_cleanly_to_another(self):
+        # A comp is imported into more than once, and the second import must
+        # not erase the evidence of the first. The rule is the writer's, but it
+        # only works if the text carries its own separator.
+        twice = report.render(self.record()) + report.render(self.record())
+        self.assertEqual(twice.count("RotoBridge import record"), 2)
+        self.assertEqual(twice.count(report.RULE), 2)
+        self.assertTrue(twice.endswith("\n"))
+
+    def test_the_record_sits_beside_whatever_anchors_it(self):
+        self.assertEqual(report.path_for("/shots/ab_010/comp/ab_010_v012.nk"),
+                         "/shots/ab_010/comp/ab_010_v012.rotobridge.txt")
+        self.assertEqual(report.path_for("/shots/ab_010/roto/ab_010.rbj"),
+                         "/shots/ab_010/roto/ab_010.rotobridge.txt")
+
+    def test_only_a_dot_in_the_last_component_is_an_extension(self):
+        # `os.path.splitext`'s rule, written out in `core/report.py` so the
+        # ExtendScript mirror can say the same thing. A version folder called
+        # `v2.1` must not eat the file name.
+        self.assertEqual(report.path_for("/shots/v2.1/ab_010"),
+                         "/shots/v2.1/ab_010.rotobridge.txt")
+        self.assertEqual(report.path_for("/shots/.rbj"),
+                         "/shots/.rbj.rotobridge.txt")
+
+
+class _WithoutNuke(unittest.TestCase):
+    """Imports `nuke/rotobridge_import.py` with the host modules stubbed out.
+
+    The importer cannot be imported without Nuke, and some of what it decides
+    does not need Nuke at all: which reading an anchored shape gets, and what
+    goes into the import record. Both are worth testing here rather than only
+    in the host, because both have a branch nobody will reach by hand, and an
+    untested fallback is a fallback that does not work.
+
+    `cls.nuke` is the stub, so a subclass can give it whatever the function
+    under test asks the host for.
     """
 
     @classmethod
@@ -1886,11 +2022,12 @@ class TestNukeAnchoredFeather(unittest.TestCase):
                      "set_curve_linear", "set_curve_types", "write_attr_curve"):
             setattr(shared, name, None)
         shared.drift, shared.geom = drift, geom
-        shared.interp, shared.rbj = interp, rbj
+        shared.interp, shared.rbj, shared.report = interp, rbj, report
         stubs["nuke"] = nuke_stub
         stubs["nuke.rotopaint"] = rp_stub
         stubs["rotobridge_nuke"] = shared
 
+        cls.nuke = nuke_stub
         cls._saved = dict((k, sys.modules.get(k)) for k in stubs)
         sys.modules.update(stubs)
         sys.path.insert(0, os.path.join(REPO, "nuke"))
@@ -1908,6 +2045,10 @@ class TestNukeAnchoredFeather(unittest.TestCase):
             else:
                 sys.modules[key] = was
         sys.modules.pop("rotobridge_import", None)
+
+
+class TestNukeAnchoredFeather(_WithoutNuke):
+    """The Nuke importer's section 6.5 policy, without Nuke."""
 
     def spec(self, anchors_at, frames=(0, 1, 2)):
         """A four-point square whose anchors are `anchors_at(frame)`."""
@@ -2002,6 +2143,103 @@ class TestNukeAnchoredFeather(unittest.TestCase):
         self.assertEqual(got["0"]["points"][2]["feather"], -9.0)
 
 
+class TestNukeImportRecord(_WithoutNuke):
+    """What the Nuke importer puts in the record, and where it puts it.
+
+    The host run proves the record is written; this proves what is in it. The
+    interesting part is not the formatting - `TestImportRecord` has that - but
+    the two decisions the adapter makes: which file the record sits beside, and
+    which warnings belong to which application.
+    """
+
+    class Node(object):
+        def __init__(self, name):
+            self._name = name
+
+        def name(self):
+            return self._name
+
+    def setUp(self):
+        self.nuke.NUKE_VERSION_STRING = "17.1v1"
+        self.nuke.root = lambda: self.Node("Root")
+
+    def doc(self, warnings):
+        got = valid_doc()
+        got["warnings"] = list(warnings)
+        return got
+
+    def test_the_record_sits_beside_the_script_when_there_is_one(self):
+        self.nuke.root = lambda: self.Node("/shots/ab_010/comp/ab_010_v012.nk")
+        self.assertEqual(self.rbi.record_path("/roto/ab_010.rbj"),
+                         "/shots/ab_010/comp/ab_010_v012.rotobridge.txt")
+
+    def test_an_unsaved_script_puts_the_record_beside_the_rbj(self):
+        # `nuke.root().name()` is the literal string "Root" until the script is
+        # saved, which is also what a headless `-t` run reports.
+        self.assertEqual(self.rbi.record_path("/roto/ab_010.rbj"),
+                         "/roto/ab_010.rotobridge.txt")
+
+    def test_the_exporters_warnings_stay_the_exporters(self):
+        # `import_document` seeds its warning list with the file's own, in
+        # order and first. A record that ran them together would answer "which
+        # application dropped it?" with "one of them did".
+        doc = self.doc(["the exporter lost the ease"])
+        warnings = list(doc["warnings"]) + ["this import inserted a vertex"]
+        got = self.rbi.build_record(doc, "/roto/ab_010.rbj", self.Node("Roto1"),
+                                    warnings, [], 0, 0.5)
+        self.assertEqual(got["file_warnings"], ["the exporter lost the ease"])
+        self.assertEqual(got["import_warnings"],
+                         ["this import inserted a vertex"])
+
+    def test_it_carries_the_host_the_target_and_the_settings(self):
+        doc = self.doc([])
+        got = self.rbi.build_record(doc, "/roto/ab_010.rbj", self.Node("Roto3"),
+                                    [], [], -1000, float("inf"))
+        self.assertEqual(got["host"], "Nuke 17.1v1")
+        self.assertEqual(got["target"], "Roto3")
+        self.assertEqual(got["source_file"], "/roto/ab_010.rbj")
+        self.assertEqual(got["offset"], -1000)
+        self.assertEqual(got["tolerance"], float("inf"))
+        self.assertEqual(got["range"], doc["range"])
+        self.assertEqual(got["version"], doc["version"])
+        # Rendering it is the check that every field an adapter must supply is
+        # supplied: `render` reads them all and raises on a missing one.
+        self.assertIn("Nuke 17.1v1", report.render(got))
+
+    def test_a_second_import_does_not_erase_the_first(self):
+        doc = self.doc([])
+        record = self.rbi.build_record(doc, "/roto/ab_010.rbj",
+                                       self.Node("Roto1"), [], [], 0, 0.5)
+        holder = tempfile.mkdtemp()
+        try:
+            path = os.path.join(holder, "shot.rotobridge.txt")
+            said = []
+            self.assertEqual(self.rbi.write_record(record, path, said.append),
+                             path)
+            self.assertEqual(self.rbi.write_record(record, path, said.append),
+                             path)
+            with open(path) as fh:
+                text = fh.read()
+        finally:
+            shutil.rmtree(holder)
+        self.assertEqual(text.count("RotoBridge import record"), 2)
+        self.assertEqual(said, [])
+
+    def test_an_unwritable_record_is_a_warning_and_not_a_failure(self):
+        # The shapes are in the script by the time this runs. Losing an import
+        # over a read-only folder would be a worse failure than the one being
+        # reported.
+        record = self.rbi.build_record(self.doc([]), "/roto/ab_010.rbj",
+                                       self.Node("Roto1"), [], [], 0, 0.5)
+        said = []
+        got = self.rbi.write_record(record, os.path.join(REPO, "does", "not",
+                                                         "exist.txt"),
+                                    said.append)
+        self.assertIsNone(got)
+        self.assertEqual(len(said), 1)
+        self.assertIn("could not be written", said[0])
+
+
 class TestEs3CrossCheck(unittest.TestCase):
     """What the ExtendScript writer produces, the Python reader must accept.
 
@@ -2033,6 +2271,49 @@ class TestEs3CrossCheck(unittest.TestCase):
         if proc.returncode != 0:
             self.fail("node failed:\n" + proc.stderr.decode("utf-8", "replace"))
         return proc.stdout.decode("utf-8")
+
+    def es3_render(self, record):
+        """Render an import record through the ExtendScript mirror."""
+        script = (
+            "global.RB = require(%s);"
+            "var chunks = [];"
+            "process.stdin.on('data', function (c) { chunks.push(c); });"
+            "process.stdin.on('end', function () {"
+            "  var rec = JSON.parse(chunks.join(''));"
+            "  if (rec.tolerance === 'inf') { rec.tolerance = Infinity; }"
+            "  process.stdout.write(RB.report.render(rec));"
+            "});"
+        ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),)
+        # JSON has no infinity, and an unbounded tolerance is exactly one of
+        # the values the two languages spell differently. It crosses as a
+        # string and the script above turns it back.
+        payload = dict(record)
+        if payload["tolerance"] == float("inf"):
+            payload["tolerance"] = "inf"
+        proc = subprocess.run([NODE, "-e", script],
+                              input=json.dumps(payload).encode("utf-8"),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            self.fail("node failed:\n" + proc.stderr.decode("utf-8", "replace"))
+        return proc.stdout.decode("utf-8")
+
+    def test_both_implementations_write_the_same_import_record(self):
+        # Byte for byte, unlike the .rbj writers: a record is one document
+        # about one import, and two hosts producing different ones would make
+        # the record an argument rather than settle one. Every field that could
+        # be spelled two ways is here - a whole float, a fractional one, an
+        # infinity, a null worst frame and a negative offset.
+        record = TestImportRecord().record(
+            offset=-1000, tolerance=float("inf"),
+            shapes=[{"name": "feathered", "feather_model": "anchored",
+                     "points": 7, "authored": 25, "corrective": 0,
+                     "residual": 0.0, "worst_frame": None},
+                    {"name": "plain", "feather_model": "per_point",
+                     "points": 4, "authored": 5, "corrective": 3,
+                     "residual": 0.42105, "worst_frame": -988}],
+            file_warnings=["shape 'plain': ease was dropped"],
+            import_warnings=["shape 'feathered': 3 vertices were inserted"])
+        self.assertEqual(self.es3_render(record), report.render(record))
 
     def test_it_accepts_what_extendscript_writes(self):
         text = self.es3_rewrite(valid_doc())

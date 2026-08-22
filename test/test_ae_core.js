@@ -1143,6 +1143,145 @@ function anchored(entries) {
     return doc;
 }
 
+/* --- the import record --------------------------------------------------- */
+
+function sampleRecord(changes) {
+    /* The same record `TestImportRecord` uses in `test/test_core.py`, because
+     * two implementations of one document are worth having only if they are
+     * held to the same cases. `test_core.py` renders this one through node and
+     * compares byte for byte. */
+    var record = {
+        written: "2026-08-22 09:14:03",
+        host: "Nuke 17.1v1",
+        target: "Roto1",
+        source_file: "/shots/ab_010/roto/ab_010.rbj",
+        source: { app: "After Effects", app_version: "25.6x101", width: 1920,
+                  height: 1080, fps: 24.0, pixel_aspect: 1.0 },
+        version: 2,
+        range: [1, 25],
+        offset: 0,
+        tolerance: 0.5,
+        shapes: [{ name: "feathered", feather_model: "anchored", points: 7,
+                   authored: 25, corrective: 0, residual: 0.0,
+                   worst_frame: 12 }],
+        file_warnings: [],
+        import_warnings: []
+    };
+    for (var key in (changes || {})) {
+        if (RB.util.hasOwn(changes, key)) { record[key] = changes[key]; }
+    }
+    return record;
+}
+
+function contains(text, wanted, note) {
+    if (text.indexOf(wanted) < 0) {
+        fail((note ? note + ": " : "") + "not found: " + wanted);
+    }
+}
+
+describe("report.render", function () {
+    it("names the file, the application and the shape", function () {
+        var text = RB.report.render(sampleRecord());
+        contains(text, "/shots/ab_010/roto/ab_010.rbj");
+        contains(text, "After Effects 25.6x101");
+        contains(text, "Nuke 17.1v1");
+        contains(text, "feathered");
+        contains(text, ".rbj version 2");
+        contains(text, "1920 x 1080 at 24 fps");
+    });
+
+    it("shows the offset as the frames it lands on", function () {
+        var text = RB.report.render(sampleRecord({ offset: 100 }));
+        contains(text, "source frames  1 to 25");
+        contains(text, "placed at      101 to 125 (offset 100)");
+    });
+
+    it("names each import mode rather than printing it", function () {
+        // `Infinity` is spelled `inf` by the Python, so no record carries
+        // either spelling.
+        contains(RB.report.render(sampleRecord({ tolerance: Infinity })),
+                 "unbounded (authored keys only)");
+        contains(RB.report.render(sampleRecord({ tolerance: 0.0 })),
+                 "0 px (every frame keyed)");
+        contains(RB.report.render(sampleRecord()), "tolerance      0.5 px");
+    });
+
+    it("says what arrived and how far it sits from the file", function () {
+        var text = RB.report.render(sampleRecord({ shapes: [
+            { name: "plain", feather_model: "per_point", points: 4,
+              authored: 5, corrective: 3, residual: 0.42105, worst_frame: 9 }
+        ] }));
+        contains(text, "  plain: feather per_point, 4 point(s), 5 authored"
+                 + " key(s), 3 corrective; worst drift 0.4211 px at frame 9");
+    });
+
+    it("rounds a pixel measurement half away from zero", function () {
+        // Python's `%.4f` rounds half to even, so the rule is stated in both
+        // implementations rather than inherited from either language.
+        var text = RB.report.render(sampleRecord({ shapes: [
+            { name: "tie", feather_model: "none", points: 4, authored: 5,
+              corrective: 1, residual: 0.15625, worst_frame: 9 }
+        ] }));
+        contains(text, "worst drift 0.1563 px");
+    });
+
+    it("says so when a shape never drifted", function () {
+        var text = RB.report.render(sampleRecord({ shapes: [
+            { name: "dense", feather_model: "none", points: 4, authored: 25,
+              corrective: 0, residual: 0.0, worst_frame: null }
+        ] }));
+        contains(text, "nothing drifted from the file");
+        eq(text.indexOf("worst drift"), -1, "no measurement is claimed");
+    });
+
+    it("keeps the two warning sets apart", function () {
+        var text = RB.report.render(sampleRecord({
+            file_warnings: ["shape 'x': ease was dropped"],
+            import_warnings: ["shape 'x': 3 vertices were inserted"]
+        }));
+        contains(text, "1 warning recorded when the file was written:");
+        contains(text, "  - shape 'x': ease was dropped");
+        contains(text, "1 warning from this import:");
+        contains(text, "  - shape 'x': 3 vertices were inserted");
+    });
+
+    it("states silence rather than omitting it", function () {
+        var text = RB.report.render(sampleRecord());
+        contains(text, "no warnings recorded when the file was written");
+        contains(text, "no warnings from this import");
+    });
+
+    it("appends cleanly to another record", function () {
+        var twice = RB.report.render(sampleRecord())
+            + RB.report.render(sampleRecord());
+        eq(twice.split("RotoBridge import record").length - 1, 2);
+        eq(twice.charAt(twice.length - 1), "\n");
+    });
+});
+
+describe("report.pathFor", function () {
+    it("sits beside whatever anchors it", function () {
+        eq(RB.report.pathFor("/shots/ab_010/comp/ab_010_v012.aep"),
+           "/shots/ab_010/comp/ab_010_v012.rotobridge.txt");
+        eq(RB.report.pathFor("/shots/ab_010/roto/ab_010.rbj"),
+           "/shots/ab_010/roto/ab_010.rotobridge.txt");
+    });
+
+    it("counts only a dot in the last component as an extension", function () {
+        // A version folder called `v2.1` must not eat the file name, and a
+        // leading dot is a name rather than an extension. `os.path.splitext`'s
+        // rule, which the Python writes out for the same reason.
+        eq(RB.report.pathFor("/shots/v2.1/ab_010"),
+           "/shots/v2.1/ab_010.rotobridge.txt");
+        eq(RB.report.pathFor("/shots/.rbj"), "/shots/.rbj.rotobridge.txt");
+    });
+
+    it("handles a Windows path, which is what Nuke reports there", function () {
+        eq(RB.report.pathFor("C:\\shots\\ab_010\\ab_010_v012.nk"),
+           "C:\\shots\\ab_010\\ab_010_v012.rotobridge.txt");
+    });
+});
+
 /* --- report ------------------------------------------------------------- */
 
 if (failures.length) {

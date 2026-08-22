@@ -289,12 +289,31 @@ def main():
 
     say("--- import at tolerance 0 ---")
     started = time.time()
-    imported, warnings, reports = rbi.import_from_file(path, tolerance=0.0)
+    imported, warnings, reports, recorded = rbi.import_from_file(
+        path, tolerance=0.0)
     import_seconds = time.time() - started
     back = imported["curves"].rootLayer[0]
     say("  rebuilt '%s' with %d points, closed=%s"
         % (back.name, len(back), not back.getFlag(rp.FlagType.eOpenFlag)))
     say("  took %.3f s" % import_seconds)
+    say()
+
+    say("--- the import record ---")
+    # Written for every import, not on request, so this is the one place the
+    # host proves it: the path is derived from the script name and this script
+    # is unsaved, which is the branch that falls back to the .rbj.
+    if recorded is None or not os.path.exists(recorded):
+        failures.append("no import record was written (%s)" % recorded)
+    else:
+        text = open(recorded).read()
+        say("  %s, %d bytes" % (os.path.basename(recorded), len(text)))
+        for wanted in ("RotoBridge import record", back.name, "tolerance",
+                       "warnings from this import"):
+            if wanted not in text:
+                failures.append("the import record does not mention %r"
+                                % wanted)
+        for line in text.splitlines()[:14]:
+            say("  | " + line)
     say()
 
     say("--- geometry, every point on every frame ---")
@@ -323,7 +342,8 @@ def main():
 
     say("--- frame offset ---")
     nuke.scriptClear()
-    offset_node, _, _ = rbi.import_from_file(path, offset=-1000, tolerance=0.0)
+    offset_node, _, _, _ = rbi.import_from_file(path, offset=-1000,
+                                                tolerance=0.0)
     offset_shape = offset_node["curves"].rootLayer[0]
     worst_o = compare(doc, offset_shape, offset=-1000)[0]
     say("  imported at offset -1000; worst centre deviation %.3e px" % worst_o)
@@ -379,8 +399,8 @@ def main():
         failures.append("explicitly linear keys exported as %s" % sorted(sides))
 
     nuke.scriptClear()
-    sparse_node, _, sparse_reports = rbi.import_from_file(sparse_path,
-                                                          tolerance=TOLERANCE)
+    sparse_node, _, sparse_reports, _ = rbi.import_from_file(
+        sparse_path, tolerance=TOLERANCE)
     sparse_back = sparse_node["curves"].rootLayer[0]
     landed = key_times(sparse_back)
     report = sparse_reports[0]

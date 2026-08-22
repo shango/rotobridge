@@ -3,7 +3,7 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-21. **Phase 4 is complete and has met both hosts.**
+Last updated: 2026-08-22. **Phase 4 is complete and has met both hosts.**
 
 Earlier this session: both After Effects import bugs found, fixed and confirmed
 in the host (stale mask handles; feather compared by array index); the drift
@@ -14,12 +14,14 @@ turned out to produce no alpha from an open mask path at all.
 
 Then the project got a use case, and it reordered the work. **Nuke is the hub**
 and **the format has to be falsifiable** - see the two sections under Status.
-The AE ease question is closed as a "cannot", not a "not yet". **The frontier is
-now feather anchoring, then Phase 5 rendered pixels.**
+The AE ease question is closed as a "cannot", not a "not yet". Feather anchoring
+closed 2026-08-22, and the durable import record with it. **The frontier is now
+Phase 5, rendered pixels, and everything left needs a host in front of a
+person.**
 
 ## Status
 
-`prd.md` is at **4.10**. Phase 0 is complete on both sides and **every open
+`prd.md` is at **4.11**. Phase 0 is complete on both sides and **every open
 question is closed** (Q6-Q9). **`spec/rbj-v1.md` is FROZEN** (2026-08-20).
 Raw probe output is committed under `test/golden/nuke_probe/17.1v1/` (12 files,
 10/10 cases) and `test/golden/ae_probe/` (6 runs; run 3 is the only one with
@@ -29,12 +31,13 @@ load-bearing evidence).
 **Phases 1, 2, 3 and 4 are complete**, and Phase 4 has now met both hosts: the
 export and the six-shape import both pass in After Effects, and both Nuke
 acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
-interpolation and drift code: stdlib only, no host imports, no file access, so
-it runs unchanged under plain Python and under Nuke's embedded Python. `nuke/`
-holds the Nuke adapter pair and `ae/` the After Effects one, over an ES3 mirror
-of `core/`. `test/test_core.py` is **176 passing tests**, run with `python3
-test/test_core.py` (not `unittest discover` - `test/` is deliberately not a
-package). `./test/run.sh` runs all five host-free suites: **369 tests**.
+interpolation, drift and import-record code: stdlib only, no host imports, no
+file access, so it runs unchanged under plain Python and under Nuke's embedded
+Python. `nuke/` holds the Nuke adapter pair and `ae/` the After Effects one,
+over an ES3 mirror of `core/`. `test/test_core.py` is **268 passing tests**, run
+with `python3 test/test_core.py` (not `unittest discover` - `test/` is
+deliberately not a package). `./test/run.sh` runs all five host-free suites:
+**534 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -1223,11 +1226,47 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    can stay there. Phase 5 is what validates the dense layer itself, and it is
    the only thing that can catch `ff` and the motion-blur gap.
 
-3. **A durable per-shape verification record.** Small, and outsized value for
-   the blame scenario. The import already computes everything needed - source
-   contents, what arrived, measured deviation per shape, anything that could not
-   be carried - and then puts it in console warnings that scroll away. Written
-   next to the comp instead, the argument happens over evidence.
+3. **A durable per-shape verification record: DONE 2026-08-22, both adapters,
+   verified in Nuke.** Every import appends one to `<project>.rotobridge.txt` -
+   beside the saved script or comp, beside the source `.rbj` when the project
+   has never been saved. `core/report.py` renders it and `RB.report` mirrors
+   it; `TestEs3CrossCheck.test_both_implementations_write_the_same_import_record`
+   holds the two to **byte-identical** output, which is stricter than the .rbj
+   writers are held to and deliberately so - a record is one document about one
+   import, and two hosts writing different ones would make it an argument
+   rather than settle one. `prd.md` section 8 now describes it.
+
+   Four decisions worth carrying forward:
+
+   - **The two warning lists stay apart.** What the exporting application
+     recorded losing is evidence about that application; what this import lost
+     is evidence about this one. `import_document` seeds its list with the
+     file's own, in order and first, so `build_record` splits them back at
+     `len(doc["warnings"])`. Run together they would answer "which one dropped
+     it?" with "one of them did".
+   - **Appended, never overwritten.** A comp is imported into more than once
+     and the second import is not entitled to erase the first. Measured in the
+     host: two runs of `test_nuke_roundtrip.py` leave four records in
+     `roundtrip.rotobridge.txt`, and the exporter's own feather-offset warning
+     is in each one.
+   - **An unwritable record warns and does not fail the import.** The shapes
+     are in the script by the time it runs, and losing an import over a
+     read-only folder would be a worse failure than the one being reported.
+     Both sides are tested for it, the AE one through a mock whose `open("a")`
+     refuses.
+   - **A number the drift pass never measured says so.** `drift.correct`
+     returns `at = None` both when every frame is a key and when nothing
+     between the keys moved, so the record says "nothing drifted from the
+     file" rather than naming either case or printing a 0.0000 that was never
+     taken. The same `None` also stopped the two dialogs disagreeing about
+     the offset: `worst_frame` is now in **host** numbering on both sides.
+
+   **The one call in this that no test can reach is `File.open("a")` in After
+   Effects.** The JavaScript Tools Guide documents `"a"` for append and the
+   mock honours it, but no host run has exercised it. If it turns out
+   unsupported the import still lands and warns once per import; the fallback
+   would be read-then-write through the existing `ae.readText` / `ae.writeText`.
+   Worth two minutes the next time anyone is in front of After Effects.
 
 4. **Ease-then-type ordering, the last Phase 4 loose end, and a drift number
    cannot answer it.** `setTemporalEaseAtKey` forces a key to BEZIER and the

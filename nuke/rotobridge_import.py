@@ -17,13 +17,15 @@ already baked into the points (prd.md section 9.2 step 5), so adding a
 transform on top would apply it twice.
 """
 
+import time
+
 import nuke
 import nuke.rotopaint as rp
 
 from rotobridge_nuke import (ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              ATTR_FEATHER_Y, ATTR_OPACITY, INTERP_LINEAR,
                              blend_from_rbj, drift, falloff_from_rbj, geom,
-                             interp, point_members, rbj, roto_knob,
+                             interp, point_members, rbj, report, roto_knob,
                              set_curve_linear, set_curve_types,
                              write_attr_curve)
 
@@ -266,6 +268,7 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
     """
     name = spec["name"]
     model = spec["feather_model"]
+    carried = model
     dense = spec["frames"]
 
     if model == "anchored":
@@ -277,6 +280,10 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
         anchored = _anchored_dense(spec, frames, warn)
         if anchored is None:
             dense = _snapped_dense(spec, frames)
+            # What the shape *became*, not what the file asked for: the record
+            # is read to find out what arrived, and the warning above has
+            # already said why it is not what was written.
+            carried = "per_point (anchors snapped)"
         else:
             dense = anchored
         model = "per_point"
@@ -338,10 +345,14 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
 
     return {
         "name": name,
+        "feather_model": carried,
+        "points": len(dense[str(frames[0])]["points"]),
         "authored": len(key_frames),
         "corrective": len(final) - len(set(key_frames) & set(frames)),
         "residual": residual,
-        "worst_frame": at,
+        # Host numbering, so it names the frame an artist would look at. The
+        # drift pass works in source frames and has no offset to apply.
+        "worst_frame": None if at is None else at + offset,
     }
 
 
@@ -429,13 +440,89 @@ def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
     return node, warnings, reports
 
 
+def build_record(doc, source_path, node, warnings, reports, offset, tolerance):
+    """Everything this import knows, in the shape `core.report` renders.
+
+    The two warning lists are split back apart here: `import_document` seeds its
+    list with the file's own warnings, in order and first, so what the exporter
+    already lost stays distinguishable from what this import lost. A record that
+    ran them together would answer "which application dropped it?" with "one of
+    them did".
+    """
+    file_warnings = list(doc.get("warnings", []))
+    return {
+        "written": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "host": "Nuke %s" % nuke.NUKE_VERSION_STRING,
+        "target": node.name(),
+        "source_file": source_path,
+        "source": doc["source"],
+        "version": doc["version"],
+        "range": doc["range"],
+        "offset": offset,
+        "tolerance": tolerance,
+        "shapes": reports,
+        "file_warnings": file_warnings,
+        "import_warnings": warnings[len(file_warnings):],
+    }
+
+
+def record_path(source_path):
+    """Where the record goes: beside the script, or beside the .rbj.
+
+    Beside the **script** is the point - the record belongs with the comp that
+    holds the shapes, so someone opening it a month later finds it without
+    knowing where the .rbj came from. An unsaved script has nowhere to sit
+    next to, and then the source file is the next best anchor.
+    """
+    script = nuke.root().name()
+    if script and script != "Root":
+        return report.path_for(script)
+    return report.path_for(source_path)
+
+
+def write_record(record, path, warn):
+    """Append one record to `path`. Returns the path, or None if it failed.
+
+    Appended, never overwritten: a comp is imported into more than once, and
+    the second import is not entitled to erase the evidence of the first.
+
+    A record that cannot be written is a warning and not an exception. The
+    shapes are already in the script by the time this runs, and losing an
+    import over a read-only directory would be a worse failure than the one
+    being reported.
+    """
+    try:
+        handle = open(path, "a")
+        try:
+            handle.write(report.render(record))
+        finally:
+            handle.close()
+    except (IOError, OSError) as exc:
+        warn("the import record could not be written to %s (%s); this import "
+             "is not recorded anywhere but this dialog" % (path, exc))
+        return None
+    return path
+
+
 def import_from_file(path, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
+    """Import a .rbj and record what happened.
+
+    Returns `(node, warnings, reports, record_path)`. Writing the record is
+    part of importing rather than something a caller opts into: the whole
+    argument for it is that it exists for every import, including the ones
+    nobody thought would need defending.
+    """
     handle = open(path, "r")
     try:
         text = handle.read()
     finally:
         handle.close()
-    return import_document(rbj.loads(text), offset, tolerance, subset)
+
+    doc = rbj.loads(text)
+    node, warnings, reports = import_document(doc, offset, tolerance, subset)
+    record = build_record(doc, path, node, warnings, reports, offset, tolerance)
+    written = write_record(record, record_path(path), warnings.append)
+    return node, warnings, reports, written
 
 
 def _parse_tolerance(raw):
@@ -468,18 +555,21 @@ def main():
     tolerance = _parse_tolerance(
         panel.value("drift tolerance px (0 = every frame, inf = none)"))
 
-    node, warnings, reports = import_from_file(
+    node, warnings, reports, written = import_from_file(
         path, int(panel.value("frame offset")), tolerance, subset)
 
     lines = ["Imported %d shape(s) into %s" % (len(reports), node.name())]
-    for report in reports:
-        line = "  %s: %d authored key(s)" % (report["name"], report["authored"])
-        if report["corrective"]:
-            line += ", %d corrective" % report["corrective"]
-        if report["worst_frame"] is not None:
-            line += "; worst drift %.4g px at frame %d" % (report["residual"],
-                                                           report["worst_frame"])
+    for entry in reports:
+        line = "  %s: %d authored key(s)" % (entry["name"], entry["authored"])
+        if entry["corrective"]:
+            line += ", %d corrective" % entry["corrective"]
+        if entry["worst_frame"] is not None:
+            line += "; worst drift %.4g px at frame %d" % (entry["residual"],
+                                                           entry["worst_frame"])
         lines.append(line)
+    if written:
+        lines.append("")
+        lines.append("recorded in %s" % written)
     if warnings:
         lines.append("")
         lines.append("%d warning(s):" % len(warnings))

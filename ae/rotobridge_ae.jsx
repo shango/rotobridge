@@ -268,6 +268,18 @@
         file.close();
     };
 
+    ae.appendText = function (file, text) {
+        /* Appended, never overwritten: a comp is imported into more than once,
+         * and the second import is not entitled to erase the evidence of the
+         * first. `"a"` creates the file when it is not there yet. */
+        file.encoding = "UTF-8";
+        if (!file.open("a")) {
+            throw new Error("cannot write " + file.fsName);
+        }
+        file.write(text);
+        file.close();
+    };
+
     ae.SOURCE_APP = "After Effects";
 
     ae.sourceBlock = function (comp) {

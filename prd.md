@@ -1,6 +1,6 @@
 # RotoBridge - Product Requirements Document
 
-**Version:** 4.10
+**Version:** 4.11
 **Status:** Phases 0-3 complete on the Nuke side, Phase 4 complete on the After Effects side pending a run in the host. `spec/rbj-v1.md` **frozen** 2026-08-20. Q10 closed 2026-08-20; no open questions. Phase 6 open splines implemented and tested 2026-08-21, and that half of `spec/rbj-v2-draft.md` is a **permanent draft**: they carry geometry correctly and cannot render anywhere the format reaches (After Effects produces no alpha from an open mask path; Nuke strokes them through node knobs `.rbj` has no member for), so v1 remains the format. **The draft gained a second delta 2026-08-21 - feather anchors, §6 - and that one is the reverse case: a measured defect in the AE → Nuke direction with no other available fix, and nothing implemented yet**
 **Phase 0 results:** `test/golden/nuke_probe/17.1v1/`, `test/golden/ae_probe/` (six AE runs; run 3 carries the feather points, run 6 the mixed key interpolation)
 **Verified against:** Nuke 17.1v1 (non-commercial), After Effects 25.6x101
@@ -245,6 +245,10 @@ Every importer exposes one control: **drift tolerance**, in pixels.
 Because the dense layer is always in the file, switching modes is a **re-import of the same `.rbj`** - no round trip to the source application. An artist who finds drift re-imports at a tighter tolerance or at 0.
 
 Importers accept a **shape subset** (by name) so a single drifting shape can be re-imported dense without disturbing the others. The import completion report lists, per shape, how many corrective keys were inserted and the frames of worst drift - this tells the artist exactly which shapes to re-import if the defaults were too loose.
+
+**The completion report is also written to disk, next to the host project.** Every import appends a record to `<project>.rotobridge.txt` - beside the saved script or comp, or beside the source `.rbj` when the project has never been saved. It carries the file it came from and who exported it, the comp it was built against, the import settings, the per-shape numbers above, and **both** warning lists kept apart: what the exporting application recorded losing, and what this import lost. Rendered by `core/report.py` and its ExtendScript mirror, which are held to byte-identical output, so the two hosts write the same document.
+
+The reason it is a file rather than a dialog is the argument it has to survive. When a shot comes back with a note about a soft edge, the question is which application dropped what, and by then the dialog is gone and the console has scrolled. Records are appended, never overwritten, because a comp gets imported into more than once and the second import is not entitled to erase the evidence of the first. A record that cannot be written warns and does not fail the import - the shapes are already in the comp by then.
 
 ---
 
