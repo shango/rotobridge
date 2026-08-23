@@ -38,6 +38,8 @@ GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
 GOLDEN_SQUARE = os.path.join(GOLDEN, "square.rbj")
 GOLDEN_ROUNDTRIP = os.path.join(GOLDEN, "roundtrip.rbj")
 GOLDEN_SPARSE = os.path.join(GOLDEN, "sparse.rbj")
+GOLDEN_SCENE = os.path.join(GOLDEN, "ae_scene.rbj")
+GOLDEN_VIA_NUKE = os.path.join(GOLDEN, "ae_scene_via_nuke.rbj")
 GOLDEN_STATIC_EASE = os.path.join(GOLDEN, "ae_static_ease.rbj")
 GOLDEN_STATIC_CONFORMED = os.path.join(GOLDEN, "ae_static_conformed.rbj")
 
@@ -1292,6 +1294,171 @@ class TestGoldenStaticEase(unittest.TestCase):
         # line is what it should be. If a later edit puts these masks back on
         # the rotating solid, this fails rather than quietly lying.
         self.assertLess(self.bow_off_the_chord("linear_static"), 0.001)
+
+
+class TestGoldenAeScene(unittest.TestCase):
+    """The six-shape After Effects export, validated with no host present.
+
+    Nothing read this file until 2026-08-22. It is the largest host artefact in
+    the project and the only v2 one - an anchored feather and an open spline in
+    the same document - and every reference to it anywhere in the tree was a
+    comment. Acceptance criterion 12 says a golden validates without the other
+    application present; this one never had.
+
+    What it pins is what a bad re-export produces, because re-exporting it is a
+    by-hand run on another machine (`test/probe/README.md`, "Re-exporting the
+    scene golden"): the wrong layer selected, a stale deployment, a fixture
+    that moved. All three write a plausible file.
+    """
+
+    def setUp(self):
+        with io.open(GOLDEN_SCENE, encoding="utf-8") as handle:
+            self.doc = rbj.loads(handle.read())
+
+    def test_it_validates(self):
+        self.assertEqual(rbj.validate(self.doc), [])
+
+    def test_it_is_the_six_shape_fixture(self):
+        # `setup_ae_scene.jsx` builds two solids and the export takes whichever
+        # layers are selected, so the commonest bad re-export is the OTHER
+        # solid: two shapes called eased_static and linear_static, which is a
+        # legal file and not this one. It has happened.
+        self.assertEqual([s["name"] for s in self.doc["shapes"]],
+                         ["linear", "eased", "mixed", "feathered", "offgrid",
+                          "opened"])
+        self.assertEqual(self.doc["source"]["app"], "After Effects")
+        self.assertEqual(self.doc["range"], [0, 24])
+
+    def test_the_declared_version_is_the_one_its_shapes_force(self):
+        # Asked of `version_for` rather than hardcoded. Two writers decide the
+        # version by one shared rule, and a file whose declared version
+        # disagrees with its own contents is exactly what that rule exists to
+        # prevent - a v1 reader either refusing a file it could open or
+        # accepting one it cannot.
+        self.assertEqual(self.doc["version"],
+                         rbj.version_for(self.doc["shapes"]))
+        self.assertEqual(self.doc["version"], rbj.VERSION_ANCHORED_FEATHER)
+
+    def test_one_shape_is_open_and_one_is_anchored(self):
+        # The two features that put this file past v1, and the reason it is
+        # worth having at all. Either one silently reverting leaves a legal
+        # file that no longer exercises what it was committed for.
+        self.assertEqual([s["name"] for s in self.doc["shapes"]
+                          if not s["closed"]], ["opened"])
+        self.assertEqual([s["name"] for s in self.doc["shapes"]
+                          if s["feather_model"] == "anchored"], ["feathered"])
+
+    def test_the_conform_left_no_ease_anywhere(self):
+        # The exporter rewrites every eased side as linear before it writes
+        # (prd.md section 9.1 step 6a), so an `ease` block in an After Effects
+        # file means the conform did not run. That is what a deployment one
+        # commit behind looks like from here, and it needs no host to see.
+        for shape in self.doc["shapes"]:
+            for key in shape["keys"]:
+                self.assertNotIn("ease", key,
+                                 "%s frame %s" % (shape["name"], key["frame"]))
+
+    def test_the_dense_layer_covers_every_frame_of_every_shape(self):
+        first, last = self.doc["range"]
+        for shape in self.doc["shapes"]:
+            self.assertEqual(sorted(int(f) for f in shape["frames"]),
+                             list(range(first, last + 1)), shape["name"])
+
+    def test_the_feather_anchors_are_where_the_fixture_put_them(self):
+        # `setup_ae_scene.jsx` authors featherSegLocs [0, 0, 2, 3] against
+        # featherRelSegLocs [0.25, 0.75, 0.5, 0], which is `seg + rel` of 0.25,
+        # 0.75, 2.5 and 3.0, with radii [30, -15, 12, 0]. Checked on every
+        # frame: the anchors hold still relative to the path here, and a set
+        # that starts sliding is a different fixture with different costs
+        # downstream (spec/rbj-v2-draft.md section 6.5).
+        shape = [s for s in self.doc["shapes"]
+                 if s["name"] == "feathered"][0]
+        for key, record in shape["frames"].items():
+            anchors = sorted(record["feather_points"], key=lambda a: a["t"])
+            self.assertEqual([a["t"] for a in anchors],
+                             [0.25, 0.75, 2.5, 3.0], "frame %s" % key)
+            self.assertEqual([a["feather"] for a in anchors],
+                             [30.0, -15.0, 12.0, 0.0], "frame %s" % key)
+
+
+class TestGoldenAeSceneViaNuke(unittest.TestCase):
+    """What Nuke writes after reading an After Effects file, with no host.
+
+    `test/test_ae_crossapp.js` covers Nuke -> AE at the document level. This is
+    the other direction's artefact: `ae_scene.rbj` imported into Nuke at
+    tolerance inf and exported straight back out, by `test_ae_to_nuke.py`. Held
+    against its own source, so the questions it answers are about the crossing
+    rather than about a number someone wrote down.
+
+    It sat in `golden/` from 2026-08-21 to 2026-08-22 referenced by nothing and
+    regenerated by nothing, by which point it was 286 px of geometry away from
+    what the same pipeline produced - the conform, the anchored re-export and
+    the step-key fix had all landed under it. A derived file nobody reads is
+    not evidence, it is a claim with no date on it.
+    """
+
+    def setUp(self):
+        with io.open(GOLDEN_VIA_NUKE, encoding="utf-8") as handle:
+            self.doc = rbj.loads(handle.read())
+        with io.open(GOLDEN_SCENE, encoding="utf-8") as handle:
+            self.source = rbj.loads(handle.read())
+
+    def test_it_validates(self):
+        self.assertEqual(rbj.validate(self.doc), [])
+
+    def test_nothing_was_lost_crossing(self):
+        self.assertEqual(self.doc["source"]["app"], "Nuke")
+        self.assertEqual([s["name"] for s in self.doc["shapes"]],
+                         [s["name"] for s in self.source["shapes"]])
+        self.assertEqual(self.doc["range"], self.source["range"])
+
+    def test_every_authored_key_survived(self):
+        # Acceptance criterion 3, which until now could only be read off a
+        # Nuke report. The import that produced this ran at tolerance inf, so
+        # the drift pass added nothing and the key list is the sparse layer
+        # itself - a corrective key here would be a key the file did not have.
+        for after, before in zip(self.doc["shapes"], self.source["shapes"]):
+            self.assertEqual([k["frame"] for k in after["keys"]],
+                             [k["frame"] for k in before["keys"]],
+                             after["name"])
+
+    def test_the_open_spline_came_back_open(self):
+        opened = [s for s in self.doc["shapes"] if s["name"] == "opened"][0]
+        self.assertFalse(opened["closed"])
+        self.assertEqual(self.doc["version"], rbj.VERSION_OPEN_SPLINES)
+
+    def test_the_anchored_feather_arrived_as_vertices(self):
+        # spec/rbj-v2-draft.md section 6.5: Nuke can only anchor feather at a
+        # vertex, so the importer splits the segment and the shape comes back
+        # with more points than the artist drew. Counted from the source
+        # rather than hardcoded - one per anchor that is genuinely
+        # mid-segment, and the two sitting on a vertex cost nothing.
+        before = [s for s in self.source["shapes"]
+                  if s["name"] == "feathered"][0]
+        after = [s for s in self.doc["shapes"]
+                 if s["name"] == "feathered"][0]
+        self.assertEqual(before["feather_model"], "anchored")
+        self.assertEqual(after["feather_model"], "per_point")
+        anchors = before["frames"]["0"]["feather_points"]
+        mid = [a for a in anchors if a["t"] != int(a["t"])]
+        self.assertEqual(len(after["frames"]["0"]["points"]),
+                         len(before["frames"]["0"]["points"]) + len(mid))
+
+    def test_nuke_writes_no_ease_parameters_but_does_spell_a_step_key(self):
+        # The Phase 3 decision: nothing on the Nuke side calibrates influence
+        # and speed, so a Nuke source never writes an `ease` block. It does
+        # write the *word*, on one side of one key - a step key flattens its
+        # own incoming tangent, so `mixed`'s hold arrives as {ease, hold} and
+        # not the {linear, hold} this project claimed until 2026-08-22.
+        asymmetric = []
+        for shape in self.doc["shapes"]:
+            for key in shape["keys"]:
+                self.assertNotIn("ease", key, shape["name"])
+                if key["interp"]["in"] != key["interp"]["out"]:
+                    asymmetric.append((shape["name"], key["frame"],
+                                       key["interp"]))
+        self.assertEqual(asymmetric,
+                         [("mixed", 18, {"in": "ease", "out": "hold"})])
 
 
 class TestGoldenSparseExport(unittest.TestCase):
@@ -2628,7 +2795,8 @@ class TestEs3CrossCheck(unittest.TestCase):
         self.assertEqual(rbj.loads(text), valid_doc())
 
     def test_the_golden_files_survive_the_round_trip(self):
-        for path in (GOLDEN_SQUARE, GOLDEN_ROUNDTRIP, GOLDEN_SPARSE):
+        for path in (GOLDEN_SQUARE, GOLDEN_ROUNDTRIP, GOLDEN_SPARSE,
+                     GOLDEN_SCENE):
             with open(path) as fh:
                 original = rbj.loads(fh.read())
             self.assertEqual(rbj.loads(self.es3_rewrite(original)), original,

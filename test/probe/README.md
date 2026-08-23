@@ -377,8 +377,19 @@ rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
     "C:\Users\shann\rotobridge\out\phase6"
 ```
 
-The output directory must exist first; the test does not create it. An optional
-**second argument names a different source `.rbj`**, and report names are
+The output directory must exist first; the test does not create it. **It writes
+`ae_to_nuke_back.rbj` beside the report, and that file is a golden** - copy it
+over `test/golden/ae_scene_via_nuke.rbj` whenever `ae_scene.rbj` or either
+adapter moves, the same way the report is copied back. It is the AE-to-Nuke
+artefact, the only committed evidence of what Nuke writes after reading an
+After Effects file, and `TestGoldenAeSceneViaNuke` holds it against its own
+source with no host: every authored key survived, the open spline came back
+open, the anchored feather arrived as three inserted vertices, and the one
+asymmetric key is `mixed` frame 18 at `{in: ease, out: hold}`. Left
+unregenerated from 2026-08-21 to 2026-08-22 it drifted 286 px from what the
+same pipeline produces.
+
+An optional **second argument names a different source `.rbj`**, and report names are
 derived from it so one run does not overwrite another's. That is how the
 **static pair** is crossed - masks 7 and 8, on the solid that does not move, so
 nothing they measure can be blamed on a baked ancestor transform. They are the
