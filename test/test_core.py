@@ -2485,6 +2485,34 @@ class TestNukeImportRecord(_WithoutNuke):
         self.assertIn("could not be written", said[0])
 
 
+class TestNukeToleranceParser(_WithoutNuke):
+    """The one free-text control the import panel has (prd.md section 8)."""
+
+    def test_blank_and_inf_mean_unbounded(self):
+        for raw in ("", "  ", "inf", "Infinity"):
+            self.assertEqual(self.rbi._parse_tolerance(raw), float("inf"), raw)
+
+    def test_a_number_is_a_number(self):
+        self.assertEqual(self.rbi._parse_tolerance(" 0.5 "), 0.5)
+        self.assertEqual(self.rbi._parse_tolerance("0"), 0.0)
+
+    def test_negative_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.rbi._parse_tolerance("-1")
+
+    def test_nan_is_refused_not_silently_unbounded(self):
+        # `float("nan") < 0.0` is False, so without its own check nan slips
+        # through, the drift pass behaves as tolerance inf, and the record
+        # prints "nan px". The AE side already throws on it (via isNaN);
+        # accepting it here would be a divergence between the two importers.
+        with self.assertRaises(ValueError):
+            self.rbi._parse_tolerance("nan")
+
+    def test_garbage_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.rbi._parse_tolerance("five")
+
+
 class TestLinearFit(unittest.TestCase):
     """The export-side pass: what a LINEAR sparse layer costs.
 

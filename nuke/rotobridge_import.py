@@ -531,8 +531,11 @@ def _parse_tolerance(raw):
     if raw in ("", "inf", "infinity"):
         return float("inf")
     value = float(raw)
-    if value < 0.0:
-        raise ValueError("drift tolerance must not be negative; got %g" % value)
+    if value != value or value < 0.0:
+        # The self-comparison is the nan check: nan is not < 0, but accepting
+        # it would run the drift pass as tolerance inf while the record says
+        # "nan px". The AE importer already refuses it; so do we.
+        raise ValueError("drift tolerance must be a number >= 0; got %s" % raw)
     return value
 
 
