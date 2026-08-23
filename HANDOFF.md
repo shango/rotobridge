@@ -1377,7 +1377,8 @@ relabel: `mixed frame 18 interp {'in': 'linear', 'out': 'hold'} -> {'in':
 'ease', 'out': 'hold'}`. `test_nuke_roundtrip.py` PASS.
 
 **The straight arrival is not available, so do not propose fixing the
-geometry.** Probed: a key made to honour an incoming slope draws frames 16-17
+geometry.** `test/probe/probe_nuke_step.py` is that measurement, re-runnable,
+with its report at `test/golden/nuke_probe/17.1v1/step/`: a key made to honour an incoming slope draws frames 16-17
 at 0.2003 px - the conform's own residual, so the arrival is then exact - and
 then lets frames 19-23 drift **47, 99, 154, 214, 280 px**, because the outgoing
 side stops being constant. Within Nuke's one-type-per-key model you can have

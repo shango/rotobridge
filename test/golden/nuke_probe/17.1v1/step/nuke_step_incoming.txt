@@ -1,0 +1,36 @@
+Nuke's step key and the segment arriving at it
+Nuke 17.1v1, mixed of ae_scene.rbj
+
+--- what the file asks for ---
+  keys: [(0, 'linear', 'linear'), (6, 'linear', 'linear'), (7, 'linear', 'linear'), (8, 'linear', 'linear'), (9, 'linear', 'linear'), (10, 'linear', 'linear'), (11, 'linear', 'linear'), (12, 'linear', 'linear'), (15, 'linear', 'linear'), (18, 'linear', 'hold'), (24, 'linear', 'linear')]
+  the hold is frame 18's outgoing side; frames 19-23 are
+  byte-identical in the bake and frame 24 jumps 360 px.
+
+--- A: as shipped, a step key ---
+  step, lslope 0.0 (what the importer writes)
+    arriving  16: 2.5487 px   17: 2.0502 px
+    frozen    19: 0.0000  20: 0.0000  21: 0.0000  22: 0.0000  23: 0.0000
+    worst 2.5487 px, past 0.5 px on [16, 17]
+
+  The arrival is not held flat - that would read as the frame 15
+  value. It overshoots and decelerates in, which is a cubic with a
+  flat handle: case 63's eval(25) in pixels.
+
+--- B: the same key made to honour an incoming slope ---
+  constant|break, incoming slope = the chord
+    arriving  16: 0.2003 px   17: 0.2007 px
+    frozen    19: 47.8266  20: 99.1766  21: 154.2379  22: 214.0490  23: 280.8275
+    worst 280.8275 px, past 0.5 px on [19, 20, 21, 22, 23]
+
+  The arrival is now exact - 0.2 px is the export conform's own
+  residual, not this key's. The freeze is gone instead: once the
+  key is not constant its outgoing side travels to frame 24.
+
+=== CONCLUSION ===
+One type per key means the straight approach OR the freeze, not
+both. The freeze is what the artist authored, so the arrival is
+bought back by the drift pass - 2 corrective keys at the default
+tolerance. What this measurement changed is the labelling:
+`sides_from_nuke` writes `in: ease` for a step, and `to_nuke`
+reports `in: linear` into a `hold` as NOT exact, so the import
+warns instead of claiming a line Nuke does not draw.

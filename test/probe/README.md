@@ -51,7 +51,7 @@ writes `<name>.FAILED.txt` with the traceback and the run continues.
 | `60_feather_attributes` | `ShapeControlPoint` has exactly six members, all `AnimControlPoint` |
 | `61_feather_representation` | **`featherCenter` is a 2D offset, not a width scalar**, and carries its own tangents. See Known gaps |
 | `62_uniform_feather` | The **other** feather layer. `fx`/`fy` is 2-D and maps 1:1 to AE `maskFeather`; it animates; it is independent of `featherCenter`. Three API traps, see Known gaps |
-| `63_key_interp_asymmetry` | `AnimCurveKey` has one `interpolationType` but independent `lslope`/`rslope`, and asymmetric slopes stick. **The key field is the `InterpolationType` enum plus one**; step is outgoing-only. See Known gaps |
+| `63_key_interp_asymmetry` | `AnimCurveKey` has one `interpolationType` but independent `lslope`/`rslope`, and asymmetric slopes stick. **The key field is the `InterpolationType` enum plus one**; step freezes only the interval it leaves and draws the one it arrives on as a cubic - `eval(25)=0.6759`, not linear's `0.4898`. See Known gaps and "the step key's incoming side" |
 
 Nuke 16.0v8 is also installed; swap the exe path to capture a second version and
 diff the two directories.
@@ -288,6 +288,47 @@ What still has to be run by hand, and what to look for:
 | `maskFeatherFalloff` on a shape from Nuke | The last mapping resting on a guess. Nuke's `ff` defaults to 1.0 and its API never names the values; After Effects names both of its. A file crossing from Nuke is where the two get compared |
 | Timing against acceptance criterion 11 | Ten shapes, 150 frames, under 10 s. The loop shape that makes it reachable is asserted; the constant is not |
 | **An open mask path, exported and looked at** | `spec/rbj-v2-draft.md` section 5. The document side is covered host-free - `closed: false`, `version: 2`, and it comes back open. What no probe run has ever authored is an open mask *at all*, so what After Effects renders one as is unmeasured, and it is the last thing between that draft and a freeze. Mask 6, `opened` |
+
+## Nuke, the step key's incoming side
+
+`test/probe/probe_nuke_step.py`. One question, measured on the file it costs
+something in: what a step key does to the segment **arriving** at it. Result
+committed at `test/golden/nuke_probe/17.1v1/step/nuke_step_incoming.txt`.
+
+```bash
+rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
+  && mkdir -p "/mnt/c/Users/shann/rotobridge/rb" \
+  && cp -r core nuke test "/mnt/c/Users/shann/rotobridge/rb/"
+mkdir -p "/mnt/c/Users/shann/rotobridge/out/step"
+"/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
+    "C:\Users\shann\rotobridge\rb\test\probe\probe_nuke_step.py" \
+    "C:\Users\shann\rotobridge\out\step"
+```
+
+It imports `mixed` from `test/golden/ae_scene.rbj` at tolerance inf, so nothing
+corrects anything - at the default the drift pass buys the answer back before it
+can be read - and prints two variants:
+
+| | frames 16-17, arriving | frames 19-23, frozen |
+|---|---|---|
+| **A** step, as the importer writes it | **2.55 px, 2.05 px** | 0.0000 |
+| **B** the same key made to honour an incoming slope | 0.2003 px, 0.2007 px | **47 -> 280 px** |
+
+A is the claim `to_nuke` used to make - `out: hold` is exact, nothing is lost on
+the incoming side - in pixels. The arrival is not held flat, which would read as
+the frame 15 value; it overshoots and decelerates in, because a constant key
+carries a flat handle. That is case 63's `eval(25)=0.6759` where an exact linear
+reads `0.4898`, three phases later and in the units that matter.
+
+B is the reason the fix was a label and not geometry. Straightening the arrival
+costs the freeze outright: once the key is not constant, its outgoing side
+travels to frame 24 and the held interval slides up to 280 px. **One type per
+key means the straight approach or the freeze, not both.** The freeze is what
+the artist authored; the drift pass buys the arrival back for 2 keys.
+
+0.2003 px in B is the export conform's own residual, not this key's - which is
+also the calibration: it says the fit and the host agree about the segment once
+Nuke is drawing the line the file asked for.
 
 ## What Nuke's roto curves can and cannot be told
 
