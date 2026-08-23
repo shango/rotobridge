@@ -190,8 +190,8 @@ def _key_plan(spec, frames, offset, warn):
     if collapsed:
         warn("shape '%s': %d key(s) carry a different interpolation on each "
              "side, which a Nuke key cannot hold - one type governs the whole "
-             "key. They were set smooth and the drift pass corrected the "
-             "positions" % (spec["name"], collapsed))
+             "key. The closest type Nuke has was used and the drift pass "
+             "corrected the positions" % (spec["name"], collapsed))
 
     if shaped:
         # `to_nuke` reports an ease/ease pair as exact, and for a Nuke-sourced

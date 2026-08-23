@@ -770,8 +770,15 @@ enum **plus one**. A value sweep against reference curves confirms it:
 | `256` | as `0` | unset sentinel, the value a fresh key reports |
 
 Write `InterpolationType.eLinear + 1`, never the bare enum value. Note also that
-**step is outgoing-only** - it changes the interval leaving the key and leaves
-the incoming side alone, matching AE's `keyOutInterpolationType`.
+**step is outgoing-only in what it freezes** - it holds the interval leaving the
+key, matching AE's `keyOutInterpolationType`.
+
+**It does not leave the incoming side alone, and this table says so.** Under
+`1`, eval(25) reads `0.6759` - the cubic default - where an exact linear reads
+`0.4898`. The interval arriving at a step key is a cubic with a flat handle, so
+a writer reporting that side as `linear` is claiming a line the curve does not
+draw. Believed until 2026-08-22, when it turned up as 2.55 px on the segment
+arriving at `mixed`'s hold; see "What the conform did to the crossing".
 
 **Timing varies run to run.** The `comp.time` + `sourcePointToComp` cost measured
 5.75 ms on run 2 and 9.22 ms on run 3; `valueAtTime` measured 0.20 ms and

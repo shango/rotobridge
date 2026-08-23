@@ -855,11 +855,14 @@ class TestGoldenNukeExport(unittest.TestCase):
 class TestInterpFromNuke(unittest.TestCase):
     """Nuke key types to .rbj sides (spec section 10.1)."""
 
-    def test_step_is_outgoing_only(self):
+    def test_step_freezes_what_it_leaves_and_curves_what_it_arrives_on(self):
         # Case 63: a step key moved eval(75) to the key value and left eval(25)
-        # at the cubic default, so it governs the leaving segment alone.
+        # at 0.6759, the CUBIC default, where an exact linear reads 0.4898. So
+        # the arriving segment is not straight and must not say it is - this
+        # read `linear` until 2026-08-22, and the incoming side of every
+        # Nuke-authored hold was a line nobody drew.
         self.assertEqual(interp.sides_from_nuke(interp.NUKE_STEP),
-                         {"in": "linear", "out": "hold"})
+                         {"in": "ease", "out": "hold"})
 
     def test_linear_is_both_sides(self):
         self.assertEqual(interp.sides_from_nuke(interp.NUKE_LINEAR),
@@ -918,13 +921,27 @@ class TestInterpToNuke(unittest.TestCase):
     """.rbj sides back to the one type a Nuke key can hold."""
 
     def test_hold_out_becomes_step(self):
-        self.assertEqual(interp.to_nuke({"in": "linear", "out": "hold"}),
-                         (interp.NUKE_STEP, True))
+        self.assertEqual(interp.to_nuke({"in": "linear", "out": "hold"})[0],
+                         interp.NUKE_STEP)
 
-    def test_hold_out_is_exact_whatever_arrives(self):
-        # Nuke's step governs the leaving segment only, so there is no
-        # incoming side to lose and no warning to raise.
+    def test_a_straight_arrival_into_a_hold_is_not_exact(self):
+        # The measurement, in one assertion. Nuke's step draws the segment
+        # arriving at it as a cubic with a flat handle, so a file asking for a
+        # straight one does not get it: `mixed` frames 16-17 of ae_scene.rbj
+        # land 2.55 px and 2.05 px off the bake with nothing correcting them,
+        # about 8% of that segment's travel. The drift pass buys it back; this
+        # flag is what makes the import say so.
+        self.assertEqual(interp.to_nuke({"in": "linear", "out": "hold"}),
+                         (interp.NUKE_STEP, False))
+
+    def test_a_curved_or_flat_arrival_into_a_hold_is_exact(self):
+        # `ease` is "smooth, parameters unknown" (spec section 10.3), which is
+        # what a flat-handled cubic is, and `hold` arriving is that same flat
+        # handle named. Both are what Nuke actually draws, so neither warns -
+        # which is what keeps a Nuke-authored step silent on the way home.
         self.assertEqual(interp.to_nuke({"in": "ease", "out": "hold"}),
+                         (interp.NUKE_STEP, True))
+        self.assertEqual(interp.to_nuke({"in": "hold", "out": "hold"}),
                          (interp.NUKE_STEP, True))
 
     def test_linear_both_sides_becomes_linear(self):

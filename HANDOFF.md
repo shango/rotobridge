@@ -35,8 +35,9 @@ ExtendScript fit inside After Effects chose exactly the key frames
 `core.drift.linear_fit` chooses here. **The scene golden was then re-exported
 too, and the last open item with it** - the alert matched a prediction derived
 from the committed bake, and the crossing went from 78 corrective keys to 2.
-See "Next". The 2 that remain are a Nuke step key bending the segment that
-arrives at it, which `core/interp.to_nuke`'s docstring currently denies.
+See "Next". The 2 that remain are a Nuke step key bending the segment
+that arrives at it - measured, and the mislabel it exposed is now fixed in both
+directions.
 
 ## Status
 
@@ -1293,8 +1294,10 @@ report.
 open.** Phases 0-4 are complete and both hosts have run them; Phase 5's
 rendered comparison is retired as out of scope; the export conform is built,
 tested, verified against real host data and now carried by both goldens. The
-list below is history plus one measured finding that is worth a decision -
-`out: hold` is not exact in Nuke and the import does not say so.
+list below is history. The one finding that was open when the goldens were
+re-exported - `out: hold` reporting exact in Nuke when the arriving side is
+`linear` - was measured, fixed in both directions and verified in the host the
+same day.
 
 **THE LAST OPEN ITEM IS CLOSED, 2026-08-22.** `test/golden/ae_scene.rbj` is
 now a conformed export, re-exported from the same comp with the current
@@ -1336,26 +1339,57 @@ Nuke's "carries authored ease", and "1 key(s) carry a different interpolation
 on each side" - the latter because `mixed` key 12 was `linear`/`ease` and is
 now `linear`/`linear`.
 
-**`mixed`'s 2 corrective keys are a real finding, and they are not the
-conform's.** Probed in the host: frames 16 and 17 sit **2.55 px and 2.05 px**
-off the dense layer before correction, and every other frame is at the float32
-floor or inside the conform's promise. That is the segment 15 -> 18 arriving at
-`mixed`'s `hold`. Nuke's point at frame 16 is 507.561 where both the file's
-bake and a straight line say 505.155 - so Nuke is not drawing the line the
-conform fitted; **a step key flattens its own incoming tangent and the arriving
-segment decelerates into it.**
+**`mixed`'s 2 corrective keys were a real finding, and they are not the
+conform's. FIXED 2026-08-22.** Probed in the host: frames 16 and 17 sit **2.55
+px and 2.05 px** off the dense layer before correction, and every other frame is
+at the float32 floor or inside the conform's promise. That is the segment
+15 -> 18 arriving at `mixed`'s `hold`. Nuke's point at frame 16 is 507.561 where
+both the file's bake and a straight line say 505.155 - so Nuke is not drawing
+the line the file asked for; **a step key flattens its own incoming tangent and
+the arriving segment decelerates into it.**
 
-`core/interp.to_nuke` currently says the opposite in as many words - "`out:
-hold` reports exact even though the incoming side is dropped: Nuke's step
-governs only the outgoing interval, so there is no incoming side to lose" - and
-returns `exact=True`. Measured, there **is** an incoming side to lose. Nothing
-is wrong in the shipped geometry, because the drift pass catches it and pays
-the 2 keys, and the file's hold is preserved as the artist wrote it. What is
-wrong is that the import is silent about it. The narrow fix is to report
-`exact=False` when `out` is `hold` and `in` is not, so the existing
-asymmetric-key warning fires and says the drift pass corrected it; a
-Nuke-authored step (`hold`/`hold`) stays exact and silent, which keeps Nuke to
-Nuke quiet. **Not done - it changes a core mapping and is the user's call.**
+**The evidence was in Phase 0 the whole time, and the inference on top of it was
+the bug.** Case 63 recorded `set 1 -> eval(25)=0.6759`, which its own table
+labels the *cubic* default, against `0.4898` for an exact linear. That was read
+as "step is outgoing-only, so the incoming side says nothing", and section
+10.1's "writers put `linear` where a side is meaningless" was applied to it. Not
+freezing an interval is not the same as leaving it alone. **`linear` was
+doing double duty as "no information", and one side of the code wrote it in that
+sense while the other read it as a claim.** Section 10.3 already had the honest
+spelling: `ease`, "smooth, parameters unknown, rely on the drift pass", which is
+exactly what a flat-handled cubic is.
+
+**Both directions were mislabelling it, because it is one function each way.**
+
+- `sides_from_nuke(STEP)` now returns **`{in: ease, out: hold}`**, not
+  `{in: linear, ...}`. A Nuke file with a step key used to claim a straight
+  arrival Nuke never drew, and an After Effects importer would have built one.
+- `to_nuke` now returns **`exact=False` when `out` is `hold` and `in` is
+  `linear`**, so the importer's asymmetric-key warning fires and names the
+  drift correction. `ease` or `hold` arriving stays exact and silent, which is
+  what keeps a Nuke-authored step quiet on the way home - and the
+  Nuke-to-`.rbj`-to-Nuke identity test still passes.
+
+Verified in the host the same day. `test_ae_to_nuke.py` PASS, `mixed` now warns
+`1 key(s) carry a different interpolation on each side`, geometry unchanged at
+6.1e-05 px, and the crossing's field-by-field section reports the honest
+relabel: `mixed frame 18 interp {'in': 'linear', 'out': 'hold'} -> {'in':
+'ease', 'out': 'hold'}`. `test_nuke_roundtrip.py` PASS.
+
+**The straight arrival is not available, so do not propose fixing the
+geometry.** Probed: a key made to honour an incoming slope draws frames 16-17
+at 0.2003 px - the conform's own residual, so the arrival is then exact - and
+then lets frames 19-23 drift **47, 99, 154, 214, 280 px**, because the outgoing
+side stops being constant. Within Nuke's one-type-per-key model you can have
+the straight approach or the freeze. The freeze is what the artist authored;
+the drift pass buys the arrival back for 2 keys.
+
+**The frozen spec did not need changing, and that is worth noting.** Section
+10.2 says the step "was measured as outgoing-only (case 63: setting step moved
+eval(75) to 1.0 while leaving eval(25) at the cubic default)" - which is
+accurate, and even quotes the reading that contradicts the inference. The
+correction belonged in `prd.md` section 15 Q?/9.2, the two docstrings and
+`test/probe/README.md`, all of which now carry it.
 
 **Deliberately not done, so it is not proposed again.** The Nuke exporter also
 writes `ease`, and it is not conformed: After Effects can hold an ease exactly,

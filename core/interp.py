@@ -48,11 +48,21 @@ AE_DEFAULT_INFLUENCE = 16.667
 def sides_from_nuke(key_type):
     """One Nuke key type to the `{in, out}` pair spec section 10.1 wants.
 
-    Step is **outgoing only** - case 63 measured a step key moving eval(75) to
-    the key's value while leaving eval(25) at the cubic default, so the segment
-    arriving at a step key is governed by the previous key, not by this one.
-    The incoming side is reported `linear`, which spec section 10.1 is explicit
-    is the value to write where a side says nothing.
+    Step **freezes only the segment it leaves**, and the segment arriving at it
+    is left **cubic** - case 63 measured a step key moving eval(75) to the key's
+    value while eval(25) stayed at 0.6759, the cubic default, where an exact
+    linear reads 0.4898. So the incoming side is `ease`: spec section 10.3's
+    "smooth, parameters unknown, rely on the drift pass", which is what a
+    flat-handled cubic is.
+
+    **This used to report `linear` and that was a claim, not a reading.** The
+    same measurement was there and the inference on top of it was that a side
+    which does not freeze says nothing, so section 10.1's "writers put `linear`
+    where a side is meaningless" applied. It does not: this side is meaningful
+    and it is not straight. Measured in the host 2026-08-22, on the segment
+    arriving at `mixed`'s hold, Nuke draws 507.561 where the straight line
+    between the same two keys is 505.155 - 2.55 px, about 8% of that segment's
+    travel. A file saying `linear` there was describing a line nobody drew.
 
     Everything that is not step or linear - cubic, the unset sentinel, and the
     two unidentified types case 63 swept - is `ease` on both sides, with no
@@ -60,7 +70,7 @@ def sides_from_nuke(key_type):
     rely on the drift pass", which is exactly what is true here.
     """
     if key_type == NUKE_STEP:
-        return {"in": LINEAR, "out": HOLD}
+        return {"in": EASE, "out": HOLD}
     if key_type == NUKE_LINEAR:
         return {"in": LINEAR, "out": LINEAR}
     return {"in": EASE, "out": EASE}
@@ -107,10 +117,22 @@ def to_nuke(sides):
     pair cannot survive and `exact` is False - the import warns once per shape
     and the drift pass restores the positions.
 
-    `out: hold` reports exact even though the incoming side is dropped: Nuke's
-    step governs only the outgoing interval, so there is no incoming side to
-    lose. Flagging every hold key would warn about a distinction Nuke cannot
-    make in either direction.
+    `out: hold` becomes a step, and whether that is exact depends on what
+    arrives. Nuke's step freezes the interval it leaves and draws the interval
+    it arrives on as a cubic with a flat handle - `lslope` reads 0.0, and case
+    63's eval(25) is the cubic value, not the linear one. So `ease` or `hold`
+    arriving is held exactly, and **`linear` arriving is not**: Nuke has no way
+    to run a straight segment into a step. Measured 2026-08-22, `mixed` frames
+    16-17 of `test/golden/ae_scene.rbj`, imported with nothing correcting
+    anything: 2.55 px and 2.05 px off the bake, roughly 8% of the travel of the
+    segment that ends at the hold.
+
+    That is not a reason to rewrite the hold. Straightening the arrival costs
+    the freeze - probed: a key set to honour an incoming slope draws frames
+    16-17 exactly and then lets 19-23 drift up to 280 px, because the outgoing
+    side stops being constant. The freeze is what the artist authored, the
+    drift pass buys back the arrival for two keys, and the only thing that was
+    ever wrong is that this reported `exact` and nobody was told.
 
     prd.md section 9.2 step 3 also calls for writing `lslope` / `rslope` per
     side on an asymmetric key. This does not, and the reason is no longer that
@@ -134,7 +156,7 @@ def to_nuke(sides):
     ease, because the geometry survives and the editable timing does not.
     """
     if sides["out"] == HOLD:
-        return NUKE_STEP, True
+        return NUKE_STEP, sides["in"] != LINEAR
     if sides["in"] == LINEAR and sides["out"] == LINEAR:
         return NUKE_LINEAR, True
     if sides["in"] == EASE and sides["out"] == EASE:

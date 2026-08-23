@@ -29,6 +29,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
   warning: mask 'offgrid': 4 key(s) added so a straight line between keys stays within 0.5 px of this comp on every frame. Nothing the artist authored changed; the sparse layer now needs no correction downstream
   warning: mask 'opened': 3 key(s) added so a straight line between keys stays within 0.5 px of this comp on every frame. Nothing the artist authored changed; the sparse layer now needs no correction downstream
   warning: shape 'opened' is an open spline from After Effects; the geometry is exact but what it renders as across applications is unverified
+  warning: shape 'mixed': 1 key(s) carry a different interpolation on each side, which a Nuke key cannot hold - one type governs the whole key. The closest type Nuke has was used and the drift pass corrected the positions
   warning: shape 'feathered': 3 vertices were inserted to hold feather anchors that sat mid-segment. The subdivision is exact, so the shape has not moved - it has more points than the artist drew because Nuke can only anchor feather at a vertex
 
 --- did the open spline arrive open? ---
@@ -53,6 +54,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
     feathered  7 authored, 0 corrective; worst 0.2147 px at frame 7
     offgrid    9 authored, 0 corrective; worst 0.3809 px at frame 13
     opened     7 authored, 0 corrective; worst 0.2584 px at frame 16
+  warning: shape 'mixed': 1 key(s) carry a different interpolation on each side, which a Nuke key cannot hold - one type governs the whole key. The closest type Nuke has was used and the drift pass corrected the positions
   measured against the dense layer:
     linear     worst 0.0001 px at frame 19
     eased      worst 0.0001 px at frame 19
@@ -84,6 +86,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
   warning: shape 'opened': an open spline's render settings are node knobs (openspline_width and the end types), not shape attributes, so they are not carried in the file
 
 --- what the crossing changed, field by field ---
+  mixed      frame 18  interp {'in': 'linear', 'out': 'hold'} -> {'in': 'ease', 'out': 'hold'}
   feathered  feather_model    'anchored' -> 'per_point'
 
 === VERDICT ===
