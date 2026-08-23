@@ -143,6 +143,14 @@
         }
         refresh();
 
+        /* Both, because the two modes fire different ones: a docked Panel gets
+         * `onResizing` as the dock is dragged, a palette gets `onResize` when
+         * the drag ends. Without this the children keep the size they were laid
+         * out at, which in the docked mode the header recommends means the
+         * footer path stops filling the panel and stops re-truncating with it -
+         * and reading that path is the whole reason the footer is there. */
+        win.onResizing = win.onResize = function () { this.layout.resize(); };
+
         exportBtn.onClick = function () { run(folder, EXPORT); };
         importBtn.onClick = function () { run(folder, IMPORT); };
         change.onClick = function () {
