@@ -154,6 +154,13 @@
         return points;
     }
 
+    /* The three per-point shaping arrays section 9.3 names as readable but
+     * .rbj has no member for. Zero is the authoring default for each, so a
+     * non-zero entry is a value somebody set. */
+    var FEATHER_SHAPING = [["featherInterps", "interpolation"],
+                           ["featherTensions", "tension"],
+                           ["featherRelCornerAngles", "corner angle"]];
+
     function applyFeather(path, points, state) {
         /* Read this frame's feather points, both ways. Returns the anchored
          * reading (spec/rbj-v2-draft.md section 6.3); the snapped one is
@@ -174,6 +181,12 @@
         }
 
         state.sawFeather = true;
+        for (var sh = 0; sh < FEATHER_SHAPING.length; sh++) {
+            var values = path[FEATHER_SHAPING[sh][0]];
+            for (var v = 0; values && v < values.length; v++) {
+                if (values[v]) { state.shaping[FEATHER_SHAPING[sh][1]] = true; }
+            }
+        }
         var got = geom.snapFeatherPoints(path.featherSegLocs,
                                          path.featherRelSegLocs,
                                          radii, points.length);
@@ -210,7 +223,8 @@
         for (s = 0; s < shapes.length; s++) {
             headers[s] = shapeHeader(shapes[s], warn);
             states[s] = { sawFeather: false, vertexCount: null, closed: null,
-                          snapped: 0, dropped: [], anchorCounts: {} };
+                          snapped: 0, dropped: [], anchorCounts: {},
+                          shaping: {} };
         }
 
         for (var f = 0; f < frames.length; f++) {
@@ -342,6 +356,22 @@
         if (!state.sawFeather) {
             stripFeather(frames, true);
             return;
+        }
+
+        var shaped = [];
+        for (var sh = 0; sh < FEATHER_SHAPING.length; sh++) {
+            if (RB.util.hasOwn(state.shaping, FEATHER_SHAPING[sh][1])) {
+                shaped[shaped.length] = FEATHER_SHAPING[sh][1];
+            }
+        }
+        if (shaped.length) {
+            /* Before the model decision, because both models take this loss:
+             * .rbj carries where the feather sits and how far it reaches, and
+             * nothing else about its profile. */
+            warn("mask '" + name + "': feather point " + shaped.join(", ")
+                 + " value(s) were authored; .rbj has no member for them, so"
+                 + " the feather's placement and radius travel but this"
+                 + " shaping does not");
         }
 
         var lossy = state.snapped > 0 || state.dropped.length > 0;

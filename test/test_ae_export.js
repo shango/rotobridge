@@ -346,6 +346,11 @@ describe("feather", function () {
                     s.featherSegLocs = spec.segLocs;
                     s.featherRelSegLocs = spec.relLocs;
                     s.featherRadii = spec.radii;
+                    if (spec.interps) { s.featherInterps = spec.interps; }
+                    if (spec.tensions) { s.featherTensions = spec.tensions; }
+                    if (spec.cornerAngles) {
+                        s.featherRelCornerAngles = spec.cornerAngles;
+                    }
                     return s;
                 }
             }
@@ -357,6 +362,31 @@ describe("feather", function () {
         eq(doc.shapes[0].feather_model, "none");
         eq(RB.util.hasOwn(doc.shapes[0].frames["0"].points[0], "feather"), false,
            "a zero under 'none' is indistinguishable from an authored zero");
+    });
+
+    it("warns when tension, corner angle or interp shaping is authored",
+       function () {
+        // prd.md section 9.3 names featherInterps, featherTensions and
+        // featherRelCornerAngles as readable; .rbj has no member for any of
+        // them. Dropping them is the accepted loss - dropping them silently
+        // is not, any more than it is for maskExpansion or the inverted flag.
+        var doc = runExport(mock.install(withFeatherPoints({
+            segLocs: [1], relLocs: [0.0], radii: [12.5],
+            tensions: [0.6], cornerAngles: [0.3]
+        })));
+        var said = doc.warnings.join(" | ");
+        has(doc.warnings, "tension");
+        has(doc.warnings, "corner angle");
+        eq(said.indexOf("interpolation") === -1, true,
+           "interp was left at its default; warning about it would be noise");
+    });
+
+    it("says nothing about shaping left at its defaults", function () {
+        var doc = runExport(mock.install(withFeatherPoints({
+            segLocs: [1], relLocs: [0.0], radii: [12.5],
+            interps: [0], tensions: [0], cornerAngles: [0]
+        })));
+        hasNot(doc.warnings, "tension");
     });
 
     it("says per_point and resolves onto vertices", function () {

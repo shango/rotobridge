@@ -37,9 +37,9 @@ function makeShape(spec) {
         featherRelSegLocs: spec.featherRelSegLocs || [],
         featherRadii: spec.featherRadii || [],
         featherTypes: spec.featherTypes || [],
-        featherInterps: [],
-        featherTensions: [],
-        featherRelCornerAngles: []
+        featherInterps: spec.featherInterps || [],
+        featherTensions: spec.featherTensions || [],
+        featherRelCornerAngles: spec.featherRelCornerAngles || []
     };
 }
 
@@ -79,7 +79,10 @@ function feathersAsHostReturns(shape, interpolated) {
             else if (shape.closed) { seg = segments - 1; rel = 1; }
         }
         points[i] = { seg: seg, rel: rel, radius: Number(radii[i]),
-                      type: Number(shape.featherTypes[i]) };
+                      type: Number(shape.featherTypes[i]),
+                      interp: Number(shape.featherInterps[i] || 0),
+                      tension: Number(shape.featherTensions[i] || 0),
+                      corner: Number(shape.featherRelCornerAngles[i] || 0) };
     }
 
     if (interpolated) {
@@ -92,11 +95,15 @@ function feathersAsHostReturns(shape, interpolated) {
     }
 
     var segLocs = [], relLocs = [], out = [], types = [];
+    var interps = [], tensions = [], corners = [];
     for (i = 0; i < points.length; i++) {
         segLocs[i] = points[i].seg;
         relLocs[i] = points[i].rel;
         out[i] = points[i].radius;
         types[i] = points[i].type;
+        interps[i] = points[i].interp;
+        tensions[i] = points[i].tension;
+        corners[i] = points[i].corner;
     }
     return makeShape({
         vertices: shape.vertices,
@@ -106,7 +113,10 @@ function feathersAsHostReturns(shape, interpolated) {
         featherSegLocs: segLocs,
         featherRelSegLocs: relLocs,
         featherRadii: out,
-        featherTypes: types
+        featherTypes: types,
+        featherInterps: interps,
+        featherTensions: tensions,
+        featherRelCornerAngles: corners
     });
 }
 
@@ -139,7 +149,10 @@ function lerp(a, b, u) {
         featherSegLocs: a.featherSegLocs,
         featherRelSegLocs: a.featherRelSegLocs,
         featherRadii: lerp(a.featherRadii, b.featherRadii, u),
-        featherTypes: a.featherTypes
+        featherTypes: a.featherTypes,
+        featherInterps: a.featherInterps,
+        featherTensions: a.featherTensions,
+        featherRelCornerAngles: a.featherRelCornerAngles
     });
 }
 
