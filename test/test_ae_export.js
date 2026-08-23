@@ -155,6 +155,17 @@ describe("export shape", function () {
            RB.rbj.validate(doc).join(" | "));
     });
 
+    it("ends the file with a newline like the Nuke exporter does", function () {
+        // Diffability is spec section 2.1's goal, and `diff` flags a missing
+        // final newline on every comparison. Nuke's export_to_file writes
+        // text + "\n"; the adapter is where the AE side matches it, because
+        // stringify's bare output is byte-compared between implementations.
+        var host = mock.install(basic());
+        runExport(host);
+        ok(host.written !== null, "nothing was written");
+        eq(host.written.charAt(host.written.length - 1), "\n");
+    });
+
     it("covers the work area exactly", function () {
         // The work area's end is the time after its last frame, so a range
         // built without the subtraction exports one frame too many.

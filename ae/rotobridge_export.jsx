@@ -867,7 +867,10 @@
         /* `stringify` validates before it serialises and throws rather than
          * returning something partial - prd.md section 11 requires aborting
          * over writing a file that looks correct until it is composited. */
-        ae.writeText(target, RB.rbj.stringify(doc));
+        /* The "\n" matches export_to_file on the Nuke side, and it lives
+         * here, not in stringify, whose bare output the cross-check compares
+         * byte for byte between the two implementations. */
+        ae.writeText(target, RB.rbj.stringify(doc) + "\n");
         var elapsed = (new Date().getTime() - started) / 1000.0;
 
         var lines = [
