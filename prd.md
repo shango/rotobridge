@@ -718,3 +718,123 @@ rotobridge/
 ## 17. Related tooling
 
 **MatteTrace** (separate PRD) - a host-independent matte-to-spline converter that emits `.rbj`, acting as a source adapter with no host application. Shares the `spec/rbj-v1.md` dependency. Note: MatteTrace output has no authored keys; it omits `keys`, and importers treat it as dense - exactly the correct semantics for traced mattes.
+---
+
+## 18. Host API facts the adapters must not lose
+
+Measured, not assumed. Each of these cost a probe or a host run, and most of
+them fail silently rather than raising - which is why they are written down
+where the requirements are, rather than in a scratch record. Moved here from
+`HANDOFF.md` 2026-08-23; it is reference, not history.
+
+**Loop shape and cost**
+
+- The AE export loop is **frame-major**. Across five runs a `comp.time`
+  assignment plus one `sourcePointToComp` measured **5.75 to 20.89 ms**, against
+  **0.02 to 1.52 ms** for `valueAtTime`. The absolute numbers swing by 4x run to
+  run and are not trustworthy on their own; the ordering is, and `comp.time` was
+  the more expensive one in every run. Mask-major blows criterion 11 on any
+  multi-shape export. See §9.1 step 4.
+- **The import converts to layer space once, up front, frame-major.**
+  `compPointToSource` has no time parameter, but `setValueAtTime` and
+  `valueAtTime` both take their own - so baking every frame's target before the
+  drift pass starts means the playhead never moves again and the pass costs
+  nothing per iteration but arithmetic. Do not "simplify" this back into the
+  pass.
+
+**Interpolation**
+
+- The Nuke importer must set the interpolation **per key**, not per curve.
+  Nuke's default point-curve interpolation is curved, so writing keys and
+  stopping produces smooth motion the artist did not ask for. `curveType` is the
+  wrong knob.
+- **Nuke key interpolation is the enum plus one** (cases 63 and 74). Write
+  `InterpolationType.eLinear + 1`, never the bare value; `256` is the unset
+  sentinel a fresh key reports. Step is outgoing-only, like AE's
+  `keyOutInterpolationType`.
+- **Interpolation is pushed by key time, never by key index.** The drift pass
+  inserts keys, and every index above an insertion moves. Re-push after every
+  pass and match on the time. Both sides learned this for the same reason.
+- **AE ease on a mask path is one-dimensional** (probe run 6 section G, "1 dim"
+  on all three keys), which is what makes a single shape-wide `ease` the right
+  storage. AE also reports an ease on every key whatever its type - it read
+  influence 16.667 off a LINEAR key - so read one only for a side that is
+  actually `ease`.
+- Both apps use a breakable two-sided bezier handle. AE adds a discrete type per
+  side; Nuke has one type per key plus `lslope`/`rslope` and `la`/`ra`. Untested
+  hypothesis worth one probe: `lslope`/`rslope` may correspond to AE ease
+  `speed`, and `la`/`ra` to `influence`, which would make tier-1 ease a direct
+  numeric conversion rather than the approximation §7 assumes.
+
+**Feather**
+
+- Feather is signed everywhere. Taking a magnitude anywhere in the pipeline
+  silently flips inward feather to outward.
+- Uniform feather animates, so it belongs in the dense `frames` layer, not on
+  the shape. Reading it once per shape freezes it at frame 1.
+
+**Geometry and transforms**
+
+- **Nuke stores control point positions as float32.** The serialised form is
+  eight hex digits (`x42c80000` is `100.0f`). A tolerance-0 round trip is exact
+  to about 3e-05 px at typical magnitudes, not bit-identical to the file's
+  float64. Do not chase that residual; it is the storage, not the arithmetic.
+- **Apply a Nuke matrix as `mat * CVec3(x, y, 1)`.** `vec * mat` returns
+  nonsense. `list(CMatrix4)` is 16 floats row-major with translation at indices
+  3 and 7, which is what `core.geom.apply_matrix_point` assumes and what
+  `test_nuke_roundtrip.py` cross-checks against Nuke's own operator.
+- Transform tangents by moving the vertex and subtracting, never by zeroing the
+  homogeneous term. Both are correct for an affine matrix, but only the first is
+  independent of how Nuke maps a CVec3's third component. The AE adapters do the
+  same thing for the same reason, through `sourcePointToComp`.
+- **Layers carry their own transform** and neither matrix knows about the other
+  (case 77). Flattening the tree means composing the whole ancestor chain, or
+  geometry moves silently. **Still unmeasured:** the order when a layer and a
+  shape in it are both transformed. The export assumes shape-first and warns
+  when it matters (§15 Q8).
+- **A layer transform contributes key times to the shape**, on both sides. It is
+  baked into the exported points, so a layer that moves animates the geometry
+  even when the path never does. On the AE side, read only the transform
+  properties that move geometry - layer opacity is in the same group.
+- **`isDefault()` is not an identity test** - it returns False on an untouched
+  transform (cases 30 and 77). Compare against identity numerically.
+
+**Nuke object lifetimes and licence limits**
+
+- **Nuke NC hands Python at most 10 `Node` objects per script, cumulatively**
+  (measured 2026-08-22). Not ten live nodes: a `nuke.toNode` on a node already
+  held costs another one, and deleting a node does not give the budget back.
+  `nuke.scriptClear()` is the only reset, and it invalidates every `Node`
+  object already handed out. A harness that builds a tree per shape or per
+  frame has to be written around this - `test_ae_to_nuke_render.py` caches
+  every node in a local, reconfigures one Expression rather than adding a
+  second, and clears between sections.
+- **A Roto with no input carries only its shapes' bounding box.**
+  `nuke.sample` outside it raises rather than returning 0, and a frame-wide
+  average is taken over the wrong area. Ground it on a `Constant` and the
+  frame is the frame. This is why the render harness builds a black.
+- **`append()` copies into the tree.** The object you passed goes stale and
+  raises "associated c++ object is NULL" when touched. Re-fetch the live child
+  from its parent, and again after `knob.changed()`, which invalidates
+  `AnimAttributes` handles.
+- **`getValue` auto-vivifies unknown attribute names** and returns 0.0 rather
+  than raising, so it cannot tell an unset attribute from an absent one. That is
+  why the layer blend question took four probes. Enumerate with `getName(i)`
+  before believing a value.
+- Writing a Nuke shape attribute: `attrs.getCurve(name)` then
+  `AnimCurve.addKey(time, value)`. `AnimAttributes.addKey` introspects with four
+  parameters but accepts two and is unusable. Never call `attrs.add(name, val)`
+  on an attribute you also key - the constant shadows the curve silently.
+
+**Serialisation**
+
+- **Seconds to frames must round, never truncate.** AE reports 8.333333 s for
+  frame 200 at 24 fps; truncation yields 199. `core/timing.py` rounds half up
+  rather than using Python's `round`, which rounds half to even and would make
+  the snap direction depend on the parity of the frame number.
+- **`json.dumps` needs `allow_nan=False`.** It is not the default, and without
+  it Python emits bare `NaN` / `Infinity` literals that spec §2.2 forbids and
+  no JSON parser must accept. `core/rbj.dumps` sets it and validates first.
+- The reference writer keeps arrays of numbers on one line. `indent=2` alone
+  puts every coordinate on three lines, which defeats the diffability the format
+  exists for.
