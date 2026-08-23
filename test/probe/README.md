@@ -172,6 +172,17 @@ cp ae/*.jsx test/probe/setup_ae_scene.jsx "$DEST/"
 for f in ae/*.jsx; do diff -q "$f" "$DEST/$(basename $f)"; done
 ```
 
+`cp ae/*.jsx` also carries **`rotobridge_panel.jsx`**, which is the panel: run
+it with `File > Scripts > Run Script File...` and it opens as a floating
+palette with an Export and an Import button over the same two adapters, plus a
+footer naming the folder it is running them from. That footer is the cheap
+in-host version of the `diff` below - it will not tell you the scripts are a
+commit behind, but it will tell you which copy is about to run, which is the
+question the failure below turns on. To dock it instead, put it in
+`Scripts/ScriptUI Panels/` with the five adapters in a `rotobridge` folder
+beside it; the panel looks there second, and keeping them one level down is
+what stops five extra entries appearing in the Window menu.
+
 Do the copy and the `diff` even when you are sure, because a stale deployment is
 the one failure this whole procedure cannot see. The scripts run on the Windows
 side and the acceptance check runs here; nothing connects them. An export from a

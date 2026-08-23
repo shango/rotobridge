@@ -22,6 +22,7 @@ import copy
 import io
 import json
 import math
+import ast
 import os
 import re
 import shutil
@@ -47,6 +48,7 @@ COMP_HEIGHT = 1080
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AE = os.path.join(REPO, "ae")
+NUKE_DIR = os.path.join(REPO, "nuke")
 NODE = shutil.which("node") or shutil.which("nodejs")
 
 
@@ -1459,6 +1461,64 @@ class TestGoldenAeSceneViaNuke(unittest.TestCase):
                                        key["interp"]))
         self.assertEqual(asymmetric,
                          [("mixed", 18, {"in": "ease", "out": "hold"})])
+
+
+class TestUiEntryPoints(unittest.TestCase):
+    """The menu item and the panel name code that exists.
+
+    Both entry points are strings pointing at functions: `nuke/menu.py` names
+    its commands as source to exec, and `ae/rotobridge_panel.jsx` names the two
+    adapter files to evaluate. Neither is reachable by the suites - `nuke.menu`
+    raises "not in GUI mode" under `--nc -t` (measured 2026-08-22), and nothing
+    here models ScriptUI - so a renamed function or file breaks the UI silently
+    and only on an artist's machine.
+
+    What is checkable with no host is the wiring, and that is the half that
+    rots. The behaviour behind it is the adapters', which are tested.
+    """
+
+    def commands(self):
+        """The script string of every `addCommand` in `nuke/menu.py`."""
+        with io.open(os.path.join(NUKE_DIR, "menu.py"),
+                     encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), "menu.py")
+        out = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) \
+                    and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr == "addCommand":
+                # (label, source-to-exec)
+                out.append(node.args[1].value)
+        return out
+
+    def test_the_menu_registers_both_directions(self):
+        found = self.commands()
+        self.assertEqual(len(found), 2, found)
+        self.assertTrue(any("export" in c for c in found), found)
+        self.assertTrue(any("import" in c for c in found), found)
+
+    def test_every_menu_command_names_a_function_that_exists(self):
+        for source in self.commands():
+            # "import rotobridge_export; rotobridge_export.main()"
+            match = re.match(r"^import (\w+); \1\.(\w+)\(\)$", source)
+            self.assertTrue(match, "unrecognised command form: %r" % source)
+            module, function = match.group(1), match.group(2)
+            path = os.path.join(NUKE_DIR, module + ".py")
+            self.assertTrue(os.path.exists(path), path)
+            with io.open(path, encoding="utf-8") as handle:
+                names = [n.name for n in ast.walk(ast.parse(handle.read(), path))
+                         if isinstance(n, ast.FunctionDef)]
+            self.assertIn(function, names, "%s.%s" % (module, function))
+
+    def test_the_panel_names_adapters_that_exist(self):
+        with io.open(os.path.join(AE, "rotobridge_panel.jsx"),
+                     encoding="utf-8") as handle:
+            text = handle.read()
+        named = re.findall(r'"(rotobridge_\w+\.jsx)"', text)
+        self.assertEqual(sorted(set(named)),
+                         ["rotobridge_export.jsx", "rotobridge_import.jsx"])
+        for name in named:
+            self.assertTrue(os.path.exists(os.path.join(AE, name)), name)
 
 
 class TestGoldenSparseExport(unittest.TestCase):

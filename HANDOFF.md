@@ -1713,6 +1713,46 @@ not as a general policy of writing linear files.
    move, and `eased_static`'s conform warning heads the sparse group at
    position 3 if the static layer went first.
 
+## The UI entry points, 2026-08-22
+
+**Nuke already had one.** `nuke/menu.py` registers a `RotoBridge` menu with
+both directions, and `prd.md` §9.2 has specified it since Phase 2. Nothing had
+ever executed it: Nuke runs `menu.py` only when the GUI starts, and
+`nuke.menu()` raises **"not in GUI mode"** under `--nc -t`, so the registration
+cannot be reached from this shell at all. Measured 2026-08-22 by exec'ing
+`menu.py` under `--nc -t` and reading the exception.
+
+**After Effects now has `ae/rotobridge_panel.jsx`.** Two buttons, a footer, and
+no logic of its own. Each button `$.evalFile`s the adapter exactly as
+`File > Scripts > Run Script File...` does, which is deliberate: the adapters
+already prompt for everything they need, and a panel that collected its own
+parameters and passed them in would be a second entry point to keep in step
+with the one every test and every host run goes through. It works as a floating
+palette with no install, or docked from `Scripts/ScriptUI Panels/` with the
+adapters in a `rotobridge` subfolder beside it.
+
+The footer names the folder the scripts are being run from. That is not
+decoration: the recurring failure here is a stale deployment, and it produces a
+plausible file, a plausible alert and a diff that reads as the fixture moving.
+The footer cannot say the copy is a commit behind, but it can say **which**
+copy, which is the question that failure turns on.
+
+**Neither is reachable by the host-free suites, and `TestUiEntryPoints` checks
+the half that is.** Nothing here models ScriptUI, and `nuke.menu` needs a GUI,
+so what a test can hold is the *wiring* - that every `addCommand` in `menu.py`
+names a module and function that exist, and that the panel names adapter files
+that exist. That is the half that rots on a rename and breaks silently on an
+artist's machine. Mutation-checked: a renamed function, a deleted command and a
+renamed adapter each fail exactly one test.
+
+**The panel itself has never run in After Effects.** It is in the same class
+`File.open("a")` was in before 2026-08-22 - written against the documented API,
+unreachable by any test here, and needing exactly one host visit to confirm.
+What to check: it opens, the footer names the right folder, both buttons run
+their adapter, and the Change... button finds a folder and remembers it across
+a restart. Nothing downstream depends on the answer, because the adapters are
+unchanged.
+
 ## The crossing harness only worked on one file, 2026-08-22
 
 **`test_ae_to_nuke.py` takes any `.rbj` as a second argument, and until today it

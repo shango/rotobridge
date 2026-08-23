@@ -256,7 +256,9 @@ The reason it is a file rather than a dialog is the argument it has to survive. 
 
 ### 9.1 After Effects
 
-**Export (`rotobridge_export.jsx`)** - File > Scripts.
+**Panel (`rotobridge_panel.jsx`)** - Window > RotoBridge when installed in `Scripts/ScriptUI Panels/`, or `File > Scripts > Run Script File...` for a floating palette with no install. Two buttons over the two adapters below, and nothing else: each one `$.evalFile`s the adapter exactly as `Run Script File...` does, so the panel adds an entry point without adding a second code path to keep in step. It collects no parameters of its own - both adapters already prompt for everything they need. A footer shows the folder it is running scripts from, because a stale deployment is this project's one recurring failure and it is otherwise invisible from inside the host.
+
+**Export (`rotobridge_export.jsx`)** - File > Scripts, or the panel.
 
 1. Validate: active comp, ≥1 layer selected, ≥1 mask present. Alert and abort otherwise.
 2. Prompt for output path.
@@ -292,7 +294,7 @@ The reason it is a file rather than a dialog is the argument it has to survive. 
 
 ### 9.2 Nuke
 
-**Export (`rotobridge_export.py`)** - menu item via `menu.py`.
+**Export (`rotobridge_export.py`)** - menu item via `menu.py`, which registers a `RotoBridge` menu with both directions on it. Put the `nuke/` directory on `NUKE_PATH`, or copy its two `addCommand` lines into an existing `menu.py`. Nuke runs `menu.py` only when the GUI starts, and `nuke.menu()` raises "not in GUI mode" under `--nc -t` (measured 2026-08-22), so the registration itself is not reachable from the headless suites; `TestUiEntryPoints` checks the half that is, which is that each command names a function that exists.
 
 1. Validate: exactly one Roto/RotoPaint node selected, ≥1 shape in `node['curves'].rootLayer`.
 2. Prompt for output path and frame range (default: script range).
@@ -558,14 +560,17 @@ rotobridge/
 │   ├── timing.py               # frame/second conversion, ranges, offsets
 │   └── rbj.py                  # schema validation and serialization
 ├── ae/
+│   ├── rotobridge_panel.jsx    # Window > RotoBridge: two buttons, no logic
 │   ├── rotobridge_export.jsx
 │   ├── rotobridge_import.jsx
-│   └── lib/json2.js
+│   ├── rotobridge_ae.jsx       # host calls, shared by both adapters
+│   ├── rotobridge_core.jsx     # ES3 mirror of core/ (timing, geom, interp, drift)
+│   └── rotobridge_rbj.jsx      # ES3 mirror of core/rbj.py
 ├── nuke/
 │   ├── rotobridge_export.py
 │   ├── rotobridge_import.py
-│   ├── rotobridge_interp.py    # ease↔Hermite conversion, drift pass
-│   └── menu.py
+│   ├── rotobridge_nuke.py      # host calls, shared by both adapters
+│   └── menu.py                 # registers the RotoBridge menu
 ├── test/
 │   ├── probe/                  # Phase 0 probes
 │   │   ├── probe_nuke.py
