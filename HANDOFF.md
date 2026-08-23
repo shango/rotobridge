@@ -23,6 +23,12 @@ applications, and that is what is measured. Everything that was blocked on
 After Effects has now been answered in After Effects except the matte, which is
 not being rendered.
 
+**The last change of the session, and the largest behavioural one: the After
+Effects exporter now conforms `ease` to `linear` before the file is written**
+(section "The export conforms ease to linear"). An AE `.rbj` no longer carries
+an `ease` block at all. Read that section before touching the exporter, the
+crossapp suite or the goldens.
+
 ## Status
 
 `prd.md` is at **4.11**. Phase 0 is complete on both sides and **every open
@@ -38,10 +44,10 @@ acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
 interpolation, drift and import-record code: stdlib only, no host imports, no
 file access, so it runs unchanged under plain Python and under Nuke's embedded
 Python. `nuke/` holds the Nuke adapter pair and `ae/` the After Effects one,
-over an ES3 mirror of `core/`. `test/test_core.py` is **268 passing tests**, run
+over an ES3 mirror of `core/`. `test/test_core.py` is **276 passing tests**, run
 with `python3 test/test_core.py` (not `unittest discover` - `test/` is
 deliberately not a package). `./test/run.sh` runs all five host-free suites:
-**534 tests**.
+**551 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -1270,9 +1276,29 @@ report.
 
 ## Next
 
-**The frontier is feather anchoring, then Phase 5.** The AE ease question that
-used to sit here is closed - see "Nuke is the hub" above. It is a "cannot", not
-a "not yet", and it is recorded in `core/interp.to_nuke`.
+**Nothing is blocked and nothing is in flight.** Phases 0-4 are complete and
+both hosts have run them; Phase 5's rendered comparison is retired as out of
+scope; the export conform is built, tested and verified against real host data.
+The list below is history plus the one thing that is genuinely open.
+
+**THE ONE OPEN ITEM: the goldens predate the conform.**
+`test/golden/ae_scene.rbj` and `test/golden/ae_static_ease.rbj` were exported
+by After Effects before `conformEase` existed, so they still carry `ease`
+blocks and no longer represent what the exporter produces. Nothing is wrong
+with them - they are valid v1/v2 files and every importer test over them is
+still meaningful, and `ae_static_ease.rbj` in particular is now the **only**
+eased AE file in the project and therefore the only fixture that can exercise
+the conform against real host data. Keep it. What is missing is a golden
+showing what a conformed export looks like, and that needs one After Effects
+run: re-export the scene with the current adapters and save it beside the
+others rather than over them. Until then the conform's end-to-end evidence is
+the scratch verification recorded under "The export conforms ease to linear".
+
+**Deliberately not done, so it is not proposed again.** The Nuke exporter also
+writes `ease`, and it is not conformed: After Effects can hold an ease exactly,
+so there is nothing to reinterpret in that direction. The conform exists
+because one specific destination has no vocabulary for one specific feature,
+not as a general policy of writing linear files.
 
 1. **`spec/rbj-v2-draft.md` section 6, feather anchors: DONE 2026-08-21,**
    all four layers, verified in Nuke. `feather_model: anchored`, a per-frame
@@ -1383,8 +1409,12 @@ a "not yet", and it is recorded in `core/interp.to_nuke`.
    copy carrying exactly the predicted change, and against one with a single
    anchor moved 0.05 on a single frame.
 
-2. **Phase 5, one direction. The Nuke half is BUILT and PASSING, 2026-08-22;
-   what is left is one render out of After Effects.** AE to Nuke, rendered in
+2. **Phase 5, one direction: RETIRED AS OUT OF SCOPE 2026-08-22** - this tool
+   moves roto spline data between applications, and a matte difference
+   measures how a host draws a shape rather than whether the shape arrived.
+   See `prd.md` section 13 criterion 2. The Nuke half is built and passing and
+   stays in the tree unused; do not reopen it by proposing a render. What
+   follows is the record of what it measured. AE to Nuke, rendered in
    Nuke, same plate. It was written as a symmetric comparison and is not one
    any more: the Nuke-to-AE half is already exact at the document level
    (`test/test_ae_crossapp.js`) and can stay there.

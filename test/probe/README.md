@@ -440,6 +440,35 @@ harness that builds a tree per shape or per frame has to be written around this.
 outside it raises rather than returning 0, and an average is taken over the
 wrong area. Ground it on a `Constant` and the frame is the frame.
 
+## The export conforms ease, so a re-export will differ
+
+`ae/rotobridge_export.jsx` rewrites every `ease` key side as `linear` and adds
+the keys that costs (`prd.md` section 9.1 step 6a), so **a file exported with
+the current adapters carries no `ease` block at all** and has more keys than
+`test/golden/ae_scene.rbj` does. That is the intended change, not a regression:
+Nuke's roto curves cannot hold an AE ease, so the cost is paid in the
+application that created it rather than at the far end.
+
+What to expect when re-exporting the scene golden, on top of everything under
+"Re-exporting the scene golden" above:
+
+- every `interp` side reading `ease` becomes `linear`, and every `ease` member
+  disappears;
+- `eased` gains keys - on the moving fixture layer most shapes will, because
+  the baked rotation curves the geometry between keys whatever the key type
+  says;
+- `mixed` keeps its `hold` on frame 18's outgoing side. If a re-export loses
+  that, the conform is wrong: `hold` maps to Nuke's step and is deliberately
+  left alone;
+- one warning per shape that had authored ease, naming the side count and the
+  keys added. A shape whose only eased sides are pinned endpoints conforms
+  **silently**, because nothing the artist authored was lost.
+
+Keep `test/golden/ae_static_ease.rbj` as it is. It is the only file in the
+project carrying a real After Effects ease over a real dense bake, which makes
+it the only fixture that can exercise the conform against host-produced data -
+`test/ae_mock.js` refuses to bake a bezier segment.
+
 ## The last After Effects run
 
 `test/probe/probe_ae_phase5.jsx`. Everything still open in this project needs a
