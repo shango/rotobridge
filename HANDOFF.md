@@ -1713,11 +1713,31 @@ not as a general policy of writing linear files.
    move, and `eased_static`'s conform warning heads the sparse group at
    position 3 if the static layer went first.
 
-## PLANNED, NOT STARTED: review findings F1-F4, 2026-08-23
+## DONE: review findings F1-F4 fixed, 2026-08-23
 
 A full code and architecture review found four findings, all verified against
-the tree at `485cbd6`, none in tested paths. The user approved fixing all four.
-Cosmetic extras (F5) ride along where convenient.
+the tree at `485cbd6`, none in tested paths. All four are fixed, each with a
+red test first, plus the F5 cosmetics. The suite is 588 host-free tests, all
+green, and `ae/*.jsx` is re-deployed to the Desktop folder, diffed identical.
+
+- F3 `a500164`: the Nuke tolerance parser refuses "nan" (`value != value`
+  check); `TestNukeToleranceParser` pins the whole parse surface.
+- F4 `8ded984`: interp errors route through the capped key list in both
+  implementations; the twin cap tests agreed on the failure (20 errors each)
+  before the fix.
+- F2 `ea0a7ba`: the AE adapter writes stringify's output plus "\n", matching
+  Nuke's `export_to_file`. The three AE-written goldens still end 0x7d; the
+  next host re-export differs by that one byte BY DESIGN - do not read it as
+  drift and do not regenerate for it alone.
+- F1 `a290044`: the export warns once per shape when `featherInterps`,
+  `featherTensions` or `featherRelCornerAngles` hold non-default values
+  (state.shaping, said in finishFeather before the model decision). The mock
+  now carries the three arrays through its host-return reorder and lerp, as
+  the real host does.
+- F5 `bedd06c`: `held` locals renamed `edge` in both linearError
+  implementations; shapeHeader's unrelated guard on maskMode removed.
+
+The findings' full descriptions as reviewed follow.
 
 **F1. AE export silently drops feather tension / corner type / interp.**
 `prd.md` section 9.3 names `featherRelCornerAngles`, `featherInterps`,
@@ -1757,16 +1777,6 @@ hoisting; correct only because the branch returns immediately) - rename the
 local; `core/drift.py:204` rebinds `held` the same way, rename to match.
 `shapeHeader`'s odd guard on the path property before reading maskMode
 (`ae/rotobridge_export.jsx:72`) deserves either removal or a comment.
-
-**Verification plan.** Each fix gets a red test first where one is checkable
-host-free: F3 (parse "nan" raises - extract or replicate the parser logic; the
-module imports nuke, so test via the same textual-copy route TestNukeImportRecord
-uses), F4 (a doc with many bad interps caps its error count - both Python and
-node sides), F1 (mock export with non-zero featherTensions warns; extend
-`test/ae_mock.js` makeShape to carry the arrays through), F2 (the export writes
-a trailing newline - assert in test_ae_export.js). Run `bash test/run.sh`
-(578 tests) after each. Deploy `ae/*.jsx` to the Desktop folder after AE edits
-(`cp ae/*.jsx "/mnt/c/Users/shann/OneDrive/Desktop/rotobridge_ae/"`).
 
 **Also in flight, unrelated:** `prd.md` section 18 (host API facts moved from
 this file) sits UNCOMMITTED in the tree - step 1 of the consolidation above,
