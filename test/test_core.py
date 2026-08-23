@@ -39,6 +39,7 @@ GOLDEN_SQUARE = os.path.join(GOLDEN, "square.rbj")
 GOLDEN_ROUNDTRIP = os.path.join(GOLDEN, "roundtrip.rbj")
 GOLDEN_SPARSE = os.path.join(GOLDEN, "sparse.rbj")
 GOLDEN_STATIC_EASE = os.path.join(GOLDEN, "ae_static_ease.rbj")
+GOLDEN_STATIC_CONFORMED = os.path.join(GOLDEN, "ae_static_conformed.rbj")
 
 COMP_HEIGHT = 1080
 
@@ -2324,6 +2325,25 @@ class TestLinearFit(unittest.TestCase):
         self.assertIsNone(at)
 
 
+def dense_vectors(shape):
+    """The flat per-frame vectors the exporter builds, same order.
+
+    `ae/rotobridge_export.jsx` `denseVectors`, in Python: every scalar a
+    destination will interpolate, laid end to end, one list per frame.
+    """
+    out = {}
+    for name, frame in shape["frames"].items():
+        flat = []
+        for point in frame["points"]:
+            flat += [point["c"][0], point["c"][1],
+                     point["in"][0], point["in"][1],
+                     point["out"][0], point["out"][1]]
+            if "feather" in point:
+                flat.append(point["feather"])
+        out[int(name)] = flat
+    return out
+
+
 class TestConformOverRealHostData(unittest.TestCase):
     """The conform, over an After Effects ease that After Effects really wrote.
 
@@ -2350,24 +2370,10 @@ class TestConformOverRealHostData(unittest.TestCase):
             handle.close()
         self.shapes = dict((s["name"], s) for s in self.doc["shapes"])
 
-    def dense(self, shape):
-        """The flat per-frame vectors the exporter builds, same order."""
-        out = {}
-        for name, frame in shape["frames"].items():
-            flat = []
-            for point in frame["points"]:
-                flat += [point["c"][0], point["c"][1],
-                         point["in"][0], point["in"][1],
-                         point["out"][0], point["out"][1]]
-                if "feather" in point:
-                    flat.append(point["feather"])
-            out[int(name)] = flat
-        return out
-
     def walk(self, shape):
         frames = sorted(int(f) for f in shape["frames"])
         keys = sorted(int(k["frame"]) for k in shape["keys"])
-        return frames, self.dense(shape), keys
+        return frames, dense_vectors(shape), keys
 
     def worst_line_error(self, dense, keys):
         """Independent arithmetic: a straight line between keys against truth.
@@ -2424,6 +2430,105 @@ class TestConformOverRealHostData(unittest.TestCase):
         chosen, worst, _ = drift.linear_fit(frames, dense, keys, 0.5)
         self.assertEqual(chosen, keys)
         self.assertLess(worst, 0.5)
+
+
+class TestConformAsAfterEffectsWroteIt(unittest.TestCase):
+    """The exporter's own conform, read back out of a real host export.
+
+    `ae_static_conformed.rbj` is `ae_static_ease.rbj`'s comp exported again
+    with the conform in place, After Effects 25.6x101, 2026-08-22. The pair is
+    the same two masks on the same solid, so everything that differs between
+    the files is the conform and nothing else.
+
+    `TestConformOverRealHostData` above pins the *rule* - that a straight line
+    between the chosen keys reproduces a real AE ease. This pins the *wiring*:
+    that `ae/rotobridge_export.jsx` running under ExtendScript reaches the same
+    keys as `core.drift.linear_fit` does here, over the same bake. Those are
+    two implementations of one fit in two languages, and only a host run can
+    put them side by side - `test/ae_mock.js` refuses to bake a bezier segment,
+    so under the mock there is no eased dense layer for either to fit.
+    """
+
+    def setUp(self):
+        self.before = self.read(GOLDEN_STATIC_EASE)
+        self.after = self.read(GOLDEN_STATIC_CONFORMED)
+        self.pairs = []
+        for name in ("eased_static", "linear_static"):
+            self.pairs.append((
+                name,
+                dict((s["name"], s) for s in self.before["shapes"])[name],
+                dict((s["name"], s) for s in self.after["shapes"])[name]))
+
+    def read(self, path):
+        handle = open(path)
+        try:
+            return json.loads(handle.read())
+        finally:
+            handle.close()
+
+    def test_the_two_files_are_the_same_fixture(self):
+        # The control. Exported by hand from a comp built by hand, so the first
+        # thing to establish is that a difference below is the conform rather
+        # than a different scene, a different build or the wrong layer selected
+        # - which is the mistake this file's own procedure warns about.
+        self.assertEqual(self.before["source"], self.after["source"])
+        self.assertEqual(self.before["range"], self.after["range"])
+        self.assertEqual([s["name"] for s in self.before["shapes"]],
+                         [s["name"] for s in self.after["shapes"]])
+
+    def test_the_conform_never_writes_to_the_dense_layer(self):
+        # It reads the bake, fits a sparse layer to it and rewrites the keys.
+        # Bit-identical, not near: these are two exports of one comp, and the
+        # bake does not go through the fit at all. A float away would mean the
+        # fixture moved between the runs.
+        for name, before, after in self.pairs:
+            for frame in before["frames"]:
+                for i, point in enumerate(before["frames"][frame]["points"]):
+                    self.assertEqual(point,
+                                     after["frames"][frame]["points"][i],
+                                     "%s frame %s point %d" % (name, frame, i))
+
+    def test_the_host_chose_the_keys_this_fit_chooses(self):
+        # The point of the fixture. ExtendScript's `RB.drift.linearFit` against
+        # Python's, over a dense layer After Effects baked, compared as the
+        # frame list each one landed on rather than as a count.
+        for name, before, after in self.pairs:
+            frames = sorted(int(f) for f in before["frames"])
+            keys = sorted(int(k["frame"]) for k in before["keys"])
+            holds = [int(k["frame"]) for k in before["keys"]
+                     if k["interp"].get("out") == "hold"]
+            chosen, _, _ = drift.linear_fit(frames, dense_vectors(before),
+                                            keys, 0.5, holds)
+            self.assertEqual([int(k["frame"]) for k in after["keys"]], chosen,
+                             name)
+
+    def test_an_after_effects_file_no_longer_carries_ease_at_all(self):
+        # The cost, stated in the file. Pinned endpoints are spelled `ease`
+        # too, so the conform fires on a shape with nothing authored - which is
+        # why `linear_static` is in here rather than only the eased one.
+        for name, _, after in self.pairs:
+            for key in after["keys"]:
+                self.assertNotIn("ease", key, name)
+                for side in ("in", "out"):
+                    self.assertNotEqual(key["interp"].get(side), "ease", name)
+
+    def test_only_the_authored_ease_is_warned_about(self):
+        # A curve the artist drew is lost and says so; a parameterless side the
+        # exporter invented is conformed silently, because nothing anyone made
+        # went with it. One warning in the file, and it names the eased shape.
+        self.assertEqual(len(self.after["warnings"]), 1)
+        self.assertIn("eased_static", self.after["warnings"][0])
+        self.assertIn("6 key side(s) carried temporal ease",
+                      self.after["warnings"][0])
+
+    def test_the_price_of_the_ease_is_in_the_file(self):
+        # 3 authored keys to 25, against a linear shape beside it that still
+        # costs 2. The same numbers `TestConformOverRealHostData` derives, now
+        # as what the host actually wrote.
+        keys = dict((name, (len(before["keys"]), len(after["keys"])))
+                    for name, before, after in self.pairs)
+        self.assertEqual(keys["eased_static"], (3, 25))
+        self.assertEqual(keys["linear_static"], (2, 2))
 
 
 class TestEs3CrossCheck(unittest.TestCase):

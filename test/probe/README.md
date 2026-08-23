@@ -195,11 +195,15 @@ tree, so a `cp ae/*.jsx` on its own leaves it behind.
    shapes and a different file. (`ae_static_ease.rbj` is the other solid,
    exported the same way with the other layer selected.)
 4. Same menu -> `rotobridge_export.jsx`. Save as `ae_scene.rbj`.
-5. Read the alert: **6 shapes, 600 points, 4 warnings**. Any other count means
-   step 1 or step 3 went wrong, and the file is not this fixture. The count has
-   moved twice and the number alone is a deployment check: five means a build
-   before `fc712d5`, which is where `feathered` stopped being snapped, and four
-   before that meant a build predating `0c1b3af`.
+5. Read the alert: **6 shapes, 600 points, 10 warnings, 74 authored keys**.
+   Any other count means step 1 or step 3 went wrong, and the file is not this
+   fixture. **2 shapes and 200 points is the `RotoBridge static` layer**, the
+   other solid in the same comp - the commonest way to get a plausible file
+   that is not this one, and it has happened. The warning count has moved three
+   times and the number alone is a deployment check: four means a build before
+   `0ccfcbb`, which is where the ease conform landed; five means one before
+   `fc712d5`, where `feathered` stopped being snapped; four before that meant a
+   build predating `0c1b3af`.
 6. Copy the file back over `test/golden/ae_scene.rbj`.
 7. **Check the diff before committing it**, against the version you replaced:
 
@@ -215,8 +219,13 @@ The tool reports geometry as a worst-case distance and labels one at a time.
 
 **The re-export is only believable if the diff is the one that was predicted.**
 That prediction changes every time the exporter does, so it is written down
-here beside the commit that moved it. As of `fc712d5`, against the golden
-committed at `df8584f`:
+here beside the commit that moved it. The exporter last moved at `0ccfcbb`,
+which conforms ease, and the prediction for the next run is under "The export
+conforms ease" below - it is long enough to need its own section, and it is
+derived rather than guessed.
+
+The previous one is kept because it is the shape a prediction should have. As
+of `fc712d5`, against the golden committed at `df8584f`:
 
     --- labels ---
     feathered feather_model: 'per_point' -> 'anchored'
@@ -449,25 +458,92 @@ the current adapters carries no `ease` block at all** and has more keys than
 Nuke's roto curves cannot hold an AE ease, so the cost is paid in the
 application that created it rather than at the far end.
 
-What to expect when re-exporting the scene golden, on top of everything under
-"Re-exporting the scene golden" above:
-
-- every `interp` side reading `ease` becomes `linear`, and every `ease` member
-  disappears;
-- `eased` gains keys - on the moving fixture layer most shapes will, because
-  the baked rotation curves the geometry between keys whatever the key type
-  says;
-- `mixed` keeps its `hold` on frame 18's outgoing side. If a re-export loses
-  that, the conform is wrong: `hold` maps to Nuke's step and is deliberately
-  left alone;
-- one warning per shape that had authored ease, naming the side count and the
-  keys added. A shape whose only eased sides are pinned endpoints conforms
-  **silently**, because nothing the artist authored was lost.
-
-Keep `test/golden/ae_static_ease.rbj` as it is. It is the only file in the
+**The new file replaces `ae_scene.rbj`, it does not sit beside it.** Decided
+2026-08-22. A golden is what the exporter produces now; keeping the
+pre-conform one in the tree would leave `test_ae_to_nuke.py` and the render
+harness measuring an answer no exporter writes any more, which is the exact
+staleness the top of this section warns about. The eased evidence is not lost:
+`test/golden/ae_static_ease.rbj` is kept as it is - it is the only file in the
 project carrying a real After Effects ease over a real dense bake, which makes
-it the only fixture that can exercise the conform against host-produced data -
-`test/ae_mock.js` refuses to bake a bezier segment.
+it the only fixture that can exercise the conform against host-produced data
+(`test/ae_mock.js` refuses to bake a bezier segment) - and the old six-shape
+file stays in git history at `5f732e2`.
+
+**`test/golden/ae_static_conformed.rbj` is that same comp exported again with
+the conform in place**, 2026-08-22, and the pair is the only place the two
+implementations of the fit meet over real host data: After Effects running
+`RB.drift.linearFit` chose the same key frames `core.drift.linear_fit` chooses,
+and the dense layer is bit-identical between the two files because the conform
+never writes to it. `TestConformAsAfterEffectsWroteIt` in `test/test_core.py`
+holds it. It exists because a run aimed at the scene golden came back with the
+wrong layer selected, which is what step 5 above is for.
+
+### The predicted diff, and it is derived rather than guessed
+
+The conform does not touch the dense layer. It reads it, fits a linear sparse
+layer to it and rewrites the keys, so the input to the fit in a re-export is
+byte-identical to the dense layer already committed in `ae_scene.rbj`. That
+makes the whole prediction computable here, with no host: run
+`core.drift.linear_fit` over the golden's own frames with each shape's authored
+key frames as `wanted`, its held frames as `holds`, and tolerance 0.5
+(`CONFORM_TOLERANCE`). Against the golden committed at `5f732e2`:
+
+| shape | keys | becomes | worst residual | which warning |
+|---|---|---|---|---|
+| `linear` | 4 | **15** | 0.0001 px | keys added |
+| `eased` | 5 | **25** | 0.0000 px | authored ease, 6 sides |
+| `mixed` | 5 | **11** | 0.2006 px | keys added |
+| `feathered` | 4 | **7** | 0.2147 px | keys added |
+| `offgrid` | 5 | **9** | 0.3809 px | keys added |
+| `opened` | 4 | **7** | 0.2584 px | keys added |
+
+    linear     [0, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 24]
+    eased      every frame, 0 to 24
+    mixed      [0, 6, 7, 8, 9, 10, 11, 12, 15, 18, 24]
+    feathered  [0, 6, 9, 12, 15, 18, 24]
+    offgrid    [0, 6, 8, 10, 11, 14, 16, 18, 24]
+    opened     [0, 6, 9, 12, 15, 18, 24]
+
+So the alert at step 5 reads **6 shapes, 600 points, 10 warnings**, and the
+authored key count goes **27 -> 74**. The point count does not move: `points
+baked` counts the dense layer, and the conform never writes to it. A different
+warning count is the cheap deployment check - **4** means the running scripts
+predate `0ccfcbb`.
+
+The four warnings already in the file stay, unchanged and in the same order
+(`feathered` anchored, `opened` open spline, `mixed` false hold, `offgrid`
+snapped). The six new ones follow, one per shape.
+
+Three things in that table are worth reading rather than just checking:
+
+- **`eased` lands on every frame, and that is the honest price.** 3 authored
+  keys of real ease over a moving layer cannot be spelled in Nuke's vocabulary
+  at all, so the file now says so in keys instead of leaving the compositor's
+  drift pass to discover it at whatever tolerance they happened to import at.
+- **`linear` gains 11 keys despite having no authored ease anywhere.** Pinned
+  endpoints and transform keys are spelled `ease` with no parameters (spec
+  section 10.3), so the conform fires on them too, and on this fixture's
+  scaled, rotating layer a straight line between keys really does leave the
+  baked path. That is a fixture property - see the same note in `HANDOFF.md`.
+  On a static layer, which is what roto actually sits on, `linear_static`
+  crosses at 2 keys and 0 corrective.
+- **`mixed` keeps frame 18's outgoing `hold`,** and 18 is in its key list
+  above. If a re-export loses it the conform is wrong: `hold` maps to Nuke's
+  step, and rewriting one would pay a key on every frame of a frozen interval
+  to flatten it again.
+
+Two checks after the run, in this order:
+
+1. `python3 test/probe/diff_rbj.py` old new, as step 7 says. Expect label
+   changes only - every `interp` side reading `ease` becomes `linear`, every
+   `ease` member disappears, and the keys above appear. **No geometry line at
+   all**: the dense layer is untouched, so a vertex moving means the fixture
+   moved, not the exporter.
+2. Re-run the crossing, `test/test_ae_to_nuke.py`. This is what the conform was
+   built for, so it is the number that says whether it worked: every shape
+   should arrive with **0 corrective keys** at the default tolerance and no
+   "carries authored ease" warning, where the current golden pays corrective
+   keys on every moving shape.
 
 ## The last After Effects run
 

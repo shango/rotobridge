@@ -29,6 +29,13 @@ Effects exporter now conforms `ease` to `linear` before the file is written**
 an `ease` block at all. Read that section before touching the exporter, the
 crossapp suite or the goldens.
 
+**Confirmed in the host 2026-08-22**, and it is the wiring rather than the rule:
+`test/golden/ae_static_conformed.rbj` is a real conformed export, and the
+ExtendScript fit inside After Effects chose exactly the key frames
+`core.drift.linear_fit` chooses here. The one thing still open in the whole
+project is the six-shape scene golden, which needs one more host run and whose
+diff is now predicted line for line - see "Next".
+
 ## Status
 
 `prd.md` is at **4.11**. Phase 0 is complete on both sides and **every open
@@ -44,10 +51,10 @@ acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
 interpolation, drift and import-record code: stdlib only, no host imports, no
 file access, so it runs unchanged under plain Python and under Nuke's embedded
 Python. `nuke/` holds the Nuke adapter pair and `ae/` the After Effects one,
-over an ES3 mirror of `core/`. `test/test_core.py` is **280 passing tests**, run
+over an ES3 mirror of `core/`. `test/test_core.py` is **286 passing tests**, run
 with `python3 test/test_core.py` (not `unittest discover` - `test/` is
 deliberately not a package). `./test/run.sh` runs all five host-free suites:
-**555 tests**.
+**561 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -62,11 +69,15 @@ Golden files: `test/golden/square.rbj` (hand-built), `test/golden/roundtrip.rbj`
 export of a shape keyed on 5 frames of 41), **`test/golden/ae_scene.rbj`** (the
 first real After Effects export, 6 shapes, `version: 2`, 2026-08-21),
 **`test/golden/ae_static_ease.rbj`** (2 shapes on a layer that does not move,
-the file that answered the ease question) and
+the file that answered the ease question),
+**`test/golden/ae_static_conformed.rbj`** (that same comp exported again with
+the conform in place, 2026-08-22 - the pair is what pins the exporter's
+ExtendScript fit against `core.drift.linear_fit`) and
 **`test/golden/held_over_moving_layer.rbj`** (hand-built: a `hold` the dense
-layer contradicts - see below). All three are validated with no
-Nuke present by `test/test_core.py`, and the latter two are **run through the
-After Effects adapters** by `test/test_ae_crossapp.js` - see below.
+layer contradicts - see below). All of them are validated with no
+Nuke present by `test/test_core.py`, and `ae_static_ease.rbj` and
+`held_over_moving_layer.rbj` are **run through the After Effects adapters** by
+`test/test_ae_crossapp.js` - see below.
 
 **The crossing is tested in one direction with neither application present**
 (`test/test_ae_crossapp.js`, 14 tests, added 2026-08-20). It imports a real Nuke
@@ -1281,27 +1292,55 @@ both hosts have run them; Phase 5's rendered comparison is retired as out of
 scope; the export conform is built, tested and verified against real host data.
 The list below is history plus the one thing that is genuinely open.
 
-**THE ONE OPEN ITEM: the goldens predate the conform.**
-`test/golden/ae_scene.rbj` and `test/golden/ae_static_ease.rbj` were exported
-by After Effects before `conformEase` existed, so they still carry `ease`
-blocks and no longer represent what the exporter produces. Nothing is wrong
-with them - they are valid v1/v2 files and every importer test over them is
-still meaningful, and `ae_static_ease.rbj` in particular is now the **only**
-eased AE file in the project and therefore the only fixture that can exercise
-the conform against real host data. Keep it. What is missing is a golden
-showing what a conformed export looks like, and that needs one After Effects
-run: re-export the scene with the current adapters and save it beside the
-others rather than over them.
+**THE ONE OPEN ITEM: `test/golden/ae_scene.rbj` predates the conform.** It was
+exported before `conformEase` existed, so it still carries `ease` blocks and no
+longer represents what the exporter produces. Nothing is wrong with it - it is
+a valid v2 file and every importer test over it is still meaningful - but every
+measurement taken against it is taken against an answer no exporter writes any
+more. It needs one After Effects run, and **the new file replaces it** (decided
+2026-08-22) rather than sitting beside it: a golden is what the exporter
+produces now, and the pre-conform six-shape file stays in git history at
+`5f732e2`. Procedure and the predicted diff: `test/probe/README.md`,
+"Re-exporting the scene golden" and "The export conforms ease".
 
-**The evidence gap that mattered is closed without one, though.**
-`TestConformOverRealHostData` in `test/test_core.py` runs the conform over
-`ae_static_ease.rbj`'s own dense layer - a real After Effects ease over a real
-bake - and checks the result with arithmetic that never touches the fit, since
-a fit agreeing with its own measure would pass whatever either of them did. It
-also pins the control: three straight keys must miss that curve by more than
-100 px, or every other assertion in the class is vacuous. What a re-exported
-golden would add is proof that the *exporter wiring* produces this, not proof
-that the rule is right.
+**The prediction is derived, not guessed, and that is new.** The conform reads
+the dense layer and never writes to it, so a re-export's fit input is
+byte-identical to the bake already committed. Running `core.drift.linear_fit`
+over the golden's own frames therefore predicts the whole run here, with no
+host: `linear` 4 keys to 15, `eased` 5 to 25, `mixed` 5 to 11, `feathered` 4 to
+7, `offgrid` 5 to 9, `opened` 4 to 7 - so **6 shapes, 600 points, 10 warnings,
+74 authored keys** in the alert, and `mixed` keeping frame 18's outgoing
+`hold`. Per-shape residuals are in the README table. The point count does not
+move, and the diff should carry no geometry line at all.
+
+**Keep `test/golden/ae_static_ease.rbj` as it is.** It is the only file in the
+project carrying a real After Effects ease over a real dense bake, which makes
+it the only fixture that can exercise the conform against host-produced data -
+`test/ae_mock.js` refuses to bake a bezier segment.
+
+**The exporter wiring is now proved in the host, 2026-08-22.** The run meant
+for the scene golden came back with the wrong layer selected - 2 shapes, 200
+points, the `RotoBridge static` solid rather than `RotoBridge test` - which is
+exactly what step 5's count check exists to catch. It is kept as
+`test/golden/ae_static_conformed.rbj` because as a pair with
+`ae_static_ease.rbj` it settles something no mock can: the ExtendScript
+`RB.drift.linearFit` running inside After Effects chose **the same key frames**
+as `core.drift.linear_fit` chooses here, over a bake the two files carry
+bit-identically. `eased_static` 3 keys to 25, `linear_static` 2 to 2 and
+conformed silently, no `ease` member anywhere in the file, one warning naming
+the six authored sides. `TestConformAsAfterEffectsWroteIt` in
+`test/test_core.py` pins all of it; the class was checked against three
+mutations (a dropped key, a 1e-9 dense nudge, an `ease` side put back) and each
+one fails it.
+
+**And the rule was already proved without a host run.**
+`TestConformOverRealHostData` runs the conform over `ae_static_ease.rbj`'s own
+dense layer - a real After Effects ease over a real bake - and checks the
+result with arithmetic that never touches the fit, since a fit agreeing with
+its own measure would pass whatever either of them did. It also pins the
+control: three straight keys must miss that curve by more than 100 px, or every
+other assertion in the class is vacuous. The two classes divide the work:
+**that one says the rule is right, this one says the exporter runs it.**
 
 **Deliberately not done, so it is not proposed again.** The Nuke exporter also
 writes `ease`, and it is not conformed: After Effects can hold an ease exactly,
