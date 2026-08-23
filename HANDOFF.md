@@ -779,6 +779,26 @@ Same 25 keys either way. The difference is that they are now in the file rather
 than manufactured at the far end, the count no longer depends on a tolerance
 the compositor chose, and Nuke's "carries authored ease" warning does not fire.
 
+**And now crossed as a host artefact rather than as a Python rewrite,
+2026-08-22.** The measurement above applied `core.drift.linear_fit` to the
+pre-conform file here and crossed the result, so the keys were Python's. The
+crossing documented at `test/probe/README.md`, "AE to Nuke crossing", now names
+`test/golden/ae_static_conformed.rbj` - the file After Effects wrote with its
+own `RB.drift.linearFit` - and it lands the same numbers: **25 authored, 0
+corrective**, geometry 3.0518e-05 px, field-by-field diff empty, PASS. The
+pre-conform file was re-run the same day through the same harness and still
+reads 3 / 22, so the pair is a like-for-like comparison. Reports at
+`test/golden/nuke_probe/17.1v1/hub/`.
+
+**One warning does fire, and it is not a loss.** The prediction said none
+would; the run prints the **exporter's** conform warning, replayed, because
+`import_document` seeds its list with the file's own. The discriminator is the
+wording rather than the count, and the two hub reports sit side by side saying
+it: `shape 'eased_static': 3 key(s) carry authored ease` is the Nuke importer
+reporting what it cannot hold, and `mask 'eased_static': 6 key side(s) carried
+temporal ease` is After Effects quoting what it already paid. Only the first
+must be absent.
+
 **The cost, and it is real: an After Effects `.rbj` no longer carries an `ease`
 block at all.** Pinned endpoints and transform keys are spelled `ease` too
 (spec section 10.3, "parameters unknown"), so the conform fires on essentially
@@ -1643,17 +1663,67 @@ not as a general policy of writing linear files.
    list round trips - see the table in "The second After Effects host run".
    Phase 4 has no loose ends left.
 
-   Optional, not blocking: `test/golden/ae_scene.rbj` is the **six**-shape
-   export and predates masks 7 and 8, whose export is a separate golden
-   (`ae_static_ease.rbj`). An eight-shape export would fold the static pair into
-   the crossing test. `test/test_ae_to_nuke.py` reads `ae_scene.rbj`, so it
-   would need re-running afterwards.
+   Optional, and **decided against 2026-08-22 - do not re-propose it.**
+   `test/golden/ae_scene.rbj` is the **six**-shape export and predates masks 7
+   and 8, whose export is a separate golden. Folding them in as an eight-shape
+   re-export was costed and dropped, because the thing it was wanted for
+   already exists: `test/test_ae_to_nuke.py` takes a **second `.rbj` on the
+   command line**, so the static pair is in the crossing test as a second
+   invocation and always was. What an eight-shape golden adds is one command
+   instead of two. What it costs is real - `eased_static` and `linear_static`
+   would exist byte-identically in two goldens, free to drift apart the next
+   time one of them is re-exported, and `ae_scene.rbj` would stop being "every
+   mask on the scaled, rotating layer", which the corrective-key reasoning
+   above leans on.
+
+   **The prediction was derived before it was dropped, and it is kept because
+   it costs nothing and a future run would need it.** The two layers bake
+   independently, so an all-layers export is the two committed files
+   interleaved, not a new measurement: **8 shapes, 800 points, 11 warnings, 101
+   authored keys**, shapes in the order `eased_static, linear_static, linear,
+   eased, mixed, feathered, offgrid, opened` (`comp.layers.addSolid` puts the
+   newer solid at index 1, so the static layer exports first - note
+   `test/ae_mock.js` appends instead, so the mock cannot answer this), and
+   `diff_rbj.py` against the current golden reporting exactly two shapes added,
+   one warning added, **geometry identical**. Verified here by building that
+   file from the two goldens and running the diff. Warning order is the cheap
+   check on the layer order: warnings 1-2 come from the bake phase and do not
+   move, and `eased_static`'s conform warning heads the sparse group at
+   position 3 if the static layer went first.
+
+## The crossing harness only worked on one file, 2026-08-22
+
+**`test_ae_to_nuke.py` takes any `.rbj` as a second argument, and until today it
+FAILED every one that was not `ae_scene.rbj`.** Its open/closed section asked
+for two masks **by name** - `linear` and `opened` - and appended "shape is
+missing after import" for each one the source did not contain. The committed
+report for the static pair therefore ended in `FAIL` on two shapes that were
+never in the file, while the numbers above that verdict were being quoted in
+`prd.md` and here as a result. Nobody read to the bottom.
+
+The fix is smaller than what it replaces: the section now walks `doc["shapes"]`
+and checks each shape's own `closed` against the flag Nuke gives it. That also
+closes a second hole in the same block - a shape that failed to import used to
+be skipped by the geometry loops rather than reported, because the only
+missing-shape check was the two hardcoded names.
+
+**Both halves were then re-run.** The pre-conform crossing is a PASS with its
+numbers unmoved (3 / 22 and 2 / 0), which is what says the FAIL was the harness
+and not the file. On the six-shape golden the fix changed the report in that
+section and **nowhere else** - geometry, every key count, every warning and the
+verdict are byte-identical to the run it replaced, checked with `diff`.
+
+Worth carrying forward: a harness written against one fixture will pass on that
+fixture forever and say nothing useful about any other, and the failure is
+quiet because the *numbers* stay right. The verdict line is the part that goes
+wrong first.
 
 **All three Nuke tests pass and are re-runnable without anyone**, most recently
 2026-08-22. `test_nuke_roundtrip.py` covers Phases 2, 3, 6 and 7 and now the
 import record; `test_ae_to_nuke.py` is the AE-to-Nuke crossing at the document
-level; `test_ae_to_nuke_render.py` is the Phase 5 render measurement. Reports at
-`test/golden/nuke_probe/17.1v1/phase6/` and `.../phase5/`. Sync, then run any of
+level, over any `.rbj` named as its second argument; `test_ae_to_nuke_render.py` is the Phase 5 render measurement. Reports at
+`test/golden/nuke_probe/17.1v1/phase6/`, `.../hub/` (the static pair, both the
+conformed file and the pre-conform one) and `.../phase5/`. Sync, then run any of
 them - the last argument is the output directory in every case:
 
 ```bash

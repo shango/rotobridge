@@ -32,9 +32,13 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_scene.rbj
   warning: shape 'mixed': 1 key(s) carry a different interpolation on each side, which a Nuke key cannot hold - one type governs the whole key. The closest type Nuke has was used and the drift pass corrected the positions
   warning: shape 'feathered': 3 vertices were inserted to hold feather anchors that sat mid-segment. The subdivision is exact, so the shape has not moved - it has more points than the artist drew because Nuke can only anchor feather at a vertex
 
---- did the open spline arrive open? ---
-  linear     open=False
-  opened     open=True
+--- did every shape arrive, and did open/closed survive? ---
+  linear        closed in the file=True  open in Nuke=False
+  eased         closed in the file=True  open in Nuke=False
+  mixed         closed in the file=True  open in Nuke=False
+  feathered     closed in the file=True  open in Nuke=False
+  offgrid       closed in the file=True  open in Nuke=False
+  opened        closed in the file=False open in Nuke=True
 
 --- geometry: every point of every shape on every frame ---
   linear     worst 2.9755e-05 px

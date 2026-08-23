@@ -1,5 +1,5 @@
 AE -> Nuke crossing, 17.1v1
-source: C:\Users\shann\rotobridge\rb\test\golden\ae_static_ease.rbj
+source: C:\Users\shann\rotobridge\rb\test\golden\ae_static_conformed.rbj
 
 --- the file ---
   version 1 from After Effects 25.6x101, 2 shape(s), frames 0-24
@@ -8,9 +8,9 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_static_ease.rbj
 
 --- import at tolerance 0 (dense: the ground truth mode) ---
   built 2 shape(s)
-    eased_static 3 authored, 22 corrective
+    eased_static 25 authored, 0 corrective
     linear_static 2 authored, 23 corrective
-  warning: shape 'eased_static': 3 key(s) carry authored ease. Nuke's roto curves cannot hold it, so the shape arrives as a dense bake and the keyframe timing is not editable downstream. Geometry is unaffected
+  warning: mask 'eased_static': 6 key side(s) carried temporal ease, which Nuke's roto curves cannot hold. They were rewritten as linear and 22 key(s) added, so the path is within 0.5 px of this comp on every frame. What is lost is editable timing, not the shape
 
 --- did every shape arrive, and did open/closed survive? ---
   eased_static  closed in the file=True  open in Nuke=False
@@ -24,7 +24,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_static_ease.rbj
 --- import at tolerance 0.5: the default, what an artist gets ---
   This is the only mode where the drift pass actually runs, so it is
   the one that can expose a sparse layer the dense layer contradicts.
-    eased_static 3 authored, 22 corrective
+    eased_static 25 authored, 0 corrective
     linear_static 2 authored, 0 corrective; worst 0.0001 px at frame 13
   measured against the dense layer:
     eased_static worst 0.0000 px at frame 3
@@ -34,7 +34,7 @@ source: C:\Users\shann\rotobridge\rb\test\golden\ae_static_ease.rbj
   Tolerance 0 above keys every frame by definition (prd.md section 8),
   so it says nothing about key preservation. This keeps only the
   authored keys, which is acceptance criterion 3.
-    eased_static 3 authored, 0 corrective
+    eased_static 25 authored, 0 corrective
     linear_static 2 authored, 0 corrective
 
 --- back out again: Nuke's export of an AE-sourced file ---

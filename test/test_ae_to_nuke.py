@@ -149,24 +149,28 @@ def main():
         say("  warning: %s" % w)
     say()
 
-    say("--- did the open spline arrive open? ---")
+    say("--- did every shape arrive, and did open/closed survive? ---")
     shapes = dict()
     for i in range(len(knob.rootLayer)):
         el = knob.rootLayer[i]
         shapes[el.name] = el
-    for name in ("linear", "opened"):
-        el = shapes.get(name)
+    # Asked of the file rather than of two hardcoded names. It named `linear`
+    # and `opened` until 2026-08-22, which made every source that does not
+    # happen to contain those two masks report them as missing and FAIL - the
+    # pre-conform report in `hub/` is one, and its verdict was read past for a
+    # month. A source with no open spline is now a source with no open spline.
+    for spec in doc["shapes"]:
+        el = shapes.get(spec["name"])
         if el is None:
-            failures.append("shape '%s' is missing after import" % name)
+            failures.append("shape '%s' is missing after import" % spec["name"])
             continue
         is_open = el.getFlag(rp.FlagType.eOpenFlag)
-        say("  %-10s open=%s" % (name, is_open))
-    if shapes.get("opened") is not None and \
-            not shapes["opened"].getFlag(rp.FlagType.eOpenFlag):
-        failures.append("the open spline arrived closed")
-    if shapes.get("linear") is not None and \
-            shapes["linear"].getFlag(rp.FlagType.eOpenFlag):
-        failures.append("a closed shape arrived open")
+        say("  %-13s closed in the file=%-5s open in Nuke=%s"
+            % (spec["name"], spec["closed"], is_open))
+        if spec["closed"] and is_open:
+            failures.append("closed shape '%s' arrived open" % spec["name"])
+        if not spec["closed"] and not is_open:
+            failures.append("open shape '%s' arrived closed" % spec["name"])
     say()
 
     say("--- geometry: every point of every shape on every frame ---")

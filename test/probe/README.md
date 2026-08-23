@@ -379,26 +379,99 @@ rm -rf "/mnt/c/Users/shann/rotobridge/rb" \
 
 The output directory must exist first; the test does not create it. An optional
 **second argument names a different source `.rbj`**, and report names are
-derived from it so one run does not overwrite another's. That is how
-`ae_static_ease.rbj` is crossed - the file whose layer does not move, so nothing
-it measures can be blamed on a baked ancestor transform:
+derived from it so one run does not overwrite another's. That is how the
+**static pair** is crossed - masks 7 and 8, on the solid that does not move, so
+nothing they measure can be blamed on a baked ancestor transform. They are the
+numbers the roadmap turns on, because production roto animates the shape and
+not the layer:
 
 ```bash
 mkdir -p "/mnt/c/Users/shann/rotobridge/out/hub"
 "/mnt/c/Program Files/Nuke17.1v1/Nuke17.1.exe" --nc -t \
     "C:\Users\shann\rotobridge\rb\test\test_ae_to_nuke.py" \
     "C:\Users\shann\rotobridge\out\hub" \
-    "C:\Users\shann\rotobridge\rb\test\golden\ae_static_ease.rbj"
+    "C:\Users\shann\rotobridge\rb\test\golden\ae_static_conformed.rbj"
 ```
 
-What that run measured, and it is the number the roadmap turns on:
+**The source is `ae_static_conformed.rbj`, and it used to be
+`ae_static_ease.rbj`.** Changed 2026-08-22. Both are real exports of the same
+two masks from the same comp; the difference is that the second predates the
+ease conform at `0ccfcbb` and **no adapter writes a file like it any more**, so
+crossing it measured a behaviour the tool no longer has. The pre-conform file
+stays in the tree and stays valuable - it is the only fixture in the project
+carrying a real After Effects ease over a real dense bake, which is what
+`TestConformAsAfterEffectsWroteIt` needs - but it is evidence about the old
+export, not a live measurement.
 
-    eased_static    3 authored, 22 corrective   <- 25-frame range, fully dense
-    linear_static   2 authored,  0 corrective   <- exact, free
+**This is also the first time the conform crosses as a host artefact.** The
+conformed numbers already in `prd.md` §9.1 were measured by applying
+`core.drift.linear_fit` to `ae_static_ease.rbj` in Python and crossing the
+result. This run crosses the file **After Effects itself wrote** with its own
+`RB.drift.linearFit`, which is the end-to-end version of the same claim.
 
-An After Effects ease costs a key on every frame in Nuke; linear costs nothing.
-Report at `test/golden/nuke_probe/17.1v1/hub/`. See `HANDOFF.md`, "Nuke is the
-hub", for why that is a "cannot" rather than a bug.
+### The predicted crossing, derived before the run
+
+Computable with no host, because the file carries both layers: reconstruct each
+shape linearly from its own `keys` and measure that against its own `frames`.
+
+| shape | keys | linear reconstruction vs the bake | so at tolerance 0.5 |
+|---|---|---|---|
+| `eased_static` | **25**, frames 0-24, every side `linear/linear` | exact - 25 keys over a 25-frame range leaves nothing to interpolate | **25 authored, 0 corrective** |
+| `linear_static` | **2**, frames 0 and 24, `linear/linear` | **0.000117 px** worst, at frame 22 | **2 authored, 0 corrective** |
+
+Neither key carries an `ease` block, so **Nuke's "carries authored ease"
+warning must not fire** - it fired on every run of the pre-conform file, and
+its absence is the cheapest single check that the right source was crossed.
+Geometry should land at the float32 storage floor, ~3.05e-05 px, as it did
+before. The field-by-field section should be empty.
+
+**Run 2026-08-22, and every number held: PASS.** 25 / 0 and 2 / 0 at tolerance
+0.5, geometry 3.0518e-05 px on both shapes, field-by-field empty.
+
+**One line of the prediction was wrong, and the correction is a better check
+than the original.** "No warning must fire" is not what happens - the run
+prints one, and it is the *file's own*, replayed. `import_document` seeds its
+warning list with the source file's (the import-record decision in
+`HANDOFF.md`: the exporting application's losses and this import's are kept
+apart but both reported), so the exporter's conform warning arrives with the
+file. The discriminator is therefore the wording, not the count, and the two
+reports in `hub/` sit side by side saying it:
+
+    pre-conform   shape 'eased_static': 3 key(s) carry authored ease ...
+    conformed     mask 'eased_static': 6 key side(s) carried temporal ease ...
+
+`shape '...'` is the **Nuke importer** saying it cannot hold what it was
+given. `mask '...'` is the **After Effects exporter** saying what it already
+paid, quoted back. Only the first is a loss at this end, and only the first
+must be absent.
+
+Against the pre-conform run, which is kept because it is what the conform was
+bought to change:
+
+    was    eased_static    3 authored, 22 corrective   <- dense, and paid for at the far end
+    now    eased_static   25 authored,  0 corrective   <- the same 25 keys, in the file
+           linear_static   2 authored,  0 corrective   <- exact and free, both times
+
+An After Effects ease costs a key on every frame in Nuke either way; what the
+conform moves is **who pays and whether the count depends on a tolerance the
+compositor chose**. Reports at `test/golden/nuke_probe/17.1v1/hub/`. See
+`HANDOFF.md`, "Nuke is the hub", for why that is a "cannot" rather than a bug.
+
+**The pre-conform report in `hub/` used to say FAIL, and that was the harness,
+not the crossing.** The open/closed section asked for two masks by name -
+`linear` and `opened`, which only `ae_scene.rbj` has - so every source without
+them failed on two shapes that were never in it, and that verdict sat in the
+tree being read past while the numbers above it were quoted as a result. Fixed
+2026-08-22: the section now asks the file which shapes it contains and checks
+each one's `closed` against the flag Nuke gives it, which also means a shape
+that fails to import is reported rather than silently skipped.
+
+Both hub files were then re-run under the fixed harness, so the "was" and the
+"now" are measured the same way. The pre-conform crossing is a **PASS** and its
+numbers did not move - 3 / 22 and 2 / 0, geometry 3.0518e-05 px - which is what
+says the FAIL was the harness. On the six-shape golden the fix changed the
+report **only** in that section: geometry, every key count, every warning and
+the verdict are byte-identical to the run committed before it.
 
 **Status: PASS on 17.1v1**, 2026-08-21. Report at
 `test/golden/nuke_probe/17.1v1/phase6/ae_to_nuke_report.txt`.
