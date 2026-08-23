@@ -54,10 +54,10 @@ acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
 interpolation, drift and import-record code: stdlib only, no host imports, no
 file access, so it runs unchanged under plain Python and under Nuke's embedded
 Python. `nuke/` holds the Nuke adapter pair and `ae/` the After Effects one,
-over an ES3 mirror of `core/`. `test/test_core.py` is **286 passing tests**, run
+over an ES3 mirror of `core/`. `test/test_core.py` is **287 passing tests**, run
 with `python3 test/test_core.py` (not `unittest discover` - `test/` is
 deliberately not a package). `./test/run.sh` runs all five host-free suites:
-**561 tests**.
+**562 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
