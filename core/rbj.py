@@ -437,7 +437,7 @@ def _validate_keys(errs, where, keys, frame_keys):
                                     % (kwhere, prev))
             prev = frame
 
-        _validate_interp(errs, kwhere, key)
+        _validate_interp(key_errs, kwhere, key)
 
     errs.extend(key_errs[:MAX_ERRORS_PER_SHAPE])
     if len(key_errs) > MAX_ERRORS_PER_SHAPE:

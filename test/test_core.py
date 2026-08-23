@@ -375,6 +375,17 @@ class TestSchemaRejects(unittest.TestCase):
         self.assertLess(len(errs), 12)
         self.assertIn("suppressed", " | ".join(errs))
 
+    def test_interp_errors_are_capped_with_the_rest(self):
+        # Interp problems are still key problems. Routing them around the cap
+        # would let 50 bad keys bury the summary under 100 lines.
+        doc = valid_doc()
+        doc["shapes"][0]["keys"] = [
+            {"frame": 10, "interp": {"in": "bezier", "out": "bezier"}}
+            for _ in range(50)]
+        errs = rbj.validate(doc)
+        self.assertLess(len(errs), 12)
+        self.assertIn("suppressed", " | ".join(errs))
+
     def test_an_invalid_document_names_the_shape(self):
         doc = valid_doc()
         doc["shapes"][0]["frames"]["11"]["points"].pop()

@@ -896,6 +896,20 @@ describe("rbj", function () {
         eq(e.errors[0].indexOf("newer than this reader") > -1, true);
     });
 
+    it("caps interp errors with the rest of the key errors", function () {
+        // The Python mirror is test_interp_errors_are_capped_with_the_rest.
+        var doc = minimal();
+        var keys = [];
+        for (var i = 0; i < 50; i++) {
+            keys[keys.length] = { frame: 1,
+                                  interp: { "in": "bezier", "out": "bezier" } };
+        }
+        doc.shapes[0].keys = keys;
+        var errs = rbj.validate(doc);
+        eq(errs.length < 12, true, "got " + errs.length + " errors");
+        eq(errs.join(" | ").indexOf("suppressed") > -1, true);
+    });
+
     it("accepts an open spline at version 2", function () {
         // spec/rbj-v2-draft.md section 3. The Python mirror of this is
         // TestOpenSplines.test_an_open_shape_validates_at_version_2.

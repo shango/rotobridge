@@ -634,7 +634,7 @@
                 prev = frame;
             }
 
-            validateInterp(errs, kwhere, key);
+            validateInterp(keyErrs, kwhere, key);
         }
 
         for (var e = 0; e < keyErrs.length && e < MAX_ERRORS_PER_SHAPE; e++) {
