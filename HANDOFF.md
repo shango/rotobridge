@@ -54,10 +54,10 @@ acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
 interpolation, drift and import-record code: stdlib only, no host imports, no
 file access, so it runs unchanged under plain Python and under Nuke's embedded
 Python. `nuke/` holds the Nuke adapter pair and `ae/` the After Effects one,
-over an ES3 mirror of `core/`. `test/test_core.py` is **287 passing tests**, run
+over an ES3 mirror of `core/`. `test/test_core.py` is **303 passing tests**, run
 with `python3 test/test_core.py` (not `unittest discover` - `test/` is
 deliberately not a package). `./test/run.sh` runs all five host-free suites:
-**562 tests**.
+**578 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -1712,6 +1712,52 @@ not as a general policy of writing linear files.
    check on the layer order: warnings 1-2 come from the bake phase and do not
    move, and `eased_static`'s conform warning heads the sparse group at
    position 3 if the static layer went first.
+
+## PLANNED, NOT STARTED: consolidating this record
+
+**Approved by the user 2026-08-22, "relocate and compress". Nothing has been
+moved yet** - the analysis below is the whole of the work done, and it exists
+here because it was worked out in a conversation that is about to be compacted.
+Tree was clean when this was written.
+
+**The trigger.** This file's own header says "Detail lives in `prd.md` and
+`test/probe/README.md`; this file only holds what those two do not". At 1919
+lines that is no longer true, and roughly 60% is self-declared history:
+
+| section | lines | disposition |
+|---|---|---|
+| The first After Effects host run, 2026-08-21 | 523 | compress hard; both bugs are fixed and confirmed, so keep the lessons and drop the blow-by-blow |
+| Next | 383 | its own first line says "The list below is history" - reduce to the genuinely open items |
+| The format has to be falsifiable, 2026-08-21 | 253 | the trust argument is design rationale and belongs in `prd.md`; the feather-fix analysis is superseded by section 6 being implemented |
+| Decisions made, so they are not relitigated | 120 | reference - dedupe against `prd.md` §15, which already carries Q7/Q8/Q9 |
+| In flight | 99 | mostly not in flight; Q10's narrative duplicates `prd.md` §15 Q10 |
+| Status | 94 | keep, compress to a tight block |
+| Things the adapters must not lose | ~180 | **the most valuable section in the file and not history** - host API facts and invariants; move to `prd.md` beside "Confirmed API details (Phase 0)" |
+| What Phase 4 decided | 67 | reference, to `prd.md` |
+| Environment gotchas | 32 | operational, to `test/probe/README.md`, which already holds the invocations |
+| Nuke is the hub | 81 | decision is live, keep compressed; the `probe_nuke_ease` findings go to `test/probe/README.md` |
+
+Target: `HANDOFF.md` as live state plus pointers, roughly 350 lines. `prd.md`
+grows to hold the reference material, which is what it already is.
+
+**Four cross-references name a HANDOFF section by title and must keep
+resolving.** This is the part that is easy to break and hard to notice:
+
+- `test/test_core.py:1135` -> "A `hold` can contradict its own dense layer"
+- `test/probe/README.md:469` -> "Nuke is the hub"
+- `test/probe/README.md:535` -> "Next"
+- `spec/rbj-v2-draft.md:251` -> "Two probes, and the answer needed both"
+
+Plus a dozen bare `HANDOFF.md` mentions in `core/drift.py`, `core/interp.py`,
+`test/ae_mock.js`, `test/test_ae_import.js` and `spec/rbj-v2-draft.md` that
+only need the *fact* to survive somewhere in the file.
+
+**Staging, so a compaction mid-way is recoverable:** (1) move the reference
+sections out to `prd.md` and `test/probe/README.md`, (2) compress the history
+sections in place, (3) rewrite the header, Status and Next, (4) fix the four
+named references and re-grep. Commit after each. The host-free suite must stay
+green throughout - it does not read these files, so a green suite is necessary
+and not sufficient; the real check is the grep in step 4.
 
 ## The UI entry points, 2026-08-22
 
