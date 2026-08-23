@@ -201,8 +201,8 @@ def _linear_error(dense, keys, frame, held=()):
         # Outside the keyed span there is no line to draw: the destination
         # holds the nearest key's value, which is what both hosts do beyond
         # their first and last key.
-        held = dense[after if before is None else before]
-        return max([abs(h - t) for h, t in zip(held, target)] or [0.0])
+        edge = dense[after if before is None else before]
+        return max([abs(h - t) for h, t in zip(edge, target)] or [0.0])
 
     ratio = (frame - before) / float(after - before)
     low, high = dense[before], dense[after]

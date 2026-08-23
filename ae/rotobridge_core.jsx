@@ -662,9 +662,9 @@ var RB = (function () {
             /* Outside the keyed span there is no line to draw: the destination
              * holds the nearest key's value, which is what both hosts do
              * beyond their first and last key. */
-            var held = dense[String(before === null ? after : before)];
+            var edge = dense[String(before === null ? after : before)];
             for (i = 0; i < target.length; i++) {
-                value = Math.abs(held[i] - target[i]);
+                value = Math.abs(edge[i] - target[i]);
                 if (value > worst) { worst = value; }
             }
             return worst;

@@ -69,7 +69,7 @@
     function shapeHeader(entry, warn) {
         /* The per-shape members that do not vary with time. */
         var mask = entry.mask;
-        var mode = ae.maskProp(mask, ae.MASK_PATH) ? mask.maskMode : null;
+        var mode = mask.maskMode;
 
         if (mask.inverted) {
             warn("mask '" + entry.name + "': the inverted flag was dropped;"
