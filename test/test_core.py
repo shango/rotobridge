@@ -2324,6 +2324,108 @@ class TestLinearFit(unittest.TestCase):
         self.assertIsNone(at)
 
 
+class TestConformOverRealHostData(unittest.TestCase):
+    """The conform, over an After Effects ease that After Effects really wrote.
+
+    `test/ae_mock.js` refuses to bake a bezier segment - nothing had measured
+    what AE's temporal ease does to a mask path when that refusal was written -
+    so the mock cannot produce a genuinely eased dense layer and the export
+    suite's conform tests all run over keys on every frame. This is the other
+    half: `ae_static_ease.rbj` is a real export of a mask on a solid that does
+    not move, carrying influence 91.176 in / 33.333 out over 25 frames of
+    sampled geometry.
+
+    What it pins is the claim the exporter makes: that after conforming, a
+    straight line between the chosen keys reproduces the source on every frame.
+    Measured here independently rather than by trusting the number `linear_fit`
+    returns, for the same reason `test_ae_to_nuke_render.py` checks its
+    measuring chain against arithmetic before it believes it.
+    """
+
+    def setUp(self):
+        handle = open(GOLDEN_STATIC_EASE)
+        try:
+            self.doc = json.loads(handle.read())
+        finally:
+            handle.close()
+        self.shapes = dict((s["name"], s) for s in self.doc["shapes"])
+
+    def dense(self, shape):
+        """The flat per-frame vectors the exporter builds, same order."""
+        out = {}
+        for name, frame in shape["frames"].items():
+            flat = []
+            for point in frame["points"]:
+                flat += [point["c"][0], point["c"][1],
+                         point["in"][0], point["in"][1],
+                         point["out"][0], point["out"][1]]
+                if "feather" in point:
+                    flat.append(point["feather"])
+            out[int(name)] = flat
+        return out
+
+    def walk(self, shape):
+        frames = sorted(int(f) for f in shape["frames"])
+        keys = sorted(int(k["frame"]) for k in shape["keys"])
+        return frames, self.dense(shape), keys
+
+    def worst_line_error(self, dense, keys):
+        """Independent arithmetic: a straight line between keys against truth.
+
+        Deliberately not `drift._linear_error`. A fit that agreed with its own
+        measure would pass this whatever either of them did.
+        """
+        worst = 0.0
+        for frame in sorted(dense):
+            if frame in keys:
+                continue
+            before = max(k for k in keys if k <= frame)
+            after = min(k for k in keys if k >= frame)
+            ratio = (frame - before) / float(after - before)
+            for i, truth in enumerate(dense[frame]):
+                drawn = (dense[before][i]
+                         + (dense[after][i] - dense[before][i]) * ratio)
+                worst = max(worst, abs(drawn - truth))
+        return worst
+
+    def test_the_fixture_still_has_an_ease_worth_conforming(self):
+        # The control, and it comes first: every assertion below is vacuous if
+        # this file were ever flattened or re-exported through the conform.
+        eased = self.shapes["eased_static"]
+        self.assertEqual(len(eased["keys"]), 3)
+        for key in eased["keys"]:
+            self.assertEqual(key["interp"], {"in": "ease", "out": "ease"})
+        frames, dense, keys = self.walk(eased)
+        self.assertGreater(self.worst_line_error(dense, keys), 100.0,
+                           "three straight keys must miss this curve badly")
+
+    def test_conforming_it_reproduces_the_source_on_every_frame(self):
+        frames, dense, keys = self.walk(self.shapes["eased_static"])
+        chosen, worst, _ = drift.linear_fit(frames, dense, keys, 0.5)
+        # 135 px of bow rebuilt to under half a pixel, checked by arithmetic
+        # that never touched the fit.
+        self.assertLessEqual(self.worst_line_error(dense, chosen), 0.5)
+        self.assertLessEqual(worst, 0.5)
+
+    def test_it_costs_this_curve_every_frame_and_says_so(self):
+        # The honest number, and the one that makes the trade visible: a 700 px
+        # travel under influence 91/33 needs all 25 frames at 0.5 px. The
+        # conform does not make an ease cheaper - it moves who pays. Measured
+        # in Nuke 17.1v1: conformed, this shape imports with 0 corrective keys
+        # against 22 before.
+        frames, dense, keys = self.walk(self.shapes["eased_static"])
+        chosen, _, _ = drift.linear_fit(frames, dense, keys, 0.5)
+        self.assertEqual(chosen, frames)
+
+    def test_the_linear_shape_beside_it_costs_nothing(self):
+        # The calibration. If linear ever started buying keys, the number above
+        # would stop being readable as the price of the ease.
+        frames, dense, keys = self.walk(self.shapes["linear_static"])
+        chosen, worst, _ = drift.linear_fit(frames, dense, keys, 0.5)
+        self.assertEqual(chosen, keys)
+        self.assertLess(worst, 0.5)
+
+
 class TestEs3CrossCheck(unittest.TestCase):
     """What the ExtendScript writer produces, the Python reader must accept.
 

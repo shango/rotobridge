@@ -44,10 +44,10 @@ acceptance tests pass. `core/` holds the host-free geometry, timing, schema,
 interpolation, drift and import-record code: stdlib only, no host imports, no
 file access, so it runs unchanged under plain Python and under Nuke's embedded
 Python. `nuke/` holds the Nuke adapter pair and `ae/` the After Effects one,
-over an ES3 mirror of `core/`. `test/test_core.py` is **276 passing tests**, run
+over an ES3 mirror of `core/`. `test/test_core.py` is **280 passing tests**, run
 with `python3 test/test_core.py` (not `unittest discover` - `test/` is
 deliberately not a package). `./test/run.sh` runs all five host-free suites:
-**551 tests**.
+**555 tests**.
 
 `test/test_nuke_roundtrip.py` is the Phase 2 **and Phase 3** acceptance test and
 needs Nuke; the invocation, including the sync step, is in
@@ -1291,8 +1291,17 @@ eased AE file in the project and therefore the only fixture that can exercise
 the conform against real host data. Keep it. What is missing is a golden
 showing what a conformed export looks like, and that needs one After Effects
 run: re-export the scene with the current adapters and save it beside the
-others rather than over them. Until then the conform's end-to-end evidence is
-the scratch verification recorded under "The export conforms ease to linear".
+others rather than over them.
+
+**The evidence gap that mattered is closed without one, though.**
+`TestConformOverRealHostData` in `test/test_core.py` runs the conform over
+`ae_static_ease.rbj`'s own dense layer - a real After Effects ease over a real
+bake - and checks the result with arithmetic that never touches the fit, since
+a fit agreeing with its own measure would pass whatever either of them did. It
+also pins the control: three straight keys must miss that curve by more than
+100 px, or every other assertion in the class is vacuous. What a re-exported
+golden would add is proof that the *exporter wiring* produces this, not proof
+that the rule is right.
 
 **Deliberately not done, so it is not proposed again.** The Nuke exporter also
 writes `ease`, and it is not conformed: After Effects can hold an ease exactly,
