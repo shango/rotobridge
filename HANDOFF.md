@@ -32,9 +32,11 @@ crossapp suite or the goldens.
 **Confirmed in the host 2026-08-22**, and it is the wiring rather than the rule:
 `test/golden/ae_static_conformed.rbj` is a real conformed export, and the
 ExtendScript fit inside After Effects chose exactly the key frames
-`core.drift.linear_fit` chooses here. The one thing still open in the whole
-project is the six-shape scene golden, which needs one more host run and whose
-diff is now predicted line for line - see "Next".
+`core.drift.linear_fit` chooses here. **The scene golden was then re-exported
+too, and the last open item with it** - the alert matched a prediction derived
+from the committed bake, and the crossing went from 78 corrective keys to 2.
+See "Next". The 2 that remain are a Nuke step key bending the segment that
+arrives at it, which `core/interp.to_nuke`'s docstring currently denies.
 
 ## Status
 
@@ -1287,60 +1289,73 @@ report.
 
 ## Next
 
-**Nothing is blocked and nothing is in flight.** Phases 0-4 are complete and
-both hosts have run them; Phase 5's rendered comparison is retired as out of
-scope; the export conform is built, tested and verified against real host data.
-The list below is history plus the one thing that is genuinely open.
+**Nothing is blocked, nothing is in flight, and as of 2026-08-22 nothing is
+open.** Phases 0-4 are complete and both hosts have run them; Phase 5's
+rendered comparison is retired as out of scope; the export conform is built,
+tested, verified against real host data and now carried by both goldens. The
+list below is history plus one measured finding that is worth a decision -
+`out: hold` is not exact in Nuke and the import does not say so.
 
-**THE ONE OPEN ITEM: `test/golden/ae_scene.rbj` predates the conform.** It was
-exported before `conformEase` existed, so it still carries `ease` blocks and no
-longer represents what the exporter produces. Nothing is wrong with it - it is
-a valid v2 file and every importer test over it is still meaningful - but every
-measurement taken against it is taken against an answer no exporter writes any
-more. It needs one After Effects run, and **the new file replaces it** (decided
-2026-08-22) rather than sitting beside it: a golden is what the exporter
-produces now, and the pre-conform six-shape file stays in git history at
-`5f732e2`. Procedure and the predicted diff: `test/probe/README.md`,
-"Re-exporting the scene golden" and "The export conforms ease".
+**THE LAST OPEN ITEM IS CLOSED, 2026-08-22.** `test/golden/ae_scene.rbj` is
+now a conformed export, re-exported from the same comp with the current
+adapters and committed over the old one (the pre-conform six-shape file is at
+`5f732e2`). **The alert matched the prediction exactly** - 6 shapes, 600
+points, 10 warnings, 74 authored keys, and every per-shape count with it:
+`linear` +11, `eased` 6 sides and +20, `mixed` +6, `feathered` +3, `offgrid`
++4, `opened` +3. `diff_rbj.py` reports label changes only and **`geometry:
+identical`**, which is what a conform that reads the bake and never writes to
+it has to look like.
 
-**The prediction is derived, not guessed, and that is new.** The conform reads
-the dense layer and never writes to it, so a re-export's fit input is
-byte-identical to the bake already committed. Running `core.drift.linear_fit`
-over the golden's own frames therefore predicts the whole run here, with no
-host: `linear` 4 keys to 15, `eased` 5 to 25, `mixed` 5 to 11, `feathered` 4 to
-7, `offgrid` 5 to 9, `opened` 4 to 7 - so **6 shapes, 600 points, 10 warnings,
-74 authored keys** in the alert, and `mixed` keeping frame 18's outgoing
-`hold`. Per-shape residuals are in the README table. The point count does not
-move, and the diff should carry no geometry line at all.
+**The prediction was derived, not guessed, and that is the part worth reusing.**
+The conform's fit input is the dense layer, which is already committed, so
+running `core.drift.linear_fit` over the golden's own frames predicted the
+whole run before it happened - key frame lists, residuals, which of the two
+warning texts each shape gets. Method and table are in `test/probe/README.md`
+under "The export conforms ease". A re-export whose diff cannot be predicted
+that way is measuring a fixture that moved.
 
-**Keep `test/golden/ae_static_ease.rbj` as it is.** It is the only file in the
-project carrying a real After Effects ease over a real dense bake, which makes
-it the only fixture that can exercise the conform against host-produced data -
-`test/ae_mock.js` refuses to bake a bezier segment.
+**What the conform bought, measured in Nuke 17.1v1** (`test_ae_to_nuke.py`
+PASS, report at `test/golden/nuke_probe/17.1v1/phase6/`), at the default 0.5 px
+tolerance, before against after:
 
-**The exporter wiring is now proved in the host, 2026-08-22.** The run meant
-for the scene golden came back with the wrong layer selected - 2 shapes, 200
-points, the `RotoBridge static` solid rather than `RotoBridge test` - which is
-exactly what step 5's count check exists to catch. It is kept as
-`test/golden/ae_static_conformed.rbj` because as a pair with
-`ae_static_ease.rbj` it settles something no mock can: the ExtendScript
-`RB.drift.linearFit` running inside After Effects chose **the same key frames**
-as `core.drift.linear_fit` chooses here, over a bake the two files carry
-bit-identically. `eased_static` 3 keys to 25, `linear_static` 2 to 2 and
-conformed silently, no `ease` member anywhere in the file, one warning naming
-the six authored sides. `TestConformAsAfterEffectsWroteIt` in
-`test/test_core.py` pins all of it; the class was checked against three
-mutations (a dropped key, a 1e-9 dense nudge, an `ease` side put back) and each
-one fails it.
+| shape | was | now |
+|---|---|---|
+| `linear` | 4 authored, 13 corrective | **15, 0** |
+| `eased` | 5 authored, 20 corrective | **25, 0** |
+| `mixed` | 5 authored, 11 corrective | **11, 2** |
+| `feathered` | 4 authored, 12 corrective | **7, 0** |
+| `offgrid` | 5 authored, 11 corrective | **9, 0** |
+| `opened` | 4 authored, 11 corrective | **7, 0** |
 
-**And the rule was already proved without a host run.**
-`TestConformOverRealHostData` runs the conform over `ae_static_ease.rbj`'s own
-dense layer - a real After Effects ease over a real bake - and checks the
-result with arithmetic that never touches the fit, since a fit agreeing with
-its own measure would pass whatever either of them did. It also pins the
-control: three straight keys must miss that curve by more than 100 px, or every
-other assertion in the class is vacuous. The two classes divide the work:
-**that one says the rule is right, this one says the exporter runs it.**
+Five of six shapes arrive needing **no correction at all**, and the file is
+also *cheaper*: 76 keys in Nuke against 105 before. The exporter's fit spends
+keys better than the importer's binary search does, because it can see the
+whole curve at once where the drift pass only ever splits a gap. Geometry is
+unchanged at 6.1e-05 px worst, the float32 floor. Two warnings stopped firing:
+Nuke's "carries authored ease", and "1 key(s) carry a different interpolation
+on each side" - the latter because `mixed` key 12 was `linear`/`ease` and is
+now `linear`/`linear`.
+
+**`mixed`'s 2 corrective keys are a real finding, and they are not the
+conform's.** Probed in the host: frames 16 and 17 sit **2.55 px and 2.05 px**
+off the dense layer before correction, and every other frame is at the float32
+floor or inside the conform's promise. That is the segment 15 -> 18 arriving at
+`mixed`'s `hold`. Nuke's point at frame 16 is 507.561 where both the file's
+bake and a straight line say 505.155 - so Nuke is not drawing the line the
+conform fitted; **a step key flattens its own incoming tangent and the arriving
+segment decelerates into it.**
+
+`core/interp.to_nuke` currently says the opposite in as many words - "`out:
+hold` reports exact even though the incoming side is dropped: Nuke's step
+governs only the outgoing interval, so there is no incoming side to lose" - and
+returns `exact=True`. Measured, there **is** an incoming side to lose. Nothing
+is wrong in the shipped geometry, because the drift pass catches it and pays
+the 2 keys, and the file's hold is preserved as the artist wrote it. What is
+wrong is that the import is silent about it. The narrow fix is to report
+`exact=False` when `out` is `hold` and `in` is not, so the existing
+asymmetric-key warning fires and says the drift pass corrected it; a
+Nuke-authored step (`hold`/`hold`) stays exact and silent, which keeps Nuke to
+Nuke quiet. **Not done - it changes a core mapping and is the user's call.**
 
 **Deliberately not done, so it is not proposed again.** The Nuke exporter also
 writes `ease`, and it is not conformed: After Effects can hold an ease exactly,

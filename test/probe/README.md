@@ -376,6 +376,39 @@ keys every frame by definition (`prd.md` §8), so its key list says nothing abou
 key preservation; reading one off it produces a page of "losses" that are only
 dense mode working. Tolerance inf is the one that speaks to criterion 3.
 
+### What the conform did to the crossing, 2026-08-22
+
+Re-run on the conformed golden, Nuke 17.1v1, at the default 0.5 px tolerance:
+
+| shape | was | now |
+|---|---|---|
+| `linear` | 4 authored, 13 corrective | **15, 0** |
+| `eased` | 5 authored, 20 corrective | **25, 0** |
+| `mixed` | 5 authored, 11 corrective | **11, 2** |
+| `feathered` | 4 authored, 12 corrective | **7, 0** |
+| `offgrid` | 5 authored, 11 corrective | **9, 0** |
+| `opened` | 4 authored, 11 corrective | **7, 0** |
+
+Five of six need no correction, and the file is **cheaper in Nuke as well**: 76
+keys against 105. The exporter's fit sees the whole curve at once where the
+drift pass can only split a gap. Geometry is unchanged at 6.1e-05 px, the
+float32 floor.
+
+**`mixed`'s remaining 2 are not the conform's, and they say something about
+Nuke.** Probed at tolerance inf, so nothing corrects anything: every frame is
+at the float32 floor or inside the conform's 0.5 px except frames 16 and 17,
+which are **2.55 px and 2.05 px** off. That is the segment 15 -> 18, arriving
+at `mixed`'s `hold`. Nuke evaluates point 0 at frame 16 as 507.561 where both
+the bake and a straight line between the keys say 505.155 - so **a step key
+flattens its own incoming tangent, and the segment arriving at it decelerates
+instead of running straight.**
+
+`core/interp.to_nuke` says the opposite and returns `exact=True` for `out:
+hold` on the grounds that "Nuke's step governs only the outgoing interval".
+Measured, it does not. The geometry that ships is still right - the drift pass
+buys the 2 keys - but the import is silent about a side it could not hold. See
+`HANDOFF.md` "Next" for the narrow fix and why it has not been made.
+
 ## Phase 5 render
 
 `test/test_ae_to_nuke_render.py` is the half of Phase 5 that needs nobody. It
@@ -479,6 +512,14 @@ holds it. It exists because a run aimed at the scene golden came back with the
 wrong layer selected, which is what step 5 above is for.
 
 ### The predicted diff, and it is derived rather than guessed
+
+**Run 2026-08-22, and the prediction held line for line.** The alert read 6
+shapes, 600 points, 10 warnings, 74 authored keys, with every per-shape count
+below matching; `diff_rbj.py` reported label changes only and `geometry:
+identical`. Kept as written, because a prediction is only worth anything
+recorded before the run - and this is the method to reuse next time the
+exporter moves: the conform's input is the committed bake, so the whole run is
+computable here.
 
 The conform does not touch the dense layer. It reads it, fits a linear sparse
 layer to it and rewrites the keys, so the input to the fit in a re-export is

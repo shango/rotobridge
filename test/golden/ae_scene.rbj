@@ -13,8 +13,14 @@
   "warnings": [
     "mask 'feathered': feather is anchored along the path rather than at vertices, which only .rbj version 2 can express, so this file is version 2 and a version 1 reader will refuse it. Nothing is lost; under version 1 this mask's feather was being moved to the nearest vertex",
     "mask 'opened' is an open spline, which produces no alpha as an After Effects mask; the geometry is carried but no stroke width or end caps are",
+    "mask 'linear': 11 key(s) added so a straight line between keys stays within 0.5 px of this comp on every frame. Nothing the artist authored changed; the sparse layer now needs no correction downstream",
+    "mask 'eased': 6 key side(s) carried temporal ease, which Nuke's roto curves cannot hold. They were rewritten as linear and 20 key(s) added, so the path is within 0.5 px of this comp on every frame. What is lost is editable timing, not the shape",
     "mask 'mixed': 1 key(s) hold the mask path while the layer moves under it, so the shape is not flat there and the hold is not carried as one. Geometry is unaffected; what is lost is a held key the artist could edit",
-    "mask 'offgrid': a key sat 0.400 of a frame off the grid and was snapped to frame 10; .rbj keys are whole frames"
+    "mask 'mixed': 6 key(s) added so a straight line between keys stays within 0.5 px of this comp on every frame. Nothing the artist authored changed; the sparse layer now needs no correction downstream",
+    "mask 'feathered': 3 key(s) added so a straight line between keys stays within 0.5 px of this comp on every frame. Nothing the artist authored changed; the sparse layer now needs no correction downstream",
+    "mask 'offgrid': a key sat 0.400 of a frame off the grid and was snapped to frame 10; .rbj keys are whole frames",
+    "mask 'offgrid': 4 key(s) added so a straight line between keys stays within 0.5 px of this comp on every frame. Nothing the artist authored changed; the sparse layer now needs no correction downstream",
+    "mask 'opened': 3 key(s) added so a straight line between keys stays within 0.5 px of this comp on every frame. Nothing the artist authored changed; the sparse layer now needs no correction downstream"
   ],
   "shapes": [
     {
@@ -686,15 +692,92 @@
         {
           "frame": 6,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 7,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 8,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 9,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 10,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 11,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 12,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 13,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 14,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 15,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 16,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 17,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 18,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
@@ -1368,48 +1451,176 @@
         {
           "frame": 0,
           "interp": {
-            "in": "ease",
-            "out": "ease"
-          },
-          "ease": {
-            "in": [0.91176, 0],
-            "out": [0.33333, 0]
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 1,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 2,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 3,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 4,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 5,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 6,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 7,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 8,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 9,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 10,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 11,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 12,
           "interp": {
-            "in": "ease",
-            "out": "ease"
-          },
-          "ease": {
-            "in": [0.91176, 0],
-            "out": [0.33333, 0]
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 13,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 14,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 15,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 16,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 17,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 18,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 19,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 20,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 21,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 22,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 23,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 24,
           "interp": {
-            "in": "ease",
-            "out": "ease"
-          },
-          "ease": {
-            "in": [0.91176, 0],
-            "out": [0.33333, 0]
+            "in": "linear",
+            "out": "linear"
           }
         }
       ]
@@ -2083,21 +2294,63 @@
         {
           "frame": 6,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 7,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 8,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 9,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 10,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 11,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 12,
           "interp": {
             "in": "linear",
-            "out": "ease"
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 15,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 18,
           "interp": {
-            "in": "ease",
+            "in": "linear",
             "out": "hold"
           }
         },
@@ -3222,29 +3475,50 @@
         {
           "frame": 0,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 6,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 9,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 12,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 15,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 18,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 24,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
           }
         }
       ]
@@ -3918,8 +4192,15 @@
         {
           "frame": 6,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 8,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
@@ -3930,10 +4211,31 @@
           }
         },
         {
+          "frame": 11,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 14,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 16,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
           "frame": 18,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
@@ -4614,22 +4916,43 @@
         {
           "frame": 6,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 9,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 12,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
+          }
+        },
+        {
+          "frame": 15,
+          "interp": {
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 18,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
           }
         },
         {
           "frame": 24,
           "interp": {
-            "in": "ease",
-            "out": "ease"
+            "in": "linear",
+            "out": "linear"
           }
         }
       ]
