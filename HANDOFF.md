@@ -1713,6 +1713,65 @@ not as a general policy of writing linear files.
    move, and `eased_static`'s conform warning heads the sparse group at
    position 3 if the static layer went first.
 
+## PLANNED, NOT STARTED: review findings F1-F4, 2026-08-23
+
+A full code and architecture review found four findings, all verified against
+the tree at `485cbd6`, none in tested paths. The user approved fixing all four.
+Cosmetic extras (F5) ride along where convenient.
+
+**F1. AE export silently drops feather tension / corner type / interp.**
+`prd.md` section 9.3 names `featherRelCornerAngles`, `featherInterps`,
+`featherTensions` as readable, the export never reads them, the import writes
+zeros (`ae/rotobridge_import.jsx:195-197`), and no warning fires - unlike
+maskExpansion and the inverted flag, which warn for the same class of loss.
+Fix: in `applyFeather` (`ae/rotobridge_export.jsx`), record whether any of the
+three arrays holds a non-default value (0 is the default for all three); warn
+once per shape in `finishFeather`. Match existing warning style ("mask '...':").
+
+**F2. The two exporters disagree on the trailing newline.** Verified byte by
+byte in the goldens: Nuke-written files end 0x0a (`export_to_file` writes
+`text + "\n"`, `nuke/rotobridge_export.py:339`), AE-written files end 0x7d
+(main() writes `RB.rbj.stringify(doc)` bare). Diffability is spec section 2.1's
+goal. Fix: AE `main()` appends "\n" (adapter level, matching Nuke's placement -
+do NOT change dumps/stringify, whose outputs are compared byte-equal by tests).
+The four AE-written goldens will differ by one byte on next re-export; note it
+in the commit, do not regenerate.
+
+**F3. Nuke tolerance parser accepts "nan".** `_parse_tolerance`
+(`nuke/rotobridge_import.py:528`): `float("nan") < 0.0` is False, so nan slips
+through and the drift pass silently behaves as tolerance inf while the record
+prints "nan px". AE side throws via isNaN - a divergence. Fix:
+`if value != value or value < 0.0: raise ValueError(...)`.
+
+**F4. Validator error cap bypassed for interp errors, both implementations.**
+`core/rbj.py:_validate_keys`: frame/order errors go into the capped `key_errs`,
+but `_validate_interp` (line 440) appends straight to `errs` and the break
+watches only `key_errs`, so 150 bad interps emit 150+ errors past
+MAX_ERRORS_PER_SHAPE. Same bypass mirrored in `ae/rotobridge_rbj.jsx`
+validateKeys/validateInterp. Fix: route interp errors through key_errs on both
+sides; keep the two implementations' messages aligned.
+
+**F5 (cosmetic, opportunistic).** `linearError` in `ae/rotobridge_core.jsx:665`
+declares `var held` shadowing the `held` parameter (same binding under ES3
+hoisting; correct only because the branch returns immediately) - rename the
+local; `core/drift.py:204` rebinds `held` the same way, rename to match.
+`shapeHeader`'s odd guard on the path property before reading maskMode
+(`ae/rotobridge_export.jsx:72`) deserves either removal or a comment.
+
+**Verification plan.** Each fix gets a red test first where one is checkable
+host-free: F3 (parse "nan" raises - extract or replicate the parser logic; the
+module imports nuke, so test via the same textual-copy route TestNukeImportRecord
+uses), F4 (a doc with many bad interps caps its error count - both Python and
+node sides), F1 (mock export with non-zero featherTensions warns; extend
+`test/ae_mock.js` makeShape to carry the arrays through), F2 (the export writes
+a trailing newline - assert in test_ae_export.js). Run `bash test/run.sh`
+(578 tests) after each. Deploy `ae/*.jsx` to the Desktop folder after AE edits
+(`cp ae/*.jsx "/mnt/c/Users/shann/OneDrive/Desktop/rotobridge_ae/"`).
+
+**Also in flight, unrelated:** `prd.md` section 18 (host API facts moved from
+this file) sits UNCOMMITTED in the tree - step 1 of the consolidation above,
+paused mid-move. Commit or continue it separately from the F1-F4 work.
+
 ## PLANNED, NOT STARTED: consolidating this record
 
 **Approved by the user 2026-08-22, "relocate and compress". Nothing has been
