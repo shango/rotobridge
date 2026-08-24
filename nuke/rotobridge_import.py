@@ -25,8 +25,8 @@ import nuke.rotopaint as rp
 from rotobridge_nuke import (ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              ATTR_FEATHER_Y, ATTR_OPACITY, INTERP_LINEAR,
                              blend_from_rbj, drift, falloff_from_rbj, geom,
-                             interp, point_members, rbj, report, roto_knob,
-                             set_curve_linear, set_curve_types,
+                             interp, messages, point_members, rbj, report,
+                             roto_knob, set_curve_linear, set_curve_types,
                              write_attr_curve)
 
 DEFAULT_TOLERANCE = 0.5
@@ -52,8 +52,8 @@ def _feather_offsets(record, warn, shape_name, model, closed):
     for point, normal in zip(points, normals):
         scalar = float(point.get("feather", 0.0))
         if scalar != 0.0 and normal == [0.0, 0.0]:
-            warn("shape '%s': a feather point sits on a degenerate vertex with "
-                 "no defined normal; its feather was dropped" % shape_name)
+            warn(messages.render("feather-degenerate-vertex",
+                                 {"subject": "shape '%s'" % shape_name}))
         offsets.append(geom.feather_vector(scalar, normal))
     return offsets
 
@@ -135,26 +135,21 @@ def _anchored_dense(spec, frames, warn):
     if len(counts) > 1:
         detail = ", ".join("%d at frame %s" % (n, counts[n])
                            for n in sorted(counts))
-        warn("shape '%s': feather anchors cross each other between frames "
-             "(%s vertices would be needed), which would change the shape's "
-             "topology partway through. They were snapped to vertices as .rbj "
-             "version 1 does, so this shape's feather is placed as it would "
-             "have been before" % (name, detail))
+        warn(messages.render("feather-anchors-cross",
+                             {"subject": "shape '%s'" % name,
+                              "detail": detail}))
         return None
 
     if inserted:
-        warn("shape '%s': %d %s inserted to hold feather anchors that sat "
-             "mid-segment. The subdivision is exact, so the shape has not "
-             "moved - it has more points than the artist drew because Nuke "
-             "can only anchor feather at a vertex"
-             % (name, inserted,
-                "vertex was" if inserted == 1 else "vertices were"))
+        warn(messages.render(
+            "feather-vertices-inserted",
+            {"subject": "shape '%s'" % name, "count": inserted,
+             "noun": "vertex was" if inserted == 1 else "vertices were"}))
 
     if collided:
-        warn("shape '%s': %d feather anchor(s) share a position with another "
-             "and could not be given a vertex of their own; the larger radius "
-             "was kept. Nuke carries one feather offset per control point"
-             % (name, len(collided)))
+        warn(messages.render("feather-anchors-collide",
+                             {"subject": "shape '%s'" % name,
+                              "count": len(collided)}))
 
     return out
 
@@ -188,10 +183,9 @@ def _key_plan(spec, frames, offset, warn):
         shaped += 1 if key.get("ease") else 0
 
     if collapsed:
-        warn("shape '%s': %d key(s) carry a different interpolation on each "
-             "side, which a Nuke key cannot hold - one type governs the whole "
-             "key. The closest type Nuke has was used and the drift pass "
-             "corrected the positions" % (spec["name"], collapsed))
+        warn(messages.render("key-sides-collapsed",
+                             {"subject": "shape '%s'" % spec["name"],
+                              "count": collapsed}))
 
     if shaped:
         # `to_nuke` reports an ease/ease pair as exact, and for a Nuke-sourced
@@ -206,10 +200,9 @@ def _key_plan(spec, frames, offset, warn):
         # loses is the keyframes, and that is worth saying out loud, because
         # the alternative is a compositor opening a shape that looks keyed on
         # every frame with no idea why.
-        warn("shape '%s': %d key(s) carry authored ease. Nuke's roto curves "
-             "cannot hold it, so the shape arrives as a dense bake and the "
-             "keyframe timing is not editable downstream. Geometry is "
-             "unaffected" % (spec["name"], shaped))
+        warn(messages.render("ease-dropped",
+                             {"subject": "shape '%s'" % spec["name"],
+                              "count": shaped}))
 
     return key_frames, types
 
@@ -337,9 +330,10 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
                                         tolerance)
 
     if residual > tolerance:
-        warn("shape '%s': the drift pass ran out of passes with %.4g px still "
-             "unaccounted for at frame %d; re-import this shape at a tighter "
-             "tolerance if it shows" % (name, residual, at))
+        warn(messages.render("drift-residual",
+                             {"subject": "shape '%s'" % name,
+                              "residual": messages.px(residual, 4),
+                              "frame": at}))
 
     _write_attributes(shape, spec, frames, offset, warn)
 
@@ -418,7 +412,7 @@ def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
         shapes = [s for s in shapes if s["name"] in wanted]
         missing = wanted - set(s["name"] for s in doc["shapes"])
         for name in sorted(missing):
-            warn("shape '%s' was requested but is not in the file" % name)
+            warn(messages.render("subset-missing", {"name": name}))
         if not shapes:
             raise ValueError("no shapes matched the requested subset")
 
@@ -428,9 +422,10 @@ def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
     if doc["source"]["app"] != "Nuke":
         for spec in shapes:
             if not spec["closed"]:
-                warn("shape '%s' is an open spline from %s; the geometry is "
-                     "exact but what it renders as across applications is "
-                     "unverified" % (spec["name"], doc["source"]["app"]))
+                warn(messages.render(
+                    "open-spline-unverified",
+                    {"subject": "shape '%s'" % spec["name"],
+                     "app": doc["source"]["app"]}))
 
     node = nuke.createNode("Roto", inpanel=False)
     knob = roto_knob(node)
@@ -498,8 +493,8 @@ def write_record(record, path, warn):
         finally:
             handle.close()
     except (IOError, OSError) as exc:
-        warn("the import record could not be written to %s (%s); this import "
-             "is not recorded anywhere but this dialog" % (path, exc))
+        warn(messages.render("record-unwritable",
+                             {"path": path, "reason": str(exc)}))
         return None
     return path
 

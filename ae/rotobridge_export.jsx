@@ -54,9 +54,9 @@
                 var mask = masks.property(m);
                 var name = mask.name;
                 if (RB.util.hasOwn(seen, name)) {
-                    warn("two masks are both named '" + name + "' (on layers '"
-                         + seen[name] + "' and '" + layer.name + "'); importing"
-                         + " a subset by name cannot tell them apart");
+                    warn(RB.messages.render("name-collision",
+                                            { name: name, first: seen[name],
+                                              second: layer.name }));
                 } else {
                     seen[name] = layer.name;
                 }
@@ -72,8 +72,8 @@
         var mode = mask.maskMode;
 
         if (mask.inverted) {
-            warn("mask '" + entry.name + "': the inverted flag was dropped;"
-                 + " .rbj v1 has no field for it");
+            warn(RB.messages.render("inverted-dropped",
+                                    { subject: "mask '" + entry.name + "'" }));
         }
 
         var expansion = ae.maskProp(mask, ae.MASK_EXPANSION);
@@ -81,8 +81,9 @@
             /* Not in the format and not in prd.md section 10 either - the probe
              * turned it up while looking for feather. Silently dropping a
              * non-zero expansion would change the matte, so it is named. */
-            warn("mask '" + entry.name + "': mask expansion of " + expansion.value
-                 + " px was dropped; .rbj v1 has no field for it");
+            warn(RB.messages.render("expansion-dropped",
+                                    { subject: "mask '" + entry.name + "'",
+                                      px: expansion.value }));
         }
 
         return {
@@ -112,9 +113,9 @@
         var off = geom.affineDisagreement(m, check,
                                           ae.pointToComp(layer, check));
         if (off > AFFINE_TOLERANCE) {
-            warn("layer '" + layerName + "': its transform is not affine (off by "
-                 + off.toFixed(6) + " px); every point was converted through the"
-                 + " host instead, which is slower but exact");
+            warn(RB.messages.render("transform-not-affine",
+                                    { layer: layerName,
+                                      px: RB.messages.px(off, 6) }));
             return null;
         }
         return m;
@@ -305,10 +306,9 @@
                  * is still worth carrying - it mattes in Nuke - but no host's
                  * stroke settings travel with it, and Nuke's are node knobs the
                  * file has no member for. spec/rbj-v2-draft.md section 5. */
-                warn("mask '" + shapes[s].name + "' is an open spline, which"
-                     + " produces no alpha as an After Effects mask; the"
-                     + " geometry is carried but no stroke width or end caps"
-                     + " are");
+                warn(RB.messages.render("open-spline-stroke",
+                                        { subject: "mask '"
+                                                   + shapes[s].name + "'" }));
             }
             finishFeather(headers[s], states[s], shapes[s].name, warn);
         }
@@ -368,10 +368,9 @@
             /* Before the model decision, because both models take this loss:
              * .rbj carries where the feather sits and how far it reaches, and
              * nothing else about its profile. */
-            warn("mask '" + name + "': feather point " + shaped.join(", ")
-                 + " value(s) were authored; .rbj has no member for them, so"
-                 + " the feather's placement and radius travel but this"
-                 + " shaping does not");
+            warn(RB.messages.render("feather-shaping-dropped",
+                                    { subject: "mask '" + name + "'",
+                                      members: shaped.join(", ") }));
         }
 
         var lossy = state.snapped > 0 || state.dropped.length > 0;
@@ -387,11 +386,8 @@
                     delete points[i]["feather"];
                 }
             }
-            warn("mask '" + name + "': feather is anchored along the path"
-                 + " rather than at vertices, which only .rbj version 2 can"
-                 + " express, so this file is version 2 and a version 1 reader"
-                 + " will refuse it. Nothing is lost; under version 1 this"
-                 + " mask's feather was being moved to the nearest vertex");
+            warn(RB.messages.render("feather-anchored-v2",
+                                    { subject: "mask '" + name + "'" }));
             return;
         }
 
@@ -409,21 +405,20 @@
             }
         }
         if (lossy && !countsAgree(state.anchorCounts)) {
-            warn("mask '" + name + "': the number of feather points changes"
-                 + " between frames, which no .rbj version can carry - there is"
-                 + " no correct interpolation between two counts - so the"
-                 + " anchors were snapped to vertices as version 1 does");
+            warn(RB.messages.render("feather-count-changes",
+                                    { subject: "mask '" + name + "'" }));
         }
         if (state.snapped) {
-            warn("mask '" + name + "': " + state.snapped
-                 + " feather point(s) sat mid-segment and were snapped to the"
-                 + " nearer vertex; Nuke can only anchor feather at a vertex");
+            warn(RB.messages.render("feather-snapped",
+                                    { subject: "mask '" + name + "'",
+                                      count: state.snapped }));
         }
         for (var d = 0; d < state.dropped.length; d++) {
             var drop = state.dropped[d];
-            warn("mask '" + name + "': two feather points resolved to"
-                 + " vertex " + drop.vertex + "; kept radius " + drop.kept
-                 + " and dropped " + drop.radius);
+            warn(RB.messages.render("feather-duplicate-dropped",
+                                    { subject: "mask '" + name + "'",
+                                      vertex: drop.vertex, kept: drop.kept,
+                                      dropped: drop.radius }));
         }
     }
 
@@ -482,9 +477,10 @@
             var frame = RB.timing.secondsToFrame(seconds, fps, sf);
             var off = RB.timing.subframeResidual(seconds, fps, sf);
             if (Math.abs(off) > OFFGRID_FRAMES) {
-                warn(what + ": a key sat " + off.toFixed(3) + " of a frame off"
-                     + " the grid and was snapped to frame " + frame
-                     + "; .rbj keys are whole frames");
+                warn(RB.messages.render("key-off-grid",
+                                        { subject: what,
+                                          offset: RB.messages.px(off, 3),
+                                          frame: frame }));
             }
             out.frames[out.frames.length] = frame;
             if (out.index) { out.index[String(frame)] = i; }
@@ -730,17 +726,15 @@
 
         var added = out.length - keys.length;
         if (authored) {
-            warn(name + ": " + authored + " key side(s) carried temporal ease,"
-                 + " which Nuke's roto curves cannot hold. They were rewritten"
-                 + " as linear and " + added + " key(s) added, so the path is"
-                 + " within " + CONFORM_TOLERANCE + " px of this comp on every"
-                 + " frame. What is lost is editable timing, not the shape");
+            warn(RB.messages.render("ease-conformed",
+                                    { subject: "mask '" + name + "'",
+                                      count: authored, added: added,
+                                      tolerance: CONFORM_TOLERANCE }));
         } else if (added) {
-            warn(name + ": " + added + " key(s) added so a straight line"
-                 + " between keys stays within " + CONFORM_TOLERANCE + " px of"
-                 + " this comp on every frame. Nothing the artist authored"
-                 + " changed; the sparse layer now needs no correction"
-                 + " downstream");
+            warn(RB.messages.render("keys-added",
+                                    { subject: "mask '" + name + "'",
+                                      added: added,
+                                      tolerance: CONFORM_TOLERANCE }));
         }
         return out;
     }
@@ -824,10 +818,9 @@
             out[out.length] = key;
         }
         if (unheld) {
-            warn(name + ": " + unheld + " key(s) hold the mask path while the"
-                 + " layer moves under it, so the shape is not flat there and"
-                 + " the hold is not carried as one. Geometry is unaffected;"
-                 + " what is lost is a held key the artist could edit");
+            warn(RB.messages.render("hold-under-motion",
+                                    { subject: "mask '" + name + "'",
+                                      count: unheld }));
         }
         return conformEase(out, baked, frames, name, warn);
     }

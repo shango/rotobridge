@@ -53,8 +53,9 @@
         if (mode === ae.MASK_INTERSECT) { return "intersection"; }
         var name = RB.util.hasOwn(ae.MASK_MODE_NAMES, mode)
             ? ae.MASK_MODE_NAMES[mode] : String(mode);
-        warn("mask '" + shapeName + "': mask mode '" + name + "' has no .rbj"
-             + " equivalent; wrote 'union'");
+        warn(RB.messages.render("mask-mode-unmapped",
+                                { subject: "mask '" + shapeName + "'",
+                                  mode: name }));
         return "union";
     };
 

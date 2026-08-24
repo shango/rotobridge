@@ -61,7 +61,7 @@
         }
         for (var key in wanted) {
             if (RB.util.hasOwn(wanted, key) && !wanted[key]) {
-                warn("no shape named '" + key + "' in this file");
+                warn(RB.messages.render("subset-missing", { name: key }));
             }
         }
         if (!out.length) {
@@ -95,18 +95,18 @@
          * allowed to pass silently. */
         var src = doc.source;
         if (src.width !== comp.width || src.height !== comp.height) {
-            warn("the file was exported from a " + src.width + "x" + src.height
-                 + " comp and this one is " + comp.width + "x" + comp.height
-                 + "; coordinates were used as-is, not rescaled");
+            warn(RB.messages.render("comp-size-differs",
+                                    { src: src.width + "x" + src.height,
+                                      dst: comp.width + "x" + comp.height }));
         }
         if (Math.abs(src.fps - comp.frameRate) > 1e-6) {
-            warn("the file was exported at " + src.fps + " fps and this comp is"
-                 + " " + comp.frameRate + " fps; frame numbers were used as-is,"
-                 + " so the timing in seconds differs");
+            warn(RB.messages.render("fps-differs",
+                                    { src: src.fps, dst: comp.frameRate }));
         }
         if (Math.abs(src.pixel_aspect - comp.pixelAspect) > 1e-6) {
-            warn("pixel aspect differs (" + src.pixel_aspect + " against "
-                 + comp.pixelAspect + "); .rbj v1 treats pixels as square");
+            warn(RB.messages.render("pixel-aspect-differs",
+                                    { src: src.pixel_aspect,
+                                      dst: comp.pixelAspect }));
         }
     }
 
@@ -124,9 +124,9 @@
         var off = geom.affineDisagreement(m, check,
                                           ae.pointToLayer(layer, check));
         if (off > AFFINE_TOLERANCE) {
-            warn("layer '" + layer.name + "': its transform is not affine (off"
-                 + " by " + off.toFixed(6) + " px); every point was converted"
-                 + " through the host instead, which is slower but exact");
+            warn(RB.messages.render("transform-not-affine",
+                                    { layer: layer.name,
+                                      px: RB.messages.px(off, 6) }));
             return null;
         }
         return m;
@@ -454,10 +454,10 @@
                                    plan.dense ? 0.0 : tolerance);
 
         if (got.worst > tolerance) {
-            warn("shape '" + spec.name + "': the drift pass ran out of passes"
-                 + " with " + got.worst.toFixed(4) + " px still unaccounted for"
-                 + " at frame " + (got.at + offset) + "; re-import this shape at"
-                 + " a tighter tolerance if it shows");
+            warn(RB.messages.render("drift-residual",
+                                    { subject: "shape '" + spec.name + "'",
+                                      residual: RB.messages.px(got.worst, 4),
+                                      frame: got.at + offset }));
         }
 
         var authored = 0;
@@ -554,10 +554,9 @@
              * the provenance makes no difference to the result.
              * spec/rbj-v2-draft.md section 5. */
             if (specs[s]["closed"] === false) {
-                warn("shape '" + specs[s].name + "' is an open spline: After"
-                     + " Effects produces no alpha from an open mask path, so"
-                     + " the geometry arrives exactly but the mask renders"
-                     + " nothing. Open paths matte in Nuke, not here");
+                warn(RB.messages.render("open-spline-renders-nothing",
+                                        { subject: "shape '"
+                                                   + specs[s].name + "'" }));
             }
             maskIndex[s] = createMask(layer, specs[s]);
         }
@@ -669,9 +668,9 @@
         try {
             ae.appendText(new File(path), RB.report.render(record));
         } catch (e) {
-            warn("the import record could not be written to " + path + " ("
-                 + (e.message || e) + "); this import is not recorded anywhere"
-                 + " but this dialog");
+            warn(RB.messages.render("record-unwritable",
+                                    { path: path,
+                                      reason: String(e.message || e) }));
             return null;
         }
         return path;

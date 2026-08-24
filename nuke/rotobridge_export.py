@@ -16,9 +16,9 @@ import nuke
 from rotobridge_nuke import (ATTR_BLEND, ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              ATTR_FEATHER_Y, ATTR_INVERTED, ATTR_OPACITY,
                              attr_value, blend_to_rbj, falloff_to_rbj, geom,
-                             interp, is_closed, iter_shapes, point_members,
-                             rbj, roto_knob, script_range, selected_roto_node,
-                             timing, vec2)
+                             interp, is_closed, iter_shapes, messages,
+                             point_members, rbj, roto_knob, script_range,
+                             selected_roto_node, timing, vec2)
 
 
 def _read_point(cp, frame, matrix):
@@ -181,11 +181,9 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
         out.append({"frame": frame, "interp": sides})
 
     if mixed:
-        warn("shape '%s': %d key(s) interpolate differently from one control "
-             "point to the next, which has no single-valued form; they were "
-             "written as 'ease' with no parameters and the importer's drift "
-             "pass carries the geometry (prd.md section 7, tier 2)"
-             % (name, mixed))
+        warn(messages.render("interp-mixed",
+                             {"subject": "shape '%s'" % name,
+                              "count": mixed}))
 
     # No `ease` entries, ever, from a Nuke source. Case 63 made asymmetric
     # lslope/rslope stick but never measured what a slope value renders as, and
@@ -204,14 +202,13 @@ def export_shape(shape, ancestors, frames, warn):
         # are NODE knobs - openspline_width and the two end types - not shape
         # attributes, so nothing per shape can carry them. See
         # spec/rbj-v2-draft.md section 5.
-        warn("shape '%s': an open spline's render settings are node knobs "
-             "(openspline_width and the end types), not shape attributes, so "
-             "they are not carried in the file" % name)
+        warn(messages.render("open-spline-knobs",
+                             {"subject": "shape '%s'" % name}))
 
     attrs = shape.getAttributes()
     if abs(attr_value(attrs, ATTR_INVERTED, frames[0])) > 1e-9:
-        warn("shape '%s': inverted flag dropped; .rbj v1 has no field for it"
-             % name)
+        warn(messages.render("inverted-dropped",
+                             {"subject": "shape '%s'" % name}))
 
     dense = {}
     count = None
@@ -271,15 +268,12 @@ def export_shape(shape, ancestors, frames, warn):
                 point["feather_offset"] = offset
 
     if stacked:
-        warn("shape '%s': a layer transform and a shape transform are both "
-             "active, and their composition order is unverified (Q10). The "
-             "geometry is baked assuming the shape's own transform applies "
-             "first" % name)
+        warn(messages.render("transform-order-unverified",
+                             {"subject": "shape '%s'" % name}))
 
     if off_normal:
-        warn("shape '%s': feather offsets depart from the path normal; the "
-             "tangential component survives in feather_offset but is lost to "
-             "adapters other than Nuke" % name)
+        warn(messages.render("feather-tangential",
+                             {"subject": "shape '%s'" % name}))
 
     return {
         "name": name,

@@ -536,7 +536,7 @@ describe("options", function () {
 
     it("names a requested shape that is not in the file", function () {
         var host = importInto(exported(), { answers: ["0", "Mask 1, Nope"] });
-        has(host.alerts, "no shape named 'Nope'");
+        has(host.alerts, "[subset-missing] shape 'Nope'");
         eq(host.comp.layer(1)._masks.length, 1);
     });
 

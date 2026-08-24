@@ -26,7 +26,7 @@ def _bootstrap_core():
 
 _bootstrap_core()
 
-from core import drift, geom, interp, rbj, report, timing  # noqa: E402
+from core import drift, geom, interp, messages, rbj, report, timing  # noqa: E402
 
 VIEW = "main"
 
@@ -81,8 +81,9 @@ def blend_to_rbj(bm, warn, shape_name):
     """Nuke `bm` to an .rbj blend value. Anything unrecognised degrades."""
     if abs(float(bm) - BLEND_UNION) < 1e-9:
         return "union"
-    warn("shape '%s': Nuke blending mode '%s' is a pixel operation with no "
-         ".rbj equivalent; wrote 'union'" % (shape_name, blend_name(bm)))
+    warn(messages.render("nuke-blend-unmapped",
+                         {"subject": "shape '%s'" % shape_name,
+                          "mode": blend_name(bm)}))
     return "union"
 
 
@@ -95,9 +96,9 @@ def blend_from_rbj(blend, warn, shape_name):
     would deform the matte in a way the warning could not describe.
     """
     if blend != "union":
-        warn("shape '%s': .rbj blend '%s' has no Nuke roto equivalent - Nuke "
-             "blends pixels, it has no boolean shape operations; used 'over' "
-             "instead" % (shape_name, blend))
+        warn(messages.render("blend-unmapped",
+                             {"subject": "shape '%s'" % shape_name,
+                              "blend": blend}))
     return BLEND_UNION
 
 
@@ -150,15 +151,16 @@ def iter_shapes(element, warn, path="", ancestors=()):
             yield child, tuple(ancestors)
         elif isinstance(child, rp.Layer):
             here = "%s/%s" % (path, name) if path else name
-            warn("layer '%s' flattened to the root" % here)
+            warn(messages.render("layer-flattened", {"name": here}))
             for item in iter_shapes(child, warn, here,
                                     tuple(ancestors) + (child,)):
                 yield item
         elif isinstance(child, rp.Stroke):
-            warn("paint stroke '%s' skipped; .rbj v1 carries splines only" % name)
+            warn(messages.render("stroke-skipped", {"name": name}))
         else:
-            warn("element '%s' of unhandled type %s skipped"
-                 % (name, type(child).__name__))
+            warn(messages.render("element-skipped",
+                                 {"name": name,
+                                  "type": type(child).__name__}))
 
 
 def attr_value(attrs, name, frame):

@@ -33,7 +33,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import drift, geom, interp, rbj, report, timing
+from core import drift, geom, interp, messages, rbj, report, timing
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
 GOLDEN_SQUARE = os.path.join(GOLDEN, "square.rbj")
@@ -2279,6 +2279,7 @@ class _WithoutNuke(unittest.TestCase):
             setattr(shared, name, None)
         shared.drift, shared.geom = drift, geom
         shared.interp, shared.rbj, shared.report = interp, rbj, report
+        shared.messages = messages
         stubs["nuke"] = nuke_stub
         stubs["nuke.rotopaint"] = rp_stub
         stubs["rotobridge_nuke"] = shared
@@ -2494,6 +2495,58 @@ class TestNukeImportRecord(_WithoutNuke):
         self.assertIsNone(got)
         self.assertEqual(len(said), 1)
         self.assertIn("could not be written", said[0])
+
+
+class TestMessages(unittest.TestCase):
+    """The warning registry: one table, codes in front, strict rendering."""
+
+    # One value per placeholder name, shared with the ES3 cross-check so both
+    # implementations render the same bytes from the same inputs. Numbers are
+    # deliberately mixed in to exercise the whole-value rule.
+    SAMPLES = {
+        "subject": "mask 'Roto A'", "name": "Roto A", "first": "Solid 1",
+        "second": "Solid 2", "px": 2.5, "mode": "Lighten",
+        "members": "tension, corner angle", "count": 3, "vertex": 2,
+        "kept": 9.5, "dropped": -4, "offset": "0.125", "frame": -988,
+        "added": 22, "tolerance": 0.5, "layer": "Solid 1",
+        "src": "1920x1080", "dst": "1280x720", "residual": "0.4211",
+        "path": "/shots/x.txt", "reason": "Permission denied",
+        "detail": "4 at frame 2, 5 at frame 3", "noun": "vertices were",
+        "app": "After Effects", "blend": "difference", "type": "Stroke",
+    }
+
+    @classmethod
+    def params_for(cls, code):
+        holders = re.findall(r"\{([a-z0-9_]+)\}", messages.TEMPLATES[code])
+        missing = [h for h in holders if h not in cls.SAMPLES]
+        assert not missing, "add SAMPLES for %s: %s" % (code, missing)
+        return dict((h, cls.SAMPLES[h]) for h in holders)
+
+    def test_every_code_renders_and_leads_with_its_code(self):
+        # `render` raises on an unfilled placeholder, so surviving this loop
+        # also proves SAMPLES covers every parameter every template names.
+        for code in messages.codes():
+            text = messages.render(code, self.params_for(code))
+            self.assertTrue(text.startswith("[%s] " % code), text)
+
+    def test_an_unknown_code_is_a_bug_not_a_warning(self):
+        self.assertRaises(ValueError, messages.render, "no-such-code", {})
+
+    def test_a_missing_parameter_is_a_bug_not_a_warning(self):
+        self.assertRaises(ValueError, messages.render, "feather-snapped",
+                          {"subject": "mask 'M'"})
+
+    def test_whole_numbers_lose_the_trailing_zero(self):
+        # JavaScript has one number type, so this is the report rule applied
+        # to warnings: 3.0 and 3 are the same value and get the same spelling.
+        got = messages.render("feather-snapped",
+                              {"subject": "mask 'M'", "count": 3.0})
+        self.assertIn(" 3 feather point(s)", got)
+
+    def test_px_rounds_half_away_from_zero(self):
+        self.assertEqual(messages.px(0.00005, 4), "0.0001")
+        self.assertEqual(messages.px(-0.00005, 4), "-0.0001")
+        self.assertEqual(messages.px(2.5, 3), "2.500")
 
 
 class TestNukeToleranceParser(_WithoutNuke):
@@ -2888,6 +2941,43 @@ class TestEs3CrossCheck(unittest.TestCase):
             file_warnings=["shape 'plain': ease was dropped"],
             import_warnings=["shape 'feathered': 3 vertices were inserted"])
         self.assertEqual(self.es3_render(record), report.render(record))
+
+    def test_both_implementations_render_the_same_warnings(self):
+        # The registry is the fence against the two hosts' prose for the same
+        # loss drifting apart, which the inline sentences had already done
+        # (the inverted flag was announced two different ways). Same samples
+        # as TestMessages, rendered on both sides, compared byte for byte -
+        # and the code LISTS are compared first, so a code added to one table
+        # only fails here rather than surfacing in a host.
+        script = (
+            "global.RB = require(%s);"
+            "var chunks = [];"
+            "process.stdin.on('data', function (c) { chunks.push(c); });"
+            "process.stdin.on('end', function () {"
+            "  var params = JSON.parse(chunks.join(''));"
+            "  var codes = RB.messages.codes();"
+            "  var out = { codes: codes, rendered: {} };"
+            "  for (var i = 0; i < codes.length; i++) {"
+            "    if (params[codes[i]] !== undefined) {"
+            "      out.rendered[codes[i]] ="
+            "          RB.messages.render(codes[i], params[codes[i]]);"
+            "    }"
+            "  }"
+            "  process.stdout.write(JSON.stringify(out));"
+            "});"
+        ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),)
+        params = dict((code, TestMessages.params_for(code))
+                      for code in messages.codes())
+        proc = subprocess.run([NODE, "-e", script],
+                              input=json.dumps(params).encode("utf-8"),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            self.fail("node failed:\n" + proc.stderr.decode("utf-8", "replace"))
+        got = json.loads(proc.stdout.decode("utf-8"))
+        self.assertEqual(got["codes"], messages.codes())
+        for code in messages.codes():
+            self.assertEqual(got["rendered"][code],
+                             messages.render(code, params[code]), code)
 
     def test_it_accepts_what_extendscript_writes(self):
         text = self.es3_rewrite(valid_doc())
