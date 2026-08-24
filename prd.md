@@ -110,6 +110,8 @@ Alternatives considered and rejected:
 
 Both v1 targets expose a documented scripting API. Generated output is readable, diffable, and degrades with a traceback rather than silent corruption.
 
+**The ES3 mirror is a chosen cost, not an accident.** The core logic exists twice - `core/` in Python and `ae/rotobridge_core.jsx` + `rotobridge_rbj.jsx` in ES3 - and every core change lands twice and is held together by the cross-check tests. The alternative was considered: a CEP (or eventually UXP) panel runs modern JavaScript with a Node context, so one transpiled core could serve the AE side and halve the maintenance. It loses on the things this project values most. The plain-ExtendScript adapters run exactly what `File > Scripts > Run Script File...` runs, which is the path every acceptance run measured; deployment is copying five files with no extension signing, manifest, or install step; and a CEP panel evaluating ExtendScript for host calls would put a marshalling boundary through the middle of the frame loop that §9.1's timings were measured without. If the mirror's tax ever outgrows those wins - or Adobe retires ExtendScript - this is the paragraph to revisit. Until then: every change to `core/` is not done until its mirror is, and `TestEs3CrossCheck` is the fence.
+
 ### 5.4 The dual-layer animation model
 
 Earlier drafts specified a dense bake only, which guaranteed fidelity but destroyed editability - the authored keys *are* the artist's work product. The two keyframe models cannot be reconciled directly:
