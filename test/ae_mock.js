@@ -584,4 +584,5 @@ function install(spec) {
 }
 
 module.exports = { install: install, makeShape: makeShape,
+                   feathersAsHostReturns: feathersAsHostReturns,
                    CompItem: CompItem, KeyframeEase: KeyframeEase };

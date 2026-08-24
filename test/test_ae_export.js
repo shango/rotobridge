@@ -335,6 +335,53 @@ describe("loop shape", function () {
     });
 });
 
+/* --- the mock against the probes ------------------------------------------- */
+
+describe("mock fidelity", function () {
+    /* The mock is a second implementation of After Effects, and its
+     * faithfulness used to be maintained by hand from the probe runs - which
+     * is how it came to silently zero the feather shaping arrays and would
+     * have hidden that bug from any test. These cases are the measured rows
+     * from the two feather probes (test/probe/feather_order_measured.json,
+     * run 2026-08-21); the mock's transform must reproduce them exactly, so
+     * mock drift fails here instead of masking a defect in the adapters. */
+    var measured = JSON.parse(fs.readFileSync(
+        path.join(__dirname, "probe", "feather_order_measured.json"), "utf8"));
+
+    function writtenShape() {
+        var w = measured.written;
+        var square = [[0, 0], [10, 0], [10, 10], [0, 10]];
+        var zero = [[0, 0], [0, 0], [0, 0], [0, 0]];
+        return mock.makeShape({
+            vertices: square, inTangents: zero, outTangents: zero,
+            closed: w.closed,
+            featherSegLocs: w.featherSegLocs,
+            featherRelSegLocs: w.featherRelSegLocs,
+            featherRadii: w.featherRadii,
+            featherTypes: w.featherTypes
+        });
+    }
+
+    function check(got, row, label) {
+        deepEq(got.featherSegLocs, row.featherSegLocs, label + " segLocs");
+        deepEq(got.featherRelSegLocs, row.featherRelSegLocs,
+               label + " relSegLocs");
+        deepEq(got.featherRadii, row.featherRadii, label + " radii");
+        deepEq(got.featherTypes, row.featherTypes, label + " types");
+    }
+
+    it("renames anchors on a key frame the way the probe measured", function () {
+        check(mock.feathersAsHostReturns(writtenShape(), false),
+              measured.read_back_on_a_key, "on a key");
+    });
+
+    it("regroups by type at an interpolated frame the way the probe measured",
+       function () {
+        check(mock.feathersAsHostReturns(writtenShape(), true),
+              measured.read_back_interpolated, "interpolated");
+    });
+});
+
 /* --- feather --------------------------------------------------------------- */
 
 describe("feather", function () {

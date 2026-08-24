@@ -1,0 +1,94 @@
+{
+  "_source": [
+    "Measured host behaviour, not invented test data. These tables are the",
+    "recorded output of two probe scripts run in After Effects on 2026-08-21",
+    "(test/probe/README.md, 'probe_ae_feather_order.jsx' and",
+    "'probe_ae_feather_interpolated.jsx'). test/ae_mock.js re-enacts both",
+    "behaviours, and test_ae_export.js asserts the re-enactment reproduces",
+    "these rows exactly - so mock drift fails a test instead of hiding a bug",
+    "the way a hand-maintained mock can. If a future probe run contradicts a",
+    "row, change this file WITH the probe evidence, never to make a test pass."
+  ],
+  "written": {
+    "vertices": 4,
+    "closed": true,
+    "featherSegLocs": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "featherRelSegLocs": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "featherRadii": [
+      30,
+      -15,
+      0,
+      12
+    ],
+    "featherTypes": [
+      0,
+      1,
+      0,
+      0
+    ]
+  },
+  "read_back_on_a_key": {
+    "_rule": "the anchor is renamed: start of segment i returns as end of segment i-1; order is preserved; entry i keeps its own radius",
+    "featherSegLocs": [
+      3,
+      0,
+      1,
+      2
+    ],
+    "featherRelSegLocs": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "featherRadii": [
+      30,
+      -15,
+      0,
+      12
+    ],
+    "featherTypes": [
+      0,
+      1,
+      0,
+      0
+    ]
+  },
+  "read_back_interpolated": {
+    "_rule": "additionally regrouped by type, every non-negative before every negative, stably; measured identical for LINEAR and BEZIER keys",
+    "featherSegLocs": [
+      3,
+      1,
+      2,
+      0
+    ],
+    "featherRelSegLocs": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "featherRadii": [
+      30,
+      0,
+      12,
+      -15
+    ],
+    "featherTypes": [
+      0,
+      0,
+      0,
+      1
+    ]
+  }
+}
