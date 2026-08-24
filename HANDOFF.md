@@ -1713,6 +1713,67 @@ not as a general policy of writing linear files.
    move, and `eased_static`'s conform warning heads the sparse group at
    position 3 if the static layer went first.
 
+## IN PROGRESS: the six would-do-differently items, 2026-08-24
+
+The user asked for all six suggestions from the post-review reflection to be
+implemented, "and anything else you encounter and feel needs improvement."
+Work in chunks, red test first where checkable, `bash test/run.sh` green and a
+commit after each. Deploy `ae/*.jsx` to the Desktop folder after AE edits.
+Design facts settled up front: the validator IGNORES unknown members, so items
+5 and 6 need no version bump; only item 2's frame refs do (old readers hard-fail
+on a `same_as` record). `report.py`'s `_num`/`_pixels` are the cross-identical
+number renderers to reuse. `conformEase` mutates the authored key objects in
+place, so item 5 must deep-copy before the conform runs.
+
+Chunks, in order (mark each DONE with its commit as it lands):
+
+1. **prd.md paragraph: the ES3 mirror is a chosen cost** (item 4). State the
+   alternative (CEP/UXP shared-JS core) and why it loses: the panel runs what
+   Run Script File runs, deployment is copy-five-files, acceptance measured
+   that path.
+2. **Structured warnings** (item 1). New `core/messages.py` + `RB.messages` in
+   `ae/rotobridge_core.jsx`: every warning is `render(code, params)` producing
+   "[code] prose". Params are strings/ints only; floats pre-formatted via
+   shared helpers mirroring report's `_num`. Migrate all ~37 warn sites in the
+   four adapters + core-side warners in `nuke/rotobridge_import.py`. Cross-check
+   test renders every code with fixed samples in both implementations and
+   byte-compares; also compares the code LISTS so a code added to one side only
+   fails. Tests matching prose substrings migrate to codes. Goldens keep their
+   old-prose warnings (writer provenance): tests on goldens keep matching old
+   strings, tests on live exports match codes. Add `messages` to the
+   `rotobridge_nuke` shared module AND to `_WithoutNuke`'s stub in test_core.py.
+3. **Mock fidelity anchored to probe measurements** (item 3). Fixture file
+   encoding the measured feather reorder cases (probe_ae_feather_order: segLocs
+   [0,1,2,3] rel [0,0,0,0] -> [3,0,1,2] rel [1,1,1,1]; probe_ae_feather_interpolated:
+   regroup outer-before-inner, stable, at interpolated frames, for LINEAR too)
+   with source attribution; node test asserts `feathersAsHostReturns` reproduces
+   them exactly.
+4. **v3 frame refs** (item 2). `{"same_as": <int>}` as a frame record: writer
+   folds runs of data-equal consecutive frames (equality by data compare - safe
+   cross-implementation since Python == treats 1 == 1.0 and JS has one number
+   type), reader expands with deep copies at loads/parse so everything
+   downstream still sees dense frames. Explicit `fold_frames(doc)` in both
+   implementations, called by both exporters right before dumps/stringify; it
+   bumps version to 3 ONLY if it folded something (section 6.7 policy: only
+   files that benefit pay). Validator: `same_as` legal at version >= 3, must
+   resolve to an earlier dense frame in the same shape, no chains. MAX_VERSION
+   becomes 3. New spec/rbj-v3-draft.md. Cross-check: fold+dumps vs
+   fold+stringify byte-compare. Goldens untouched (v1/v2, full frames).
+5. **pre_conform_keys** (item 5). Optional shape member: the authored keys
+   exactly as they were before conformEase, ease blocks intact. Written only
+   when the conform changed something. Validated with the same key machinery
+   (ease allowed). Importers ignore it. No version gate (unknown-member-tolerant
+   readers, and validator validates it when present). Spec it in v3 draft as
+   version-independent optional member.
+6. **Stable shape ids** (item 6). Optional `id` string per shape, non-empty,
+   unique across shapes when present (the value-add over names). Nuke exporter
+   writes deterministic ids (node name + "/" + shape name). AE exporter does
+   NOT write ids yet: no probed stable mask identity exists - add a probe
+   script to test/probe and a line to the AE host-visit checklist instead of
+   shipping unprobed API use. Subset import matches id first, then name.
+7. **Sweep**: anything else encountered along the way, this section updated to
+   DONE, everything pushed.
+
 ## DONE: review findings F1-F4 fixed, 2026-08-23
 
 A full code and architecture review found four findings, all verified against
