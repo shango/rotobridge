@@ -18,19 +18,53 @@ honour them and falls back on the bake where it cannot, adding corrective
 keyframes until the result stays within a pixel tolerance you choose. The
 format itself is documented in `spec/`.
 
+## Install
+
+You only need the half you use. Both on one machine is fine.
+
+### After Effects
+
+**1. Turn on the scripting preference.** It is off in a fresh install and
+nothing works without it.
+
+`Edit > Preferences > Scripting & Expressions > Allow Scripts to Write Files
+and Access Network`
+
+![The After Effects preference RotoBridge needs](docs/ae-scripting-preference.png)
+
+Restart After Effects afterwards. RotoBridge checks for this when the panel
+opens and tells you if it is off, but doing it first saves a round trip.
+
+**2. Keep the six `ae/*.jsx` files together** in a folder anywhere you like.
+They include each other.
+
+**3. `File > Scripts > Run Script File...`** and pick
+`rotobridge_panel.jsx`. A small two-button window opens. Nothing is installed
+and there is nothing to uninstall - you do this each time you start After
+Effects.
+
+To dock it in the Window menu instead, the header comment in
+`rotobridge_panel.jsx` explains the layout. You can also skip the panel and
+run `rotobridge_export.jsx` / `rotobridge_import.jsx` directly.
+
+### Nuke
+
+Put the `nuke/` directory on your `NUKE_PATH`, keeping it beside `core/` -
+`rotobridge_nuke.py` walks up one level to find it. A RotoBridge menu appears
+with Export, Import and About entries.
+
+If you would rather not edit `NUKE_PATH`, `bash tools/package.sh` builds a zip
+containing an installer that copies everything into your `.nuke` folder and
+adds the one line for you.
+
 ## Using it
 
-**After Effects:** run `ae/rotobridge_panel.jsx` via
-`File > Scripts > Run Script File...` for a two-button panel (or dock it -
-the header comment in that file explains the layout), or run
-`rotobridge_export.jsx` / `rotobridge_import.jsx` directly. The scripts are
-plain ExtendScript, no installation beyond copying the `ae/` files somewhere
-together.
+Export from either side, import on the other. In After Effects, select the
+layers holding the masks; in Nuke, select the Roto node.
 
-**Nuke:** put the `nuke/` directory on your `NUKE_PATH` and a RotoBridge menu
-appears with export and import entries. Import builds a Roto node and writes a
-plain-text record next to your script saying exactly what was imported, with
-what settings, and what was warned about.
+An import builds a Roto node or a comp layer and writes a plain-text record
+next to your project saying exactly what was imported, with what settings,
+which builds were on both ends, and what was warned about.
 
 ## Layout
 
@@ -38,6 +72,7 @@ what settings, and what was warned about.
 - `ae/` - the After Effects side, ExtendScript (ES3), including a port of core
 - `nuke/` - the Nuke side, Python
 - `spec/` - the `.rbj` format specification
+- `docs/` - screenshots the README points at
 - `test/` - the test suites; `bash test/run.sh` runs everything that needs no host
 
 The AE port of the core logic is cross-checked against the Python original in
