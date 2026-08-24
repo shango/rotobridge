@@ -58,6 +58,28 @@ def _feather_offsets(record, warn, shape_name, model, closed):
     return offsets
 
 
+def _frame_offsets(dense, frames, warn, shape_name, model, closed):
+    """`_feather_offsets` over the whole range, each warning said once.
+
+    Once per frame, not once per drift pass: rebuilding the outward normals
+    inside `measure` would recompute them on every pass, and it warns, which
+    would repeat the warning once per pass as well. And once per SHAPE for
+    the warning itself: the loop is per frame but a degenerate vertex is a
+    per-shape fact, and 150 copies of one sentence bury every other warning
+    in the record - the same rule colliding anchors already follow.
+    """
+    seen = []
+
+    def once(message):
+        if message not in seen:
+            seen.append(message)
+            warn(message)
+
+    return dict((f, _feather_offsets(dense[str(f)], once, shape_name, model,
+                                     closed))
+                for f in frames)
+
+
 def _snapped_dense(spec, frames):
     """The v1 reading of an anchored shape: every anchor moved to a vertex.
 
@@ -289,12 +311,7 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
     shape.setFlag(rp.FlagType.eOpenFlag, not spec["closed"])
     knob.rootLayer.append(shape)
 
-    # Once per frame, not once per drift pass: rebuilding the outward normals
-    # inside `measure` would recompute them on every pass, and `_feather_offsets`
-    # warns, which would repeat the warning once per pass as well.
-    offsets = dict((f, _feather_offsets(dense[str(f)], warn, name, model,
-                                        spec["closed"]))
-                   for f in frames)
+    offsets = _frame_offsets(dense, frames, warn, name, model, spec["closed"])
 
     key_frames, types = _key_plan(spec, frames, offset, warn)
     written = set()

@@ -2531,6 +2531,29 @@ class TestNukeAnchoredFeather(_WithoutNuke):
         self.assertEqual(got["0"]["points"][2]["feather"], -9.0)
 
 
+class TestNukeFeatherOffsets(_WithoutNuke):
+    """The per-frame offset rebuild, and what it says when it cannot."""
+
+    def degenerate(self):
+        # Every point at one position: no polygon, no defined normals, so a
+        # non-zero feather has nowhere to point.
+        point = {"c": [10.0, 10.0], "feather": 5.0}
+        return {"points": [dict(point), dict(point), dict(point)]}
+
+    def test_a_degenerate_vertex_is_reported_once_not_once_per_frame(self):
+        # The same rule colliding anchors already follow: the loop is per
+        # frame, the fact is per shape, and 150 copies of one sentence bury
+        # every other warning in the record.
+        dense = {"0": self.degenerate(), "1": self.degenerate(),
+                 "2": self.degenerate()}
+        said = []
+        got = self.rbi._frame_offsets(dense, [0, 1, 2], said.append,
+                                      "flat", "per_point", True)
+        self.assertEqual(len(got), 3)
+        self.assertEqual(len(said), 1, said)
+        self.assertIn("[feather-degenerate-vertex]", said[0])
+
+
 class TestNukeImportRecord(_WithoutNuke):
     """What the Nuke importer puts in the record, and where it puts it.
 
