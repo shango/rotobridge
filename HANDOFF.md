@@ -2236,10 +2236,28 @@ measured in After Effects:
 - The panel checks carried over from before: `#include` resolution under
   `$.evalFile`, footer path, both buttons, `Change...` persistence.
 
-On the Nuke side, `Install for Nuke.bat` has not been run on Windows. The
-`(` and `)` in the `pluginAddPath` line are escaped for the surrounding
-`if errorlevel 1 ( ... )` block, which is the part of a batch file most likely
-to be wrong on first contact.
+On the Nuke side, `Install for Nuke.bat` **has been run on Windows and works**
+(2026-08-24). WSL can invoke `cmd.exe`, so the installer is testable from here
+with no host and no manual step - point `USERPROFILE` at a sandbox folder so
+the real `~/.nuke` is never touched:
+
+```bash
+SB=/mnt/c/Users/shann/AppData/Local/Temp/rbtest
+# a wrapper .bat that sets USERPROFILE, then calls the installer
+cmd.exe /c "$(wslpath -w "$SB/run.bat")"
+```
+
+Five cases pass: a clean install lands 13 files and writes `init.py`; the
+`pluginAddPath` line comes out as valid Python with both parens intact (the
+escaping for the surrounding `if errorlevel 1 ( ... )` block was the thing
+most likely to be wrong); a second run leaves `init.py` alone rather than
+appending twice; an existing `init.py` with someone else's tool in it is
+appended to, not clobbered, and still parses; and `robocopy /MIR` removes a
+file an older build left behind. The not-yet-unzipped guard fires with its own
+message.
+
+Do this before every drop. It is thirty seconds and it covers the half of the
+install that no tester can debug for you.
 
 **The Windows desktop copies are going away, 2026-08-24.** Stated by the user:
 they existed only to get the scripts in front of After Effects, and everything
