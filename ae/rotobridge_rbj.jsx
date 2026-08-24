@@ -264,6 +264,18 @@
                     + show(src[strings[i]]) + ", expected a string";
             }
         }
+        /* Optional: which RotoBridge build wrote the file, as against
+         * app_version, which is the host it ran in. Absent from every file
+         * written before the member existed and those stay legal, since
+         * nothing renders from it. Present and empty is not the same as
+         * absent - it says the writer tried to name itself and failed. */
+        if (hasOwn(src, "tool_version")) {
+            if (!isStr(src["tool_version"]) || src["tool_version"] === "") {
+                errs[errs.length] = "source: tool_version is "
+                    + show(src["tool_version"]) + ", expected a non-empty "
+                    + "string (omit the member instead)";
+            }
+        }
         var ints = ["width", "height"];
         for (var j = 0; j < ints.length; j++) {
             var v = src[ints[j]];

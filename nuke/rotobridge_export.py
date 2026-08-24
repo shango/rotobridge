@@ -323,6 +323,9 @@ def export_node(node, first, last, width, height, pixel_aspect, fps):
         "source": {
             "app": "Nuke",
             "app_version": nuke.NUKE_VERSION_STRING,
+            # The host above, this build below. A bug report that arrives as
+            # an .rbj alone still names what wrote it.
+            "tool_version": version.VERSION,
             "width": int(width),
             "height": int(height),
             "pixel_aspect": float(pixel_aspect),

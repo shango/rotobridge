@@ -106,3 +106,23 @@ Importers accept either an id or a name in a subset request. Writers:
   documented but unmeasured, and this project does not code against an
   unprobed host API; `test/probe/probe_ae_mask_id.jsx` is the measurement
   waiting to be run on the next host visit.
+
+### 5.3 `source.tool_version`
+
+Optional, one per file: the RotoBridge build that wrote it, as a non-empty
+string ("0.9.0"). Absent from every file written before the member existed,
+and those stay legal.
+
+`source.app_version` already names the **host** - "25.5", "16.0v4". This names
+the **tool**, which is the version that actually moves between two testers'
+machines while their After Effects and Nuke installs sit still. When a remote
+tester sends an `.rbj` with no covering note, this is what says which build
+produced it.
+
+Present-and-empty is rejected by both validators rather than treated as
+absent: an empty string says the writer tried to name itself and could not,
+which is a bug worth failing on rather than a fact worth recording.
+
+It passes the section 5 test - ignoring it cannot change what a reader draws -
+so it needs no version bump. A v1 reader that has never heard of it opens a
+file carrying it and renders exactly what a v3 reader renders.

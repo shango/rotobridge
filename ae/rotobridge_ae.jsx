@@ -300,6 +300,9 @@
         return {
             "app": ae.SOURCE_APP,
             "app_version": String(app.version),
+            /* The host above, this build below. A bug report that arrives as
+             * an .rbj alone still names what wrote it. */
+            "tool_version": RB.VERSION,
             "width": Math.round(comp.width),
             "height": Math.round(comp.height),
             "pixel_aspect": Number(comp.pixelAspect),

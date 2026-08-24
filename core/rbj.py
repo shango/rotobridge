@@ -182,6 +182,17 @@ def _validate_source(errs, src):
     for key in ("app", "app_version"):
         if not isinstance(src.get(key), str):
             errs.append("source: %s is %r, expected a string" % (key, src.get(key)))
+    # Optional: which RotoBridge build wrote the file, as against `app_version`,
+    # which is the host it ran in. Absent from every file written before the
+    # member existed, and those stay legal - nothing renders from it, so
+    # ignoring it cannot change what a reader draws (spec section 5). Present
+    # and empty is a different thing from absent, though: it says the writer
+    # tried to name itself and failed.
+    if "tool_version" in src:
+        got = src["tool_version"]
+        if not isinstance(got, str) or not got:
+            errs.append("source: tool_version is %r, expected a non-empty "
+                        "string (omit the member instead)" % (got,))
     for key in ("width", "height"):
         v = src.get(key)
         if not _is_int(v):

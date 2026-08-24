@@ -241,6 +241,22 @@ class TestSchemaRejects(unittest.TestCase):
     def test_future_version(self):
         self.reject(lambda d: d.update(version=99), "newer than this reader")
 
+    def test_source_tool_version_must_be_a_non_empty_string(self):
+        # Optional, but not optional-shaped: a member that is present and
+        # empty says the writer tried to identify itself and failed, which is
+        # exactly the case a bug report cannot afford to be vague about.
+        self.reject(lambda d: d["source"].update(tool_version=""),
+                    "tool_version")
+        self.reject(lambda d: d["source"].update(tool_version=9),
+                    "tool_version")
+
+    def test_source_tool_version_may_be_absent(self):
+        # Every file written before this member existed omits it, and they
+        # stay legal: it identifies the writer, and nothing renders from it.
+        doc = valid_doc()
+        doc["source"].pop("tool_version", None)
+        self.assertEqual(rbj.validate(doc), [])
+
     def test_missing_required_source_member(self):
         self.reject(lambda d: d["source"].pop("fps"), "missing fps")
 
@@ -3232,6 +3248,14 @@ class TestEs3CrossCheck(unittest.TestCase):
                 original = rbj.loads(fh.read())
             self.assertEqual(rbj.loads(self.es3_rewrite(original)), original,
                              os.path.basename(path))
+
+    def test_the_writing_build_survives_the_other_implementation(self):
+        # Both validators have to agree the member is legal, or a file After
+        # Effects writes is one Nuke refuses to open - which for a member that
+        # exists to make bug reports self-identifying would be a fine irony.
+        doc = valid_doc()
+        doc["source"]["tool_version"] = "0.0.1-probe"
+        self.assertEqual(rbj.loads(self.es3_rewrite(doc)), doc)
 
     def test_an_open_spline_survives_the_other_implementation(self):
         # Both readers gate `closed: false` on the version, and both writers

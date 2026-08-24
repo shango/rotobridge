@@ -984,6 +984,22 @@ describe("rbj", function () {
         eq(joined(e).indexOf("expected a boolean") > -1, true, joined(e));
     });
 
+    it("rejects a tool_version that is present and empty", function () {
+        // Absent is legal - every file written before the member existed
+        // omits it. Present and empty is not the same thing: it says the
+        // writer tried to name itself and failed.
+        var doc = minimal();
+        doc.source.tool_version = "";
+        var e = throws(function () { rbj.stringify(doc); });
+        eq(joined(e).indexOf("tool_version") > -1, true, joined(e));
+    });
+
+    it("accepts a file with no tool_version", function () {
+        var doc = minimal();
+        delete doc.source.tool_version;
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+    });
+
     it("versionFor stamps the lowest version that expresses the file",
        function () {
         eq(rbj.versionFor(minimal().shapes), 1);

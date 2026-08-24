@@ -183,6 +183,14 @@ describe("export shape", function () {
                expanded.shapes[0].frames["0"]);
     });
 
+    it("names the build that wrote it", function () {
+        // source.app_version is the host; this is RotoBridge itself. A file
+        // that turns up in a bug report with no covering note still says
+        // which build produced it.
+        var doc = runExport(mock.install(basic()));
+        eq(doc.source.tool_version, RB.VERSION);
+    });
+
     it("covers the work area exactly", function () {
         // The work area's end is the time after its last frame, so a range
         // built without the subtraction exports one frame too many.
