@@ -56,6 +56,36 @@
      * first click is an adapter rather than this file. */
     var HERE = File($.fileName).parent;
 
+    var PREF_PATH = "Edit > Preferences > Scripting & Expressions >\n"
+        + "Allow Scripts to Write Files and Access Network";
+
+    function canWriteFiles() {
+        /* Measured, not asked.
+         *
+         * `app.preferences.getPrefAsBool` can read the preference directly,
+         * but the section holding it has moved between releases - Adobe's own
+         * examples show both "Main Pref Section" and "Main Pref Section v2" -
+         * and reading the wrong section returns false. That would tell an
+         * artist whose install is fine that it is broken, every single launch,
+         * which is worse than saying nothing: the real failure at least
+         * arrives at the moment it matters. Writing a file is the capability
+         * itself, so no rename can make it lie.
+         *
+         * Both failure modes count, because both mean the same thing here:
+         * ExtendScript reports the refusal as a false return in some releases
+         * and as a thrown error in others. */
+        var probe = new File(Folder.temp.fsName + "/rotobridge_write_probe.txt");
+        try {
+            if (!probe.open("w")) { return false; }
+            probe.write("RotoBridge");
+            probe.close();
+            probe.remove();
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
     function holdsAdapters(folder) {
         /* Both, not either. A folder with one of them is a half-copied
          * deployment, which is worth refusing rather than half-running. */
@@ -171,6 +201,22 @@
         };
 
         return win;
+    }
+
+    if (!canWriteFiles()) {
+        /* Before any work, not at the write: the export reads every mask in
+         * the comp before it writes a byte, so without this the artist finds
+         * out at the end of a job rather than the start of one. Informational
+         * - the buttons stay live, because the diagnosis above is a good guess
+         * rather than a certainty, and an artist who knows better should not
+         * be locked out by it. */
+        alert("RotoBridge could not write a test file, so exporting and"
+              + " importing will probably fail.\n\nThe usual cause is this"
+              + " preference being off:\n\n" + PREF_PATH
+              + "\n\nTurn it on, restart After Effects, and open this panel"
+              + " again. If it is already on, the temp folder itself is"
+              + " unwritable - say so in your report:\n\n"
+              + Folder.temp.fsName, LABEL);
     }
 
     var panel = build(thisObj);

@@ -260,10 +260,21 @@
         return text;
     };
 
+    /* Named here rather than left to the artist to guess. The preference is
+     * off by default, nothing else in After Effects hints at it, and with it
+     * off the only symptom is a refused open that reads like a folder
+     * permission problem. The panel probes for this at launch; this is the
+     * same diagnosis for anyone running the adapters directly. */
+    ae.WRITE_PREF = "If it is not, the cause is usually this preference being"
+        + " off:\n\nEdit > Preferences > Scripting & Expressions >\n"
+        + "Allow Scripts to Write Files and Access Network";
+
     ae.writeText = function (file, text) {
         file.encoding = "UTF-8";
         if (!file.open("w")) {
-            throw new Error("cannot write " + file.fsName);
+            throw new Error("cannot write " + file.fsName
+                            + "\n\nCheck the folder exists and is writable. "
+                            + ae.WRITE_PREF);
         }
         file.write(text);
         file.close();
@@ -275,7 +286,9 @@
          * first. `"a"` creates the file when it is not there yet. */
         file.encoding = "UTF-8";
         if (!file.open("a")) {
-            throw new Error("cannot write " + file.fsName);
+            throw new Error("cannot write " + file.fsName
+                            + "\n\nCheck the folder exists and is writable. "
+                            + ae.WRITE_PREF);
         }
         file.write(text);
         file.close();
