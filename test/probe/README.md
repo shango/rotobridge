@@ -166,31 +166,39 @@ not update it - it makes it stale, and every downstream measurement keeps being
 taken against the old answer. Re-exporting is a by-hand run, and the last
 step is the one that matters.
 
-```bash
-DEST="/mnt/c/Users/shann/OneDrive/Desktop/rotobridge_ae"
-cp ae/*.jsx test/probe/setup_ae_scene.jsx "$DEST/"
-for f in ae/*.jsx; do diff -q "$f" "$DEST/$(basename $f)"; done
+**Run the scripts out of the repo, over the WSL share.** After Effects reaches
+this tree at
+
+```
+\\wsl.localhost\Ubuntu-24.04\home\sgold\dev\repos\rotobridge\ae\
 ```
 
-`cp ae/*.jsx` also carries **`rotobridge_panel.jsx`**, which is the panel: run
-it with `File > Scripts > Run Script File...` and it opens as a floating
-palette with an Export and an Import button over the same two adapters, plus a
-footer naming the folder it is running them from. That footer is the cheap
-in-host version of the `diff` below - it will not tell you the scripts are a
-commit behind, but it will tell you which copy is about to run, which is the
-question the failure below turns on. To dock it instead, put it in
-`Scripts/ScriptUI Panels/` with the five adapters in a `rotobridge` folder
-beside it; the panel looks there second, and keeping them one level down is
-what stops five extra entries appearing in the Window menu.
+so `File > Scripts > Run Script File...` can point straight at
+`rotobridge_panel.jsx` or `rotobridge_export.jsx` there. Nothing is copied and
+nothing can be stale.
 
-Do the copy and the `diff` even when you are sure, because a stale deployment is
-the one failure this whole procedure cannot see. The scripts run on the Windows
-side and the acceptance check runs here; nothing connects them. An export from a
-script one commit behind produces a plausible file, a plausible alert, and a
-diff that is simply the wrong shape - and the natural reading of that diff is
-that the fixture moved. This has already happened once. The five `ae/*.jsx` load
-each other and must go together; `setup_ae_scene.jsx` lives elsewhere in the
-tree, so a `cp ae/*.jsx` on its own leaves it behind.
+That matters more than the convenience. There used to be a deployed copy on the
+Windows desktop, and a stale one was the single failure this whole procedure
+could not see: the scripts ran on the Windows side, the acceptance check ran
+here, nothing connected them, and an export from a script one commit behind
+produced a plausible file, a plausible alert, and a diff whose natural reading
+was that the fixture had moved. It happened. Running from the repo removes the
+copy that made it possible, which is worth more than the `diff` ritual that
+used to guard it.
+
+The panel's footer names the folder it is running from, so it now reads as a
+`wsl.localhost` path. That is the in-host confirmation that no copy is
+involved. The six `ae/*.jsx` load each other and must stay together, which they
+do in the repo; `setup_ae_scene.jsx` lives under `test/probe/`, so point the
+host at it there.
+
+**Unverified, 2026-08-24.** After Effects has not yet been asked to run these
+from the share. ExtendScript spells a UNC path `//wsl.localhost/...` internally
+and `#include` resolution across it is untested, which is exactly the sort of
+thing this file exists to make someone measure rather than assume. If it fails,
+copying `ae/*.jsx` and `test/probe/setup_ae_scene.jsx` into one local folder
+still works - but then the `diff` against the repo comes back with it, because
+the failure above comes back with it too.
 
 1. Make an **empty comp, 1920 x 1080, 24 fps, at least 25 frames** and leave it
    active. Those numbers land in the file's `source` block and the builder takes

@@ -976,23 +976,26 @@ Both host applications are **Windows-side**; this repo lives in WSL.
   `--nc -t` works. NC caps Python-visible nodes at 10, and `scriptSaveAs(".nk")`
   silently writes nothing - only `.nknc` saves. Full invocation in
   `test/probe/README.md`.
-- AE runs `C:\Users\shann\OneDrive\Desktop\probe_ae.jsx`, a **copy**. Sync it
-  before every run or the old version runs and the results look unchanged:
+- **AE runs the scripts out of this repo, over the WSL share** (2026-08-24).
+  The Windows desktop copies are gone; everything lives here and nothing is
+  deployed. The host reaches the tree at
 
-  ```bash
-  cp test/probe/probe_ae.jsx "/mnt/c/Users/shann/OneDrive/Desktop/probe_ae.jsx"
+  ```
+  \\wsl.localhost\Ubuntu-24.04\home\sgold\dev\repos\rotobridge\
   ```
 
-  The adapters are a **folder**, not one file - all five `#include` each other,
-  so they only run from a directory that holds every one of them:
+  so `Run Script File...` points at `ae/rotobridge_panel.jsx` or anything under
+  `test/probe/` directly. This removes the stale-deployment failure below
+  rather than guarding against it: there is no second copy to fall behind.
 
-  ```bash
-  cp ae/*.jsx "/mnt/c/Users/shann/OneDrive/Desktop/rotobridge_ae/"
-  ```
+  Not yet measured in the host - see `test/probe/README.md` for what to check
+  and what to fall back to if `#include` will not resolve across the share.
 
-  Synced there 2026-08-21, along with `test/probe/setup_ae_scene.jsx`, which
-  lives in the same folder. Re-copy after any edit under `ae/`, for the same
-  reason the probe needs it. `test/probe/probe_ae_phase5.jsx` goes to the same
+  Superseded, kept because the reasoning still applies to any copy: the
+  adapters are a **folder**, not one file - all six `#include` each other, so
+  they only run from a directory holding every one of them, and
+  `setup_ae_scene.jsx` is not among them. What follows described the copy that
+  no longer exists. `test/probe/probe_ae_phase5.jsx` goes to the same
   desktop folder and is standalone - it includes nothing, so it runs from
   anywhere.
 
@@ -2194,7 +2197,8 @@ Chunks, each a commit:
    versions it is a complete bug report a tester can email with no explanation.
 7. Packaging: `tools/package.sh` builds `dist/RotoBridge-<ver>.zip` holding both
    sides, `install_nuke.bat`, and a one-page tester README.
-8. Deploy to the Desktop folder and run everything host-free.
+8. Run everything host-free. (This chunk originally said "deploy to the
+   Desktop folder"; that folder is being deleted - see below.)
 
 All eight chunks are in, 343 + 293 host-free tests green:
 
@@ -2236,3 +2240,14 @@ On the Nuke side, `Install for Nuke.bat` has not been run on Windows. The
 `(` and `)` in the `pluginAddPath` line are escaped for the surrounding
 `if errorlevel 1 ( ... )` block, which is the part of a batch file most likely
 to be wrong on first contact.
+
+**The Windows desktop copies are going away, 2026-08-24.** Stated by the user:
+they existed only to get the scripts in front of After Effects, and everything
+belongs in this repo. Do not copy build output, adapters or probes onto the
+desktop again. After Effects reaches the tree over
+`\\wsl.localhost\Ubuntu-24.04\home\sgold\dev\repos\rotobridge\`, which
+also retires the stale-deployment hazard that `test/probe/README.md` spends a
+section guarding against - there is no longer a second copy that can fall
+behind. `dist/` stays untracked: `tools/package.sh` regenerates it from a
+clean tree, so the zip and both paste sources are reproducible from a commit
+rather than kept as artefacts.
