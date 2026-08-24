@@ -47,8 +47,6 @@ find "${STAGE}" -name '*.pyc' -delete
 crlf() { sed 's/$/\r/' "$1" > "$2"; }
 
 crlf tools/install_nuke.bat "${STAGE}/nuke/Install for Nuke.bat"
-sed "s/@VERSION@/${VERSION}/" tools/tester_readme.txt \
-    | sed 's/$/\r/' > "${STAGE}/READ ME FIRST.txt"
 
 # The commit is not in the READ ME - a tester has no use for it - but it is in
 # the zip, so a returned bug report can be tied to a tree.
@@ -57,16 +55,21 @@ printf '%s built from %s\r\n' "${NAME}" "${COMMIT}" > "${STAGE}/build.txt"
 (cd dist && zip -qr "${NAME}.zip" "${NAME}")
 rm -rf "${STAGE}"
 
-# The tester-facing instructions also exist as a Google Doc, and this is what
-# that Doc is pasted from: open it in a browser, select all, copy. It sits
-# beside the zip rather than inside it, since it is for whoever cuts the drop
-# rather than for the tester. The screenshot travels next to it so the paste
-# carries the image.
+# The tester-facing instructions are a Google Doc, not a file in the zip, so
+# these two sit BESIDE the zip: they are what the Doc gets pasted from, for
+# whoever cuts the drop rather than for the tester. The HTML keeps its
+# headings and picture through a copy-paste; the text is the same words with
+# none of that. The screenshot travels next to the HTML so the paste carries
+# the image.
 sed "s/@VERSION@/${VERSION}/g" tools/tester_readme.html > dist/tester_readme.html
+sed "s/@VERSION@/${VERSION}/" tools/tester_readme.txt > "dist/READ ME FIRST.txt"
 cp docs/ae-scripting-preference.png dist/
 
 echo
-echo "dist/tester_readme.html   (paste source for the Google Doc)"
+echo "paste one of these into the Google Doc:"
+echo "  dist/tester_readme.html   (headings and the screenshot survive)"
+echo "  dist/READ ME FIRST.txt    (same words, plain)"
+echo
 echo "dist/${NAME}.zip"
 # Fields 1-3 are size, date and time; the name is everything after, and two
 # of the names in here have spaces in them.
