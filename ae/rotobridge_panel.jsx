@@ -36,6 +36,16 @@
  */
 
 (function (thisObj) {
+    /* Kept in step with `core/version.py` and `RB.VERSION` by
+     * `tools/bump_version.py`; a cross-check test fails if they drift. This
+     * file cannot share the port's constant because it deliberately includes
+     * nothing - see the header. */
+    var VERSION = "0.9.0";
+    var LABEL = "RotoBridge " + VERSION;
+
+    /* Deliberately version-free, unlike LABEL: the settings section is where
+     * the artist's chosen scripts folder lives, and folding the version into
+     * it would silently forget that choice on every update. */
     var SECTION = "RotoBridge";
     var FOLDER_KEY = "scriptsFolder";
     var EXPORT = "rotobridge_export.jsx";
@@ -80,7 +90,7 @@
             alert("That folder does not hold both adapters.\n\n"
                   + picked.fsName + "\n\nIt needs " + EXPORT + " and "
                   + IMPORT + ", and the three files they include.",
-                  "RotoBridge");
+                  LABEL);
             return null;
         }
         app.settings.saveSetting(SECTION, FOLDER_KEY, picked.fsName);
@@ -92,7 +102,7 @@
         if (!script.exists) {
             /* Reachable: the folder held both adapters when the panel opened
              * and does not now. Say which file, not "something went wrong". */
-            alert("Missing script:\n\n" + script.fsName, "RotoBridge");
+            alert("Missing script:\n\n" + script.fsName, LABEL);
             return;
         }
         /* The same call `Run Script File...` makes. Both adapters catch their
@@ -103,14 +113,14 @@
         } catch (e) {
             alert("RotoBridge could not run " + name + ":\n\n"
                   + (e.message || e)
-                  + (e.line ? "\n\n(line " + e.line + ")" : ""), "RotoBridge");
+                  + (e.line ? "\n\n(line " + e.line + ")" : ""), LABEL);
         }
     }
 
     function build(host) {
         var win = (host instanceof Panel)
             ? host
-            : new Window("palette", "RotoBridge", undefined,
+            : new Window("palette", LABEL, undefined,
                          { resizeable: true });
         win.orientation = "column";
         win.alignChildren = ["fill", "top"];
@@ -135,9 +145,11 @@
 
         function refresh() {
             var found = folder !== null;
+            /* The build number leads, because a bug report arrives as a
+             * screenshot and the title bar is the first thing a crop loses. */
             where.text = found
-                ? "scripts: " + folder.fsName
-                : "scripts not found - use Change...";
+                ? LABEL + " - scripts: " + folder.fsName
+                : LABEL + " - scripts not found, use Change...";
             exportBtn.enabled = found;
             importBtn.enabled = found;
         }

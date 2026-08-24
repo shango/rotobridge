@@ -26,6 +26,16 @@
 var RB = (function () {
     var RB = {};
 
+    /* --- build version ----------------------------------------------------
+     *
+     * Mirrors `core/version.py`; see that file for why this is not the .rbj
+     * format version and why three files spell the same number.
+     */
+
+    RB.NAME = "RotoBridge";
+    RB.VERSION = "0.9.0";
+    RB.LABEL = RB.NAME + " " + RB.VERSION;
+
     /* --- ES3 shims --------------------------------------------------------
      *
      * Local, not prototype patches. See the file header.

@@ -33,7 +33,8 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core import drift, geom, interp, messages, rbj, report, timing
+from core import (drift, geom, interp, messages, rbj, report, timing,
+                  version)
 
 GOLDEN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "golden")
 GOLDEN_SQUARE = os.path.join(GOLDEN, "square.rbj")
@@ -3190,6 +3191,28 @@ class TestEs3CrossCheck(unittest.TestCase):
         theirs = json.loads(proc.stdout.decode("utf-8"))
         ours = json.loads(rbj.dumps(rbj.fold_frames(doc)))
         self.assertEqual(theirs, ours)
+
+    def test_every_copy_of_the_build_version_agrees(self):
+        # The build version is what a tester reads off a screenshot and quotes
+        # back, so a stale copy of it is worse than none: it names a build that
+        # was never shipped. Three files hold it - the panel includes nothing
+        # by design, so it cannot share the port's constant - and this is the
+        # fence that keeps them equal. `tools/bump_version.py` rewrites all
+        # three at once, and this fails if one is edited by hand.
+        script = ("global.RB = require(%s);"
+                  "process.stdout.write(RB.VERSION);"
+                  ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),)
+        proc = subprocess.run([NODE, "-e", script],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            self.fail("node failed:\n" + proc.stderr.decode("utf-8", "replace"))
+        self.assertEqual(proc.stdout.decode("utf-8"), version.VERSION)
+
+        with open(os.path.join(AE, "rotobridge_panel.jsx")) as fh:
+            panel = fh.read()
+        found = re.search(r'var VERSION = "([^"]+)";', panel)
+        self.assertIsNotNone(found, "the panel has no VERSION constant")
+        self.assertEqual(found.group(1), version.VERSION)
 
     def test_it_accepts_what_extendscript_writes(self):
         text = self.es3_rewrite(valid_doc())
