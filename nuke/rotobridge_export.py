@@ -18,7 +18,7 @@ from rotobridge_nuke import (ATTR_BLEND, ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              attr_value, blend_to_rbj, falloff_to_rbj, geom,
                              interp, is_closed, iter_shapes, messages,
                              point_members, rbj, roto_knob, script_range,
-                             selected_roto_node, timing, vec2)
+                             selected_roto_node, timing, vec2, version)
 
 
 def _read_point(cp, frame, matrix):
@@ -354,7 +354,7 @@ def main():
     node = selected_roto_node()
     first, last = script_range()
 
-    panel = nuke.Panel("RotoBridge export")
+    panel = nuke.Panel("%s export" % version.LABEL)
     panel.addFilenameSearch("output .rbj", "")
     panel.addSingleLineInput("first frame", str(first))
     panel.addSingleLineInput("last frame", str(last))
@@ -369,8 +369,8 @@ def main():
                          int(panel.value("last frame")))
 
     frames = len(doc["shapes"][0]["frames"]) if doc["shapes"] else 0
-    message = "Wrote %d shape(s), %d frames to %s" % (
-        len(doc["shapes"]), frames, path)
+    message = "%s\n\nWrote %d shape(s), %d frames to %s" % (
+        version.LABEL, len(doc["shapes"]), frames, path)
     if doc["warnings"]:
         message += "\n\n%d warning(s):\n  %s" % (
             len(doc["warnings"]), "\n  ".join(doc["warnings"]))

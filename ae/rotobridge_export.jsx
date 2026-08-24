@@ -951,13 +951,15 @@
                 lines[lines.length] = "  - " + warn.messages[i];
             }
         }
-        alert(lines.join("\n"), "RotoBridge");
+        lines[lines.length] = "";
+        lines[lines.length] = RB.LABEL;
+        alert(lines.join("\n"), RB.LABEL);
     }
 
     try {
         main();
     } catch (e) {
         alert("RotoBridge export failed:\n\n" + (e.message || e)
-              + (e.line ? "\n\n(line " + e.line + ")" : ""), "RotoBridge");
+              + (e.line ? "\n\n(line " + e.line + ")" : ""), RB.LABEL);
     }
 }());

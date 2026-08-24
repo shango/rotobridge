@@ -1636,9 +1636,16 @@ class TestUiEntryPoints(unittest.TestCase):
 
     def test_the_menu_registers_both_directions(self):
         found = self.commands()
-        self.assertEqual(len(found), 2, found)
         self.assertTrue(any("export" in c for c in found), found)
         self.assertTrue(any("import" in c for c in found), found)
+
+    def test_the_menu_offers_an_about_entry(self):
+        # Load-bearing, not decoration. Every dialog RotoBridge raises names
+        # the build, but a tester asked which build they are on has nowhere to
+        # look when no dialog is open: After Effects has the panel footer and
+        # Nuke has nothing else.
+        self.assertTrue(any("about" in c for c in self.commands()),
+                        self.commands())
 
     def test_every_menu_command_names_a_function_that_exists(self):
         for source in self.commands():
@@ -2411,7 +2418,7 @@ class _WithoutNuke(unittest.TestCase):
             setattr(shared, name, None)
         shared.drift, shared.geom = drift, geom
         shared.interp, shared.rbj, shared.report = interp, rbj, report
-        shared.messages = messages
+        shared.messages, shared.version = messages, version
         stubs["nuke"] = nuke_stub
         stubs["nuke.rotopaint"] = rp_stub
         stubs["rotobridge_nuke"] = shared

@@ -26,7 +26,8 @@ def _bootstrap_core():
 
 _bootstrap_core()
 
-from core import drift, geom, interp, messages, rbj, report, timing  # noqa: E402
+from core import (drift, geom, interp, messages, rbj, report, timing,  # noqa: E402
+                  version)
 
 VIEW = "main"
 
@@ -37,6 +38,14 @@ ATTR_INVERTED = "inv"
 ATTR_FEATHER_X = "fx"
 ATTR_FEATHER_Y = "fy"
 ATTR_FEATHER_FALLOFF = "ff"
+
+
+def about():
+    """What build this is and where it was installed, for a bug report."""
+    nuke.message("%s\n\ninstalled at %s\n\nwrites .rbj format version %d"
+                 % (version.LABEL, os.path.dirname(os.path.abspath(__file__)),
+                    rbj.MAX_VERSION))
+
 
 # Phase 0 case 63 and Phase 2 case 74: AnimCurveKey.interpolationType wants the
 # InterpolationType enum PLUS ONE. A fresh key reports 256, an unset sentinel.

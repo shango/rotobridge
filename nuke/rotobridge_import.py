@@ -27,7 +27,7 @@ from rotobridge_nuke import (ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              blend_from_rbj, drift, falloff_from_rbj, geom,
                              interp, messages, point_members, rbj, report,
                              roto_knob, set_curve_linear, set_curve_types,
-                             write_attr_curve)
+                             write_attr_curve, version)
 
 DEFAULT_TOLERANCE = 0.5
 
@@ -565,7 +565,7 @@ def _parse_tolerance(raw):
 
 
 def main():
-    panel = nuke.Panel("RotoBridge import")
+    panel = nuke.Panel("%s import" % version.LABEL)
     panel.addFilenameSearch("input .rbj", "")
     panel.addSingleLineInput("frame offset", "0")
     panel.addSingleLineInput("drift tolerance px (0 = every frame, inf = none)",
@@ -586,7 +586,8 @@ def main():
     node, warnings, reports, written = import_from_file(
         path, int(panel.value("frame offset")), tolerance, subset)
 
-    lines = ["Imported %d shape(s) into %s" % (len(reports), node.name())]
+    lines = [version.LABEL, "",
+             "Imported %d shape(s) into %s" % (len(reports), node.name())]
     for entry in reports:
         line = "  %s: %d authored key(s)" % (entry["name"], entry["authored"])
         if entry["corrective"]:
