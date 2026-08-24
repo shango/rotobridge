@@ -59,4 +59,7 @@ rm -rf "${STAGE}"
 
 echo
 echo "dist/${NAME}.zip"
-unzip -l "dist/${NAME}.zip" | tail -n +4 | head -n -2 | awk '{print "  " $4}'
+# Fields 1-3 are size, date and time; the name is everything after, and two
+# of the names in here have spaces in them.
+unzip -l "dist/${NAME}.zip" | tail -n +4 | head -n -2 \
+    | awk '{ $1 = $2 = $3 = ""; sub(/^ +/, ""); print "  " $0 }'
