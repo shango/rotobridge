@@ -80,9 +80,14 @@ the test suite, down to the bytes both write.
 
 ## Handing it to someone else
 
-`bash tools/package.sh` builds `dist/RotoBridge-<version>.zip`: both sides,
-a Nuke installer, and a one-page READ ME, with nothing else in it. It refuses
-to build from a dirty tree, so every zip corresponds to a commit.
+`bash tools/package.sh` builds `dist/RotoBridge-<version>.zip`: both sides and
+a Nuke installer, with nothing else in it. It refuses to build from a dirty
+tree, so every zip corresponds to a commit.
+
+The tester-facing instructions are not in the zip - they live as a document
+handed out alongside it. The packager writes what that document is pasted from
+next to the zip, in HTML (keeps its headings and the preference screenshot
+through a copy-paste) and in plain text.
 
 `python3 tools/bump_version.py 0.9.1` sets the build version everywhere it is
 spelled. That version is not the `.rbj` format version - it is what a dialog
