@@ -11,6 +11,7 @@ because prd.md section 11 requires aborting rather than emitting partial output:
 a file that is written but invalid looks correct until it is composited.
 """
 
+import copy
 import json
 import math
 import re
@@ -22,7 +23,13 @@ VERSION = 1
 # is still a v1 file and still opens in a v1 reader.
 VERSION_OPEN_SPLINES = 2
 VERSION_ANCHORED_FEATHER = 2
-MAX_VERSION = 2
+# spec/rbj-v3-draft.md section 3: a dense frame may say {"same_as": N} instead
+# of repeating an earlier frame it is identical to. Roto is full of held
+# spans, and a shape held over 1000 frames used to write 1000 identical frame
+# objects. A v1/v2 reader hard-fails on the reference record, so unlike the
+# optional members, this one costs a version.
+VERSION_FRAME_REFS = 3
+MAX_VERSION = 3
 
 BLENDS = ("union", "difference", "intersection")
 # spec/rbj-v2-draft.md section 6.2: three exclusive models, not layers.
@@ -215,11 +222,12 @@ def _validate_shape(errs, index, shape, frames_expected, version):
                     % (where, VERSION_ANCHORED_FEATHER, version))
 
     frame_keys = _validate_frames(errs, where, shape.get("frames"),
-                                  frames_expected, model, closed)
+                                  frames_expected, model, closed, version)
     _validate_keys(errs, where, shape.get("keys"), frame_keys)
 
 
-def _validate_frames(errs, where, frames, frames_expected, model, closed):
+def _validate_frames(errs, where, frames, frames_expected, model, closed,
+                     version):
     """Validate the dense layer. Returns the frame keys present, or None.
 
     None means the dense layer was unusable, so callers should not go on to
@@ -256,6 +264,10 @@ def _validate_frames(errs, where, frames, frames_expected, model, closed):
     for key in ordered:
         if len(shape_errs) > MAX_ERRORS_PER_SHAPE:
             break
+        if _is_ref(frames[key]):
+            _validate_ref(shape_errs, "%s frame %s" % (where, key), key,
+                          frames[key], frames, version)
+            continue
         n, anchors = _validate_frame_record(shape_errs,
                                             "%s frame %s" % (where, key),
                                             frames[key], model, closed)
@@ -286,6 +298,103 @@ def _validate_frames(errs, where, frames, frames_expected, model, closed):
                     "(spec/rbj-v2-draft.md section 6.3)" % (where, detail))
 
     return present
+
+
+def _is_ref(rec):
+    """A frame that says it is the same as an earlier one - exactly
+    {"same_as": N} and nothing else (spec/rbj-v3-draft.md section 3)."""
+    return isinstance(rec, dict) and set(rec.keys()) == {"same_as"}
+
+
+def _validate_ref(errs, where, key, rec, frames, version):
+    if version is not None and version < VERSION_FRAME_REFS:
+        errs.append("%s: same_as needs version %d; this file declares "
+                    "version %d (spec/rbj-v3-draft.md section 3)"
+                    % (where, VERSION_FRAME_REFS, version))
+    target = rec["same_as"]
+    if not _is_int(target):
+        errs.append("%s: same_as is %r, expected an integer frame"
+                    % (where, target))
+        return
+    if target >= int(key):
+        # Earlier only. Backward references keep a reader single-pass and
+        # make a cycle impossible to write.
+        errs.append("%s: same_as %d does not point at an earlier frame"
+                    % (where, target))
+        return
+    got = frames.get(str(target))
+    if got is None:
+        errs.append("%s: same_as %d, which is not in the dense layer"
+                    % (where, target))
+    elif _is_ref(got):
+        errs.append("%s: same_as %d, which is itself a reference; references "
+                    "do not chain, so every reference resolves in one step"
+                    % (where, target))
+
+
+def fold_frames(doc):
+    """Fold runs of identical consecutive frames into references.
+
+    Returns a new document; `doc` is untouched. Bumps the version to
+    VERSION_FRAME_REFS only when something actually folded, which is the
+    section 6.7 policy again: only the files that benefit pay the
+    compatibility cost, and a shape that moves every frame stays a v1 file.
+
+    Explicit rather than built into `dumps`, so `loads(dumps(doc))` stays the
+    identity and the exporters own the decision - they call this right before
+    serializing. Equality is data equality, which both implementations agree
+    on: Python's == treats 1 and 1.0 as the same value and JavaScript has one
+    number type, so the two writers make the same folding decisions.
+    """
+    folded_any = False
+    shapes_out = []
+    for shape in doc["shapes"]:
+        frames = shape["frames"]
+        out = {}
+        head = None
+        for key in sorted(frames, key=int):
+            rec = frames[key]
+            if head is not None and rec == frames[head]:
+                out[key] = {"same_as": int(head)}
+                folded_any = True
+            else:
+                out[key] = rec
+                head = key
+        folded = dict(shape)
+        folded["frames"] = out
+        shapes_out.append(folded)
+    out_doc = dict(doc)
+    out_doc["shapes"] = shapes_out
+    if folded_any and out_doc.get("version", 0) < VERSION_FRAME_REFS:
+        out_doc["version"] = VERSION_FRAME_REFS
+    return out_doc
+
+
+def expand_frames(doc):
+    """Resolve every reference to a deep copy of its frame.
+
+    The inverse of `fold_frames`, applied by `loads` after validation so
+    everything downstream of a reader - the drift pass, the importers, the
+    tests - still sees a dense layer on every frame. Deep copies, because two
+    keys sharing one record would let a mutation of "frame 11" silently edit
+    frame 10 as well.
+    """
+    shapes_out = []
+    for shape in doc["shapes"]:
+        frames = shape["frames"]
+        out = {}
+        for key in frames:
+            rec = frames[key]
+            if _is_ref(rec):
+                out[key] = copy.deepcopy(frames[str(rec["same_as"])])
+            else:
+                out[key] = rec
+        expanded = dict(shape)
+        expanded["frames"] = out
+        shapes_out.append(expanded)
+    out_doc = dict(doc)
+    out_doc["shapes"] = shapes_out
+    return out_doc
 
 
 def _validate_frame_record(errs, where, rec, model, closed):
@@ -508,7 +617,7 @@ def loads(text):
     errs = validate(doc)
     if errs:
         raise RbjError(errs)
-    return doc
+    return expand_frames(doc)
 
 
 def _pretty(obj, indent, level):

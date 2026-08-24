@@ -238,7 +238,7 @@ class TestSchemaRejects(unittest.TestCase):
         self.reject(lambda d: d.pop("version"), "version is None")
 
     def test_future_version(self):
-        self.reject(lambda d: d.update(version=3), "newer than this reader")
+        self.reject(lambda d: d.update(version=99), "newer than this reader")
 
     def test_missing_required_source_member(self):
         self.reject(lambda d: d["source"].pop("fps"), "missing fps")
@@ -391,6 +391,93 @@ class TestSchemaRejects(unittest.TestCase):
         doc["shapes"][0]["frames"]["11"]["points"].pop()
         errs = rbj.validate(doc)
         self.assertIn("'tri'", " | ".join(errs))
+
+
+class TestFrameRefs(unittest.TestCase):
+    """Version 3's dense-layer dedup (spec/rbj-v3-draft.md section 3).
+
+    Roto is full of held spans, and a shape held over 1000 frames used to
+    write 1000 identical frame objects. `fold_frames` turns a run of
+    data-equal consecutive frames into {"same_as": head}; `loads` expands the
+    references back, so everything downstream still sees a dense layer.
+    """
+
+    def held(self, count=6):
+        """A shape holding one pose over `count` frames."""
+        doc = valid_doc()
+        shape = doc["shapes"][0]
+        rec = shape["frames"]["10"]
+        shape["frames"] = dict(
+            (str(f), json.loads(json.dumps(rec))) for f in range(1, count + 1))
+        shape["keys"] = None
+        doc["range"] = [1, count]
+        return doc
+
+    def test_a_held_span_folds_to_references_and_costs_version_3(self):
+        folded = rbj.fold_frames(self.held())
+        frames = folded["shapes"][0]["frames"]
+        self.assertEqual(frames["1"], self.held()["shapes"][0]["frames"]["1"])
+        for f in range(2, 7):
+            self.assertEqual(frames[str(f)], {"same_as": 1}, f)
+        self.assertEqual(folded["version"], 3)
+
+    def test_a_moving_shape_does_not_fold_and_stays_version_1(self):
+        # Section 6.7's policy again: only the files that benefit pay the
+        # compatibility cost.
+        doc = valid_doc()
+        folded = rbj.fold_frames(doc)
+        self.assertEqual(folded, doc)
+        self.assertEqual(folded["version"], 1)
+
+    def test_loads_expands_what_fold_wrote(self):
+        doc = self.held()
+        back = rbj.loads(rbj.dumps(rbj.fold_frames(doc)))
+        self.assertEqual(back["shapes"], doc["shapes"])
+        self.assertEqual(back["version"], 3)
+
+    def test_expansion_copies_so_frames_stay_independent(self):
+        back = rbj.loads(rbj.dumps(rbj.fold_frames(self.held())))
+        frames = back["shapes"][0]["frames"]
+        frames["2"]["opacity"] = 0.25
+        self.assertEqual(frames["1"]["opacity"], 1.0,
+                         "editing an expanded frame edited its source")
+
+    def test_fold_does_not_mutate_its_input(self):
+        doc = self.held()
+        rbj.fold_frames(doc)
+        self.assertEqual(doc["version"], 1)
+        self.assertNotIn("same_as", json.dumps(doc["shapes"]))
+
+    def ref_doc(self, mutate=None):
+        doc = rbj.fold_frames(self.held())
+        if mutate:
+            mutate(doc)
+        return rbj.validate(doc)
+
+    def test_a_reference_validates_at_version_3(self):
+        self.assertEqual(self.ref_doc(), [])
+
+    def test_a_reference_needs_version_3(self):
+        errs = self.ref_doc(lambda d: d.update(version=1))
+        self.assertIn("same_as needs version 3", " | ".join(errs))
+
+    def test_a_reference_must_point_backward(self):
+        def forward(d):
+            d["shapes"][0]["frames"]["2"] = {"same_as": 3}
+        errs = self.ref_doc(forward)
+        self.assertIn("does not point at an earlier frame", " | ".join(errs))
+
+    def test_a_reference_must_resolve(self):
+        def dangling(d):
+            d["shapes"][0]["frames"]["2"] = {"same_as": 0}
+        errs = self.ref_doc(dangling)
+        self.assertIn("not in the dense layer", " | ".join(errs))
+
+    def test_references_do_not_chain(self):
+        def chain(d):
+            d["shapes"][0]["frames"]["3"] = {"same_as": 2}
+        errs = self.ref_doc(chain)
+        self.assertIn("itself a reference", " | ".join(errs))
 
 
 class TestSerialization(unittest.TestCase):
@@ -2978,6 +3065,34 @@ class TestEs3CrossCheck(unittest.TestCase):
         for code in messages.codes():
             self.assertEqual(got["rendered"][code],
                              messages.render(code, params[code]), code)
+
+    def test_both_implementations_fold_the_same_frames(self):
+        # Same doc, folded on each side; the fold decisions must agree, or a
+        # file one application wrote compact would re-export fat from the
+        # other. Compared as data (json.loads both ways) because the number
+        # spelling divergence (1 vs 1.0) is accepted; the SHAPE of the fold -
+        # which frames are references, and to where - is not allowed to
+        # differ.
+        doc = TestFrameRefs().held()
+        script = (
+            "global.RB = require(%s);"
+            "require(%s);"
+            "var chunks = [];"
+            "process.stdin.on('data', function (c) { chunks.push(c); });"
+            "process.stdin.on('end', function () {"
+            "  var doc = JSON.parse(chunks.join(''));"
+            "  process.stdout.write(RB.rbj.stringify(RB.rbj.foldFrames(doc)));"
+            "});"
+        ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),
+             json.dumps(os.path.join(AE, "rotobridge_rbj.jsx")))
+        proc = subprocess.run([NODE, "-e", script],
+                              input=json.dumps(doc).encode("utf-8"),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            self.fail("node failed:\n" + proc.stderr.decode("utf-8", "replace"))
+        theirs = json.loads(proc.stdout.decode("utf-8"))
+        ours = json.loads(rbj.dumps(rbj.fold_frames(doc)))
+        self.assertEqual(theirs, ours)
 
     def test_it_accepts_what_extendscript_writes(self):
         text = self.es3_rewrite(valid_doc())

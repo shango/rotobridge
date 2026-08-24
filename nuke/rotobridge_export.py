@@ -327,7 +327,9 @@ def export_to_file(node, path, first, last):
     fmt = node.format()
     doc = export_node(node, first, last, fmt.width(), fmt.height(),
                       fmt.pixelAspect(), nuke.root()["fps"].value())
-    text = rbj.dumps(doc)
+    # Folding is the writer's decision, made at the last moment so the
+    # returned document - which main() reports from - stays dense.
+    text = rbj.dumps(rbj.fold_frames(doc))
     handle = open(path, "w")
     try:
         handle.write(text + "\n")

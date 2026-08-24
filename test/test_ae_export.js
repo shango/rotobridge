@@ -166,6 +166,23 @@ describe("export shape", function () {
         eq(host.written.charAt(host.written.length - 1), "\n");
     });
 
+    it("folds a static mask into frame references at version 3", function () {
+        // spec/rbj-v3-draft.md section 3: roto is full of held spans, and a
+        // shape held over the whole range used to write every frame in full.
+        var host = mock.install(basic({
+            mask: { pathAt: function () { return movingSquare(0); } }
+        }));
+        var doc = runExport(host);
+        eq(doc.version, 3);
+        deepEq(doc.shapes[0].frames["1"], { same_as: 0 });
+        deepEq(doc.shapes[0].frames["4"], { same_as: 0 });
+        // What an importer sees: RB.rbj.parse expands the references, so the
+        // dense layer is whole again downstream.
+        var expanded = RB.rbj.parse(host.written);
+        deepEq(expanded.shapes[0].frames["4"],
+               expanded.shapes[0].frames["0"]);
+    });
+
     it("covers the work area exactly", function () {
         // The work area's end is the time after its last frame, so a range
         // built without the subtraction exports one frame too many.

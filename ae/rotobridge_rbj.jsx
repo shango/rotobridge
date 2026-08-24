@@ -38,7 +38,13 @@
      * can express the file, not the highest it implements. */
     rbj.VERSION_OPEN_SPLINES = 2;
     rbj.VERSION_ANCHORED_FEATHER = 2;
-    rbj.MAX_VERSION = 2;
+    /* spec/rbj-v3-draft.md section 3: a dense frame may say {"same_as": N}
+     * instead of repeating an earlier frame it is identical to. A v1/v2
+     * reader hard-fails on the reference record, so this one costs a
+     * version - the constant lives on versionFor's side of the ledger but
+     * only foldFrames spends it. */
+    rbj.VERSION_FRAME_REFS = 3;
+    rbj.MAX_VERSION = 3;
 
     rbj.versionFor = function (shapes) {
         /* Section 6.7 keeps the anchored clause narrow: the exporter writes
@@ -320,12 +326,13 @@
         }
 
         var frameKeys = validateFrames(errs, where, shape["frames"],
-                                       framesExpected, model, closed);
+                                       framesExpected, model, closed,
+                                       version);
         validateKeys(errs, where, shape["keys"], frameKeys);
     }
 
     function validateFrames(errs, where, frames, framesExpected, model,
-                            closed) {
+                            closed, version) {
         /* Returns the frame keys present, or null.
          *
          * Null means the dense layer was unusable, so callers must not go on to
@@ -401,6 +408,11 @@
         for (var f = 0; f < wellFormed.length; f++) {
             if (shapeErrs.length > MAX_ERRORS_PER_SHAPE) { break; }
             var key = wellFormed[f];
+            if (isRef(frames[key])) {
+                validateRef(shapeErrs, where + " frame " + key, key,
+                            frames[key], frames, version);
+                continue;
+            }
             var got = validateFrameRecord(shapeErrs, where + " frame " + key,
                                           frames[key], model, closed);
             var n = got[0];
@@ -452,6 +464,181 @@
 
         return present;
     }
+
+    function isRef(rec) {
+        /* Exactly {"same_as": N} and nothing else - the mirror of
+         * `core/rbj.py` `_is_ref` (spec/rbj-v3-draft.md section 3). */
+        if (!isObj(rec) || !hasOwn(rec, "same_as")) { return false; }
+        for (var k in rec) {
+            if (hasOwn(rec, k) && k !== "same_as") { return false; }
+        }
+        return true;
+    }
+
+    function validateRef(errs, where, key, rec, frames, version) {
+        if (version !== null && version < rbj.VERSION_FRAME_REFS) {
+            errs[errs.length] = where + ": same_as needs version "
+                + rbj.VERSION_FRAME_REFS + "; this file declares version "
+                + version + " (spec/rbj-v3-draft.md section 3)";
+        }
+        var target = rec["same_as"];
+        if (!isInt(target)) {
+            errs[errs.length] = where + ": same_as is " + show(target)
+                + ", expected an integer frame";
+            return;
+        }
+        if (target >= Number(key)) {
+            /* Earlier only. Backward references keep a reader single-pass
+             * and make a cycle impossible to write. */
+            errs[errs.length] = where + ": same_as " + target
+                + " does not point at an earlier frame";
+            return;
+        }
+        if (!hasOwn(frames, String(target))) {
+            errs[errs.length] = where + ": same_as " + target
+                + ", which is not in the dense layer";
+        } else if (isRef(frames[String(target)])) {
+            errs[errs.length] = where + ": same_as " + target
+                + ", which is itself a reference; references do not chain,"
+                + " so every reference resolves in one step";
+        }
+    }
+
+    function deepEqual(a, b) {
+        /* Data equality over JSON trees, mirroring what Python's == does to
+         * dicts and lists. One number type here, so 1 and 1.0 cannot even
+         * disagree - which is what keeps the two writers making the same
+         * folding decisions. */
+        if (a === b) { return true; }
+        var i, k;
+        if (isArray(a) || isArray(b)) {
+            if (!isArray(a) || !isArray(b) || a.length !== b.length) {
+                return false;
+            }
+            for (i = 0; i < a.length; i++) {
+                if (!deepEqual(a[i], b[i])) { return false; }
+            }
+            return true;
+        }
+        if (isObj(a) && isObj(b)) {
+            for (k in a) {
+                if (hasOwn(a, k) && (!hasOwn(b, k)
+                                     || !deepEqual(a[k], b[k]))) {
+                    return false;
+                }
+            }
+            for (k in b) {
+                if (hasOwn(b, k) && !hasOwn(a, k)) { return false; }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    function deepCopy(value) {
+        var i, k, out;
+        if (isArray(value)) {
+            out = [];
+            for (i = 0; i < value.length; i++) {
+                out[i] = deepCopy(value[i]);
+            }
+            return out;
+        }
+        if (isObj(value)) {
+            out = {};
+            for (k in value) {
+                if (hasOwn(value, k)) { out[k] = deepCopy(value[k]); }
+            }
+            return out;
+        }
+        return value;
+    }
+
+    rbj.foldFrames = function (doc) {
+        /* Fold runs of identical consecutive frames into references.
+         *
+         * Returns a new document; `doc` is untouched. Bumps the version to
+         * VERSION_FRAME_REFS only when something actually folded - section
+         * 6.7's policy: only the files that benefit pay the compatibility
+         * cost. Explicit rather than built into `stringify`, so
+         * parse(stringify(doc)) stays the identity and the exporter owns the
+         * decision. Mirrors `core/rbj.py` `fold_frames`.
+         */
+        var foldedAny = false;
+        var shapesOut = [];
+        for (var s = 0; s < doc["shapes"].length; s++) {
+            var shape = doc["shapes"][s];
+            var frames = shape["frames"];
+            var ordered = [];
+            var key;
+            for (key in frames) {
+                if (hasOwn(frames, key)) { ordered[ordered.length] = key; }
+            }
+            ordered.sort(byNumber);
+            var out = {};
+            var head = null;
+            for (var f = 0; f < ordered.length; f++) {
+                key = ordered[f];
+                if (head !== null && deepEqual(frames[key], frames[head])) {
+                    out[key] = { "same_as": Number(head) };
+                    foldedAny = true;
+                } else {
+                    out[key] = frames[key];
+                    head = key;
+                }
+            }
+            var folded = {};
+            for (key in shape) {
+                if (hasOwn(shape, key)) { folded[key] = shape[key]; }
+            }
+            folded["frames"] = out;
+            shapesOut[shapesOut.length] = folded;
+        }
+        var outDoc = {};
+        for (var k in doc) {
+            if (hasOwn(doc, k)) { outDoc[k] = doc[k]; }
+        }
+        outDoc["shapes"] = shapesOut;
+        if (foldedAny && outDoc["version"] < rbj.VERSION_FRAME_REFS) {
+            outDoc["version"] = rbj.VERSION_FRAME_REFS;
+        }
+        return outDoc;
+    };
+
+    rbj.expandFrames = function (doc) {
+        /* Resolve every reference to a deep copy of its frame - the inverse
+         * of foldFrames, applied by `parse` after validation so everything
+         * downstream of a reader still sees a dense layer on every frame.
+         * Deep copies, because two keys sharing one record would let a
+         * mutation of "frame 11" silently edit frame 10 as well. */
+        var shapesOut = [];
+        for (var s = 0; s < doc["shapes"].length; s++) {
+            var shape = doc["shapes"][s];
+            var frames = shape["frames"];
+            var out = {};
+            var key;
+            for (key in frames) {
+                if (!hasOwn(frames, key)) { continue; }
+                if (isRef(frames[key])) {
+                    out[key] = deepCopy(frames[String(frames[key]["same_as"])]);
+                } else {
+                    out[key] = frames[key];
+                }
+            }
+            var expanded = {};
+            for (key in shape) {
+                if (hasOwn(shape, key)) { expanded[key] = shape[key]; }
+            }
+            expanded["frames"] = out;
+            shapesOut[shapesOut.length] = expanded;
+        }
+        var outDoc = {};
+        for (var k in doc) {
+            if (hasOwn(doc, k)) { outDoc[k] = doc[k]; }
+        }
+        outDoc["shapes"] = shapesOut;
+        return outDoc;
+    };
 
     function validateFrameRecord(errs, where, rec, model, closed) {
         /* Returns `[vertex count, feather anchor count]`, either of which is
@@ -723,7 +910,7 @@
         }
         var errs = rbj.validate(doc);
         if (errs.length) { throw RbjError(errs); }
-        return doc;
+        return rbj.expandFrames(doc);
     };
 
     var ESCAPES = {

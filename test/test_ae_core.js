@@ -896,6 +896,57 @@ describe("rbj", function () {
         eq(e.errors[0].indexOf("newer than this reader") > -1, true);
     });
 
+    it("folds a held span into references and pays version 3", function () {
+        // The Python mirror is TestFrameRefs; spec/rbj-v3-draft.md section 3.
+        var doc = held();
+        var folded = rbj.foldFrames(doc);
+        deepEq(folded.shapes[0].frames["2"], { same_as: 1 });
+        deepEq(folded.shapes[0].frames["6"], { same_as: 1 });
+        eq(folded.version, 3);
+        eq(rbj.validate(folded).length, 0,
+           rbj.validate(folded).join(" | "));
+        eq(doc.version, 1, "fold must not mutate its input");
+    });
+
+    it("does not fold a moving shape, which stays version 1", function () {
+        // minimal()'s two frames are identical, so give it actual motion.
+        var doc = minimal();
+        doc.shapes[0].frames["2"].points[0].c = [5, 5];
+        var folded = rbj.foldFrames(doc);
+        deepEq(folded, doc);
+        eq(folded.version, 1);
+    });
+
+    it("expands references on parse, with copies", function () {
+        var doc = held();
+        var back = rbj.parse(rbj.stringify(rbj.foldFrames(doc)));
+        deepEq(back.shapes, doc.shapes);
+        back.shapes[0].frames["2"].opacity = 0.25;
+        eq(back.shapes[0].frames["1"].opacity, 1.0,
+           "editing an expanded frame edited its source");
+    });
+
+    it("rejects a reference in a file that says version 1", function () {
+        var folded = rbj.foldFrames(held());
+        folded.version = 1;
+        var errs = rbj.validate(folded);
+        eq(errs.join(" | ").indexOf("same_as needs version 3") > -1, true,
+           errs.join(" | "));
+    });
+
+    it("rejects a forward or chained reference", function () {
+        var folded = rbj.foldFrames(held());
+        folded.shapes[0].frames["2"] = { same_as: 3 };
+        var errs = rbj.validate(folded);
+        eq(errs.join(" | ").indexOf("does not point at an earlier frame") > -1,
+           true, errs.join(" | "));
+        folded = rbj.foldFrames(held());
+        folded.shapes[0].frames["3"] = { same_as: 2 };
+        errs = rbj.validate(folded);
+        eq(errs.join(" | ").indexOf("itself a reference") > -1, true,
+           errs.join(" | "));
+    });
+
     it("caps interp errors with the rest of the key errors", function () {
         // The Python mirror is test_interp_errors_are_capped_with_the_rest.
         var doc = minimal();
@@ -1204,6 +1255,20 @@ function minimal() {
             frames: { "1": frame(), "2": frame() }
         }]
     };
+}
+
+function held(count) {
+    /* `minimal()` holding one pose over `count` frames (default 6). */
+    if (count === undefined) { count = 6; }
+    var doc = minimal();
+    var rec = doc.shapes[0].frames["1"];
+    var frames = {};
+    for (var f = 1; f <= count; f++) {
+        frames[String(f)] = JSON.parse(JSON.stringify(rec));
+    }
+    doc.shapes[0].frames = frames;
+    doc.range = [1, count];
+    return doc;
 }
 
 function eachPoint(doc, fn) {
