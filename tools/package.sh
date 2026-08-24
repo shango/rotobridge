@@ -57,7 +57,16 @@ printf '%s built from %s\r\n' "${NAME}" "${COMMIT}" > "${STAGE}/build.txt"
 (cd dist && zip -qr "${NAME}.zip" "${NAME}")
 rm -rf "${STAGE}"
 
+# The tester-facing instructions also exist as a Google Doc, and this is what
+# that Doc is pasted from: open it in a browser, select all, copy. It sits
+# beside the zip rather than inside it, since it is for whoever cuts the drop
+# rather than for the tester. The screenshot travels next to it so the paste
+# carries the image.
+sed "s/@VERSION@/${VERSION}/g" tools/tester_readme.html > dist/tester_readme.html
+cp docs/ae-scripting-preference.png dist/
+
 echo
+echo "dist/tester_readme.html   (paste source for the Google Doc)"
 echo "dist/${NAME}.zip"
 # Fields 1-3 are size, date and time; the name is everything after, and two
 # of the names in here have spaces in them.

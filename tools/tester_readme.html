@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>RotoBridge @VERSION@ - Install and Testing Notes</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt;
+         line-height: 1.5; max-width: 44em; margin: 2em auto; padding: 0 1em; }
+  h1 { font-size: 20pt; margin-bottom: 0; }
+  h2 { font-size: 15pt; margin-top: 1.6em; }
+  h3 { font-size: 12pt; margin-top: 1.4em; }
+  .sub { color: #666; margin-top: .2em; }
+  code { font-family: "Courier New", monospace; font-size: 10pt; }
+  img { max-width: 100%; border: 1px solid #ccc; }
+  li { margin-bottom: .5em; }
+</style>
+
+<h1>RotoBridge @VERSION@</h1>
+<p class="sub">Moves roto splines between After Effects and Nuke.</p>
+
+<p>You only need the half you use. Installing both on one machine is fine.</p>
+
+<h2>After Effects</h2>
+
+<h3>1. Turn on the scripting preference</h3>
+
+<p>It is off in a fresh install of After Effects and nothing works without it.
+Go to <strong>Edit &gt; Preferences &gt; Scripting &amp; Expressions</strong>
+and tick <strong>Allow Scripts to Write Files and Access Network</strong>.</p>
+
+<p><img src="ae-scripting-preference.png"
+        alt="The Scripting and Expressions preference pane, with Allow Scripts
+             to Write Files and Access Network ticked"></p>
+
+<p>Restart After Effects afterwards. RotoBridge checks this when it opens and
+will tell you if it is off, but doing it now saves a round trip.</p>
+
+<h3>2. Put the files somewhere</h3>
+
+<p>Unzip and keep the <code>after_effects</code> folder together, anywhere you
+like. The six files in it need each other.</p>
+
+<h3>3. Open the panel</h3>
+
+<p><strong>File &gt; Scripts &gt; Run Script File...</strong> and pick
+<code>after_effects\rotobridge_panel.jsx</code>.</p>
+
+<p>A small RotoBridge window opens with two buttons. That is the whole thing.
+You do this each time you start After Effects - nothing is installed and there
+is nothing to uninstall.</p>
+
+<ul>
+  <li><strong>To export:</strong> select the layers holding the masks you want,
+      then click Export.</li>
+  <li><strong>To import:</strong> open the comp you want the shapes in, then
+      click Import.</li>
+</ul>
+
+<h2>Nuke</h2>
+
+<ol>
+  <li>Close Nuke.</li>
+  <li>Double-click <code>nuke\Install for Nuke.bat</code>. It copies
+      RotoBridge into your own <code>.nuke</code> folder - no administrator
+      password, nothing outside your user folder.</li>
+  <li>Start Nuke. There is a RotoBridge menu in the menu bar.</li>
+</ol>
+
+<ul>
+  <li><strong>To export:</strong> select a Roto node, then
+      <strong>RotoBridge &gt; Export to .rbj</strong>.</li>
+  <li><strong>To import:</strong> <strong>RotoBridge &gt; Import .rbj</strong>.
+      It builds a new Roto node.</li>
+</ul>
+
+<h2>Reporting a bug</h2>
+
+<p>Every RotoBridge window says which version it is, including the error ones.
+A screenshot of the window is enough to start with - <strong>please do not crop
+the version off</strong>.</p>
+
+<p>For anything about an <strong>import</strong> going wrong, there is something
+better. Every import writes a plain text file next to your project, named after
+it and ending <code>.rotobridge.txt</code>. Send that file. It records what came
+in, what settings were used, how far the result sits from the original, and
+every warning, so it usually answers the question with no back-and-forth.</p>
+
+<p>If you cannot find your version: in Nuke it is under
+<strong>RotoBridge &gt; About</strong>. In After Effects it is along the bottom
+of the panel.</p>
+
+<h2>Known and expected</h2>
+
+<p><strong>Warnings are not errors.</strong> When something genuinely cannot
+cross between the two applications, RotoBridge says so in a warning rather than
+dropping it quietly. Seeing warnings on a complex shape is normal.</p>
+
+<p>Please send them anyway. Which warnings turn up on real work is one of the
+things this test is for.</p>
