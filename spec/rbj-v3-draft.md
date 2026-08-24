@@ -88,3 +88,21 @@ irreversibly at export. The shape survives via the bake, but without this the
 artist's curves were gone from the file forever, foreclosing any future
 importer that could honour them - including an AE-to-AE round trip. Importers
 today ignore it, exactly as they ignore `warnings`.
+
+### 5.2 `id`
+
+Optional, per shape: a stable identity string, non-empty, **unique across the
+file's shapes** (both validators enforce the uniqueness - it is the whole
+value of an id over a name). The `name` stays what it always was: the
+artist's display label, unique within a layer at best, and free to collide
+across layers (the exporter warns).
+
+Importers accept either an id or a name in a subset request. Writers:
+
+- **Nuke** writes `"<node>/<shape>"` ("Roto1/Bezier3"), with `#2`-style
+  suffixes settling repeated shape names - stable within a script, which is
+  the scope a re-import cares about.
+- **After Effects** writes none yet. The candidate (`PropertyBase.id`) is
+  documented but unmeasured, and this project does not code against an
+  unprobed host API; `test/probe/probe_ae_mask_id.jsx` is the measurement
+  waiting to be run on the next host visit.

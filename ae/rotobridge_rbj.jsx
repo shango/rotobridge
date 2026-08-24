@@ -225,10 +225,32 @@
             for (var i = 0; i < shapes.length; i++) {
                 validateShape(errs, i, shapes[i], framesExpected, ver);
             }
+            validateIds(errs, shapes);
         }
 
         return errs;
     };
+
+    function validateIds(errs, shapes) {
+        /* Uniqueness is the whole value of an id over a name
+         * (spec/rbj-v3-draft.md section 5): names may collide - the exporter
+         * warns - but ids may not. */
+        var seen = {};
+        for (var i = 0; i < shapes.length; i++) {
+            if (!isObj(shapes[i]) || !hasOwn(shapes[i], "id")) { continue; }
+            var got = shapes[i]["id"];
+            if (typeof got !== "string" || !got) {
+                errs[errs.length] = "shapes[" + i + "]: id is " + show(got)
+                    + ", expected a non-empty string";
+            } else if (hasOwn(seen, got)) {
+                errs[errs.length] = "shapes[" + seen[got] + "] and shapes["
+                    + i + "] share the id " + show(got)
+                    + "; an id exists to tell shapes apart";
+            } else {
+                seen[got] = i;
+            }
+        }
+    }
 
     function validateSource(errs, src) {
         if (!isObj(src)) {

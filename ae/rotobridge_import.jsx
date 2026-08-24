@@ -53,9 +53,16 @@
 
         var out = [];
         for (i = 0; i < doc.shapes.length; i++) {
+            /* By id first and name second: an id is unique when present (the
+             * validator enforces it); a name is a display label that may
+             * collide. Either is what the file or the record shows the
+             * artist. */
             var name = doc.shapes[i].name;
-            if (RB.util.hasOwn(wanted, name)) {
-                wanted[name] = true;
+            var id = doc.shapes[i].id;
+            var hit = RB.util.hasOwn(wanted, name) ? name
+                : (id !== undefined && RB.util.hasOwn(wanted, id) ? id : null);
+            if (hit !== null) {
+                wanted[hit] = true;
                 out[out.length] = doc.shapes[i];
             }
         }

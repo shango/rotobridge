@@ -277,6 +277,9 @@ def export_shape(shape, ancestors, frames, warn):
 
     return {
         "name": name,
+        # Stable identity where the name is a display label an artist can
+        # edit; export_node prefixes the node and settles collisions.
+        "id": name,
         "closed": closed,
         "blend": blend_to_rbj(attr_value(attrs, ATTR_BLEND, frames[0]),
                               warn, name),
@@ -304,6 +307,15 @@ def export_node(node, first, last, width, height, pixel_aspect, fps):
                                                   warn)]
     if not shapes:
         raise ValueError("node '%s' has no shapes to export" % node.name())
+
+    # "Roto1/Bezier3", and "#2" on a repeated name, because the validator
+    # rejects duplicate ids - uniqueness is the whole value of an id over a
+    # name (spec/rbj-v3-draft.md section 5).
+    counts = {}
+    for shape in shapes:
+        counts[shape["id"]] = counts.get(shape["id"], 0) + 1
+        suffix = "#%d" % counts[shape["id"]] if counts[shape["id"]] > 1 else ""
+        shape["id"] = "%s/%s%s" % (node.name(), shape["id"], suffix)
 
     return {
         "format": "rotobridge",

@@ -534,6 +534,18 @@ describe("options", function () {
         eq(host.comp.layer(1)._masks[0].name, "Mask 2");
     });
 
+    it("selects a shape by its id as well as its name", function () {
+        // Ids come from Nuke exports today ("Roto1/Bezier3"); the name is a
+        // display label that may collide, the id may not (the validator
+        // enforces it), and either is what the file shows the artist.
+        var doc = JSON.parse(exported());
+        doc.shapes[0].id = "Roto1/Mask 1";
+        var text = JSON.stringify(doc);
+        var host = importInto(text, { answers: ["0", "Roto1/Mask 1"] });
+        eq(host.comp.layer(1)._masks.length, 1,
+           "the id did not select the shape: " + host.alerts.join(" | "));
+    });
+
     it("names a requested shape that is not in the file", function () {
         var host = importInto(exported(), { answers: ["0", "Mask 1, Nope"] });
         has(host.alerts, "[subset-missing] shape 'Nope'");

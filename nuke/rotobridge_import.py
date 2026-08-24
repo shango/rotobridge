@@ -391,6 +391,25 @@ def _write_attributes(shape, spec, frames, offset, warn):
     blend_from_rbj(spec["blend"], warn, spec["name"])
 
 
+def _subset(shapes, subset, warn):
+    """The shapes the artist asked for, by id first and name second.
+
+    An id is unique when present (the validator enforces it); a name is a
+    display label that may collide, which the exporters warn about. Accepting
+    either lets the artist type what the file or the record shows them.
+    """
+    wanted = set(subset)
+    out = [s for s in shapes
+           if s["name"] in wanted or s.get("id") in wanted]
+    known = set(s["name"] for s in shapes)
+    known.update(s["id"] for s in shapes if "id" in s)
+    for name in sorted(wanted - known):
+        warn(messages.render("subset-missing", {"name": name}))
+    if not out:
+        raise ValueError("no shapes matched the requested subset")
+    return out
+
+
 def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
     """Build a Roto node from a validated .rbj document.
 
@@ -408,13 +427,7 @@ def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
 
     shapes = doc["shapes"]
     if subset:
-        wanted = set(subset)
-        shapes = [s for s in shapes if s["name"] in wanted]
-        missing = wanted - set(s["name"] for s in doc["shapes"])
-        for name in sorted(missing):
-            warn(messages.render("subset-missing", {"name": name}))
-        if not shapes:
-            raise ValueError("no shapes matched the requested subset")
+        shapes = _subset(shapes, subset, warn)
 
     # An open spline round trips exactly within one application; what it
     # *renders* as across two is unmeasured on the After Effects side and lives

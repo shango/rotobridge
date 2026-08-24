@@ -152,8 +152,27 @@ def validate(doc):
     else:
         for i, shape in enumerate(shapes):
             _validate_shape(errs, i, shape, frames_expected, ver)
+        _validate_ids(errs, shapes)
 
     return errs
+
+
+def _validate_ids(errs, shapes):
+    # Uniqueness is the whole value of an id over a name (spec/rbj-v3-draft.md
+    # section 5): names may collide - the exporter warns - but ids may not.
+    seen = {}
+    for i, shape in enumerate(shapes):
+        if not isinstance(shape, dict) or "id" not in shape:
+            continue
+        got = shape["id"]
+        if not isinstance(got, str) or not got:
+            errs.append("shapes[%d]: id is %r, expected a non-empty string"
+                        % (i, got))
+        elif got in seen:
+            errs.append("shapes[%d] and shapes[%d] share the id %r; an id "
+                        "exists to tell shapes apart" % (seen[got], i, got))
+        else:
+            seen[got] = i
 
 
 def _validate_source(errs, src):

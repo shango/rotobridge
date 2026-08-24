@@ -386,6 +386,31 @@ class TestSchemaRejects(unittest.TestCase):
         self.assertLess(len(errs), 12)
         self.assertIn("suppressed", " | ".join(errs))
 
+    def test_a_shape_id_is_accepted_at_any_version(self):
+        # Optional identity (spec/rbj-v3-draft.md section 5): stable across
+        # re-exports where the name is a display label an artist can edit.
+        doc = valid_doc()
+        doc["shapes"][0]["id"] = "Roto1/tri"
+        self.assertEqual(rbj.validate(doc), [])
+
+    def test_a_blank_or_non_string_id_is_rejected(self):
+        self.reject(lambda d: d["shapes"][0].update(id=""),
+                    "id is ''")
+        self.reject(lambda d: d["shapes"][0].update(id=7),
+                    "expected a non-empty string")
+
+    def test_duplicate_ids_are_rejected(self):
+        # Uniqueness is the whole value of an id over a name; names may
+        # collide (the exporter warns), ids may not.
+        def twin(d):
+            import copy as _copy
+            other = _copy.deepcopy(d["shapes"][0])
+            other["name"] = "tri 2"
+            d["shapes"][0]["id"] = "Roto1/tri"
+            other["id"] = "Roto1/tri"
+            d["shapes"].append(other)
+        self.reject(twin, "share the id")
+
     def test_pre_conform_keys_validate_like_keys(self):
         # Optional provenance (spec/rbj-v3-draft.md section 5): the authored
         # keys as they were before the exporter conformed them. Legal at any
@@ -2653,6 +2678,36 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(messages.px(0.00005, 4), "0.0001")
         self.assertEqual(messages.px(-0.00005, 4), "-0.0001")
         self.assertEqual(messages.px(2.5, 3), "2.500")
+
+
+class TestNukeSubset(_WithoutNuke):
+    """The import's shape selection, by id first and name second."""
+
+    SHAPES = [{"name": "roof", "id": "Roto1/roof"},
+              {"name": "door"}]
+
+    def run_subset(self, wanted):
+        said = []
+        got = self.rbi._subset(list(self.SHAPES), wanted, said.append)
+        return got, said
+
+    def test_a_name_still_selects(self):
+        got, said = self.run_subset(["door"])
+        self.assertEqual([s["name"] for s in got], ["door"])
+        self.assertEqual(said, [])
+
+    def test_an_id_selects_too(self):
+        got, said = self.run_subset(["Roto1/roof"])
+        self.assertEqual([s["name"] for s in got], ["roof"])
+        self.assertEqual(said, [])
+
+    def test_a_miss_is_named_and_an_empty_match_raises(self):
+        got, said = self.run_subset(["roof", "chimney"])
+        self.assertEqual(len(got), 1)
+        self.assertEqual(len(said), 1)
+        self.assertIn("[subset-missing] shape 'chimney'", said[0])
+        self.assertRaises(ValueError, self.rbi._subset,
+                          list(self.SHAPES), ["chimney"], said.append)
 
 
 class TestNukeToleranceParser(_WithoutNuke):
