@@ -2146,3 +2146,52 @@ Phase 1 encoded what it could; the rest is still on the adapters.
 - The reference writer keeps arrays of numbers on one line. `indent=2` alone
   puts every coordinate on three lines, which defeats the diffability the format
   exists for.
+
+## PLAN: the tester drop and build versioning, 2026-08-24
+
+Goal: hand a single zip to non-technical Windows testers today, and be able to
+tell from a screenshot which build they were running.
+
+Decisions taken with the user before starting:
+
+- **Windows only.** No Mac installer.
+- **One zip, both sides.** A Nuke-only tester ignores the `after_effects`
+  folder. Everyone is on the same build of everything.
+- **After Effects installs as a floating palette, not a docked panel.** Unzip,
+  `File > Scripts > Run Script File...`, pick the panel. No elevation, nothing
+  to uninstall before the next drop, and it avoids the two unverified things in
+  the docked route: whether `#include` resolves under `$.evalFile` from
+  `ScriptUI Panels`, and whether AE scans the user-level
+  `AppData\Roaming\Adobe\After Effects\<ver>\Scripts\ScriptUI Panels`.
+- **One build version, reported per side**, not a version per component.
+  `core/`, `ae/` and `nuke/` change together in nearly every commit, so separate
+  counters would drift while answering a question nobody asks. One number,
+  printed independently by each side, still catches the case that matters: a
+  tester who updated After Effects but not Nuke.
+- The build version is **not** the `.rbj` format version. That stays an integer
+  at 3 and bumps only when an old reader would break.
+
+Starting at `0.9.0`. Patch bump per tester drop.
+
+Chunks, each a commit:
+
+1. Version single source: `core/version.py`, `RB.VERSION` in
+   `ae/rotobridge_core.jsx`, a literal in `ae/rotobridge_panel.jsx` (it includes
+   nothing by design), a cross-check test that all three agree, and
+   `tools/bump_version.py`.
+2. The After Effects scripting-preference guard. `Allow Scripts to Write Files
+   and Access Network` is off by default and no tester will find it; with it off
+   `ae.writeText` throws a bare "cannot write ...". Name the exact menu path.
+3. Version into every AE alert: the shared title, plus a footer line in the two
+   summary alerts, because a cropped screenshot can lose the title bar.
+4. Version into the Nuke dialogs. `nuke.message` takes no title so it goes in
+   the body; the two `nuke.Panel` dialogs do take one. Add `RotoBridge > About`.
+5. `source.tool_version` in the file. Additive optional member, no format bump:
+   the validator ignores unknown members and ignoring this one cannot change
+   what renders, which is the test spec section 5 sets.
+6. Import record rows for both builds. The record already names the source file,
+   host, format version, every shape and both warning lists; with the two tool
+   versions it is a complete bug report a tester can email with no explanation.
+7. Packaging: `tools/package.sh` builds `dist/RotoBridge-<ver>.zip` holding both
+   sides, `install_nuke.bat`, and a one-page tester README.
+8. Deploy to the Desktop folder and run everything host-free.
