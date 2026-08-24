@@ -1713,7 +1713,20 @@ not as a general policy of writing linear files.
    move, and `eased_static`'s conform warning heads the sparse group at
    position 3 if the static layer went first.
 
-## IN PROGRESS: the six would-do-differently items, 2026-08-24
+## DONE: the six would-do-differently items, 2026-08-24
+
+All six landed, plus one bug found along the way, each chunk with red tests
+first and the suite green after (626 host-free tests at the end, up from 585).
+Commits: item 4 prd mirror-cost paragraph `95ace9d`; item 1 warnings registry
+`faf321c` (38 codes, cross-checked byte for byte); item 3 mock-vs-probe
+fixtures `4fda421`; item 2 v3 frame refs `7cceceb` (spec/rbj-v3-draft.md);
+item 5 pre_conform_keys `0096bfe`; item 6 shape ids `cb6a010` (AE writes none
+until probe_ae_mask_id.jsx runs on a host - top of the next AE visit alongside
+the panel checks); sweep: degenerate-vertex warning said once per shape
+`5effc36`. AE files re-deployed to the Desktop folder after each AE chunk.
+The plan as it was worked follows.
+
+## The plan (was: IN PROGRESS), 2026-08-24
 
 The user asked for all six suggestions from the post-review reflection to be
 implemented, "and anything else you encounter and feel needs improvement."

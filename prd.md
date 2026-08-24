@@ -216,7 +216,8 @@ UTF-8 JSON. Human-readable, diffable, version-tagged. **Frozen as `spec/rbj-v1.m
 - `feather_falloff` - `linear` | `smooth` per shape, static. AE `maskFeatherFalloff` (an attribute, not keyframable) and Nuke `ff`.
 - `feather` - **signed** float per point: distance along the outward path normal, positive outward, negative inward. Present on every point of every frame when `feather_model` is `per_point`, absent entirely when it is `none` - writing `0.0` under `none` would be indistinguishable from an authored all-zero shape, which §9.3 says is a real distinction. It is AE's `featherRadii` verbatim (§9.3) and Mocha's `edge_width`.
 - `feather_offset` - **optional** `[x, y]` per point, canonical space. Only Nuke writes it, carrying the tangential component that `feather` cannot express. A Nuke importer that finds it uses it in place of `feather`, making Nuke → Nuke lossless; every other adapter ignores it. Never present without `feather`.
-- `warnings` accumulates lossy conversions on export; importers append their own.
+- `warnings` accumulates lossy conversions on export; importers append their own. Each is rendered from the shared registry (`core/messages.py` and its ES3 mirror) as `[code] prose`, so tools and tests match the code and the prose can be reworded freely; files written before the registry carry unprefixed prose and stay legal.
+- Added 2026-08-24, specified in `spec/rbj-v3-draft.md`: a dense frame may be `{"same_as": N}` folding a held span (§3 there; costs `version: 3`, the only one of these that does); `pre_conform_keys` optionally keeps the authored keys the ease conform rewrote (§5.1); `id` optionally names a shape stably where `name` is an editable display label (§5.2). The last two are version-independent: both validators ignore unknown members, which is acceptable exactly when ignoring one cannot change what renders.
 
 ---
 
