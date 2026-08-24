@@ -43,6 +43,17 @@ what settings, and what was warned about.
 The AE port of the core logic is cross-checked against the Python original in
 the test suite, down to the bytes both write.
 
+## Handing it to someone else
+
+`bash tools/package.sh` builds `dist/RotoBridge-<version>.zip`: both sides,
+a Nuke installer, and a one-page READ ME, with nothing else in it. It refuses
+to build from a dirty tree, so every zip corresponds to a commit.
+
+`python3 tools/bump_version.py 0.9.1` sets the build version everywhere it is
+spelled. That version is not the `.rbj` format version - it is what a dialog
+reports, and every dialog either application raises carries it, because a bug
+report from someone else's machine arrives as a screenshot.
+
 ## Development notes
 
 `HANDOFF.md` is the working log and `prd.md` holds the product requirements

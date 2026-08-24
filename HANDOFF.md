@@ -2147,7 +2147,7 @@ Phase 1 encoded what it could; the rest is still on the adapters.
   puts every coordinate on three lines, which defeats the diffability the format
   exists for.
 
-## PLAN: the tester drop and build versioning, 2026-08-24
+## DONE: the tester drop and build versioning, 2026-08-24
 
 Goal: hand a single zip to non-technical Windows testers today, and be able to
 tell from a screenshot which build they were running.
@@ -2195,3 +2195,44 @@ Chunks, each a commit:
 7. Packaging: `tools/package.sh` builds `dist/RotoBridge-<ver>.zip` holding both
    sides, `install_nuke.bat`, and a one-page tester README.
 8. Deploy to the Desktop folder and run everything host-free.
+
+All eight chunks are in, 343 + 293 host-free tests green:
+
+- `d0ebaf2` the version itself, three files and the fence that keeps them equal
+- `e0c0e95` the scripting-preference probe at panel launch
+- `91e294f` the build named in every dialog either host can raise
+- `e8569bb` `source.tool_version` in the file
+- `1806088` both builds in the import record
+- `8e40d66` `tools/package.sh`, the Nuke installer and the tester READ ME
+- `7e190af` a listing fix in the packager
+
+Cutting a drop:
+
+    python3 tools/bump_version.py 0.9.1
+    bash test/run.sh
+    git commit -am "..."
+    bash tools/package.sh          # refuses a dirty tree
+
+The packaged Nuke payload was smoke-tested against stubbed `nuke` modules from
+the unzipped copy: `core` resolves through `rotobridge_nuke.py`'s walk up one
+level, and both adapters import.
+
+**Still needing a host, and now more urgent than before.** None of the drop is
+measured in After Effects:
+
+- `test/probe/probe_ae_mask_id.jsx` - unchanged from the last session, still
+  the thing standing between the AE exporter and writing shape ids.
+- The launch probe's diagnosis. Toggle `Allow Scripts to Write Files and
+  Access Network` off, open the panel, confirm the alert fires and names the
+  preference; toggle it back on and confirm it does NOT fire. The second half
+  matters more: a false alarm on every launch of a working install is the one
+  failure mode that would make a tester ignore the panel.
+- The version in the alert title. Confirm it is actually legible in a
+  screenshot of an alert, since that is the whole reporting channel.
+- The panel checks carried over from before: `#include` resolution under
+  `$.evalFile`, footer path, both buttons, `Change...` persistence.
+
+On the Nuke side, `Install for Nuke.bat` has not been run on Windows. The
+`(` and `)` in the `pluginAddPath` line are escaped for the surrounding
+`if errorlevel 1 ( ... )` block, which is the part of a batch file most likely
+to be wrong on first contact.
