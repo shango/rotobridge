@@ -65,3 +65,26 @@ Not delta encoding, not sampling, not a claim about "close enough" frames.
 A reference asserts byte-level sameness of meaning, and expansion restores the
 ground truth exactly. Anything cleverer would trade away the property the
 dense layer exists for.
+
+## 5. Optional members (version-independent)
+
+Both validators ignore members they do not know, so an **additive** member
+does not cost a version - but the v2 draft's warning about the inverted flag
+still stands: silently ignoring a member is only acceptable when ignoring it
+**cannot change what renders**. The members below qualify because they are
+provenance and identity, not geometry. Anything that renders differently when
+ignored must cost a version instead.
+
+### 5.1 `pre_conform_keys`
+
+Optional, per shape: the authored `keys` array **exactly as it was before the
+exporter conformed it**, ease blocks intact. Written only when the conform
+actually changed something. Same schema as `keys`, validated with the same
+machinery; `ease` entries are legal here even though the conformed `keys`
+beside it carry none.
+
+Why: the ease conform (prd.md §9.1 step 6a) destroys authored timing
+irreversibly at export. The shape survives via the bake, but without this the
+artist's curves were gone from the file forever, foreclosing any future
+importer that could honour them - including an AE-to-AE round trip. Importers
+today ignore it, exactly as they ignore `warnings`.

@@ -822,7 +822,43 @@
                                     { subject: "mask '" + name + "'",
                                       count: unheld }));
         }
-        return conformEase(out, baked, frames, name, warn);
+        var authored = copyKeys(out);
+        var conformed = conformEase(out, baked, frames, name, warn);
+        if (conformed !== out) {
+            /* The conform rewrote something, and it rewrites the key objects
+             * in place - which is why the copy was taken first. The authored
+             * keys ride along as provenance (spec/rbj-v3-draft.md section 5):
+             * the shape survives via the bake either way, but without this
+             * the artist's timing was gone from the file forever, foreclosing
+             * any future importer that could honour it. Importers ignore it,
+             * exactly as they ignore warnings. */
+            baked["pre_conform_keys"] = authored;
+        }
+        return conformed;
+    }
+
+    function copyKeys(keys) {
+        /* A deep copy of a keys array - three known levels, written out
+         * rather than recursed because that is all a key can hold. */
+        var out = [];
+        for (var i = 0; i < keys.length; i++) {
+            var key = { "frame": keys[i]["frame"],
+                        "interp": { "in": keys[i]["interp"]["in"],
+                                    "out": keys[i]["interp"]["out"] } };
+            if (RB.util.hasOwn(keys[i], "ease")) {
+                var sides = ["in", "out"];
+                var ease = {};
+                for (var s = 0; s < sides.length; s++) {
+                    if (RB.util.hasOwn(keys[i]["ease"], sides[s])) {
+                        ease[sides[s]] =
+                            keys[i]["ease"][sides[s]].slice(0);
+                    }
+                }
+                key["ease"] = ease;
+            }
+            out[out.length] = key;
+        }
+        return out;
     }
 
     function buildDocument(comp, warn) {

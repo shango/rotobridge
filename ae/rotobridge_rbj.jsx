@@ -329,6 +329,18 @@
                                        framesExpected, model, closed,
                                        version);
         validateKeys(errs, where, shape["keys"], frameKeys);
+        if (hasOwn(shape, "pre_conform_keys")) {
+            /* Optional provenance (spec/rbj-v3-draft.md section 5): the
+             * authored keys exactly as they were before the exporter
+             * conformed them. Same schema as keys, so the same machinery. */
+            if (shape["pre_conform_keys"] === null) {
+                errs[errs.length] = where + ": pre_conform_keys is null;"
+                    + " omit the member instead";
+            } else {
+                validateKeys(errs, where + " pre_conform_keys",
+                             shape["pre_conform_keys"], frameKeys);
+            }
+        }
     }
 
     function validateFrames(errs, where, frames, framesExpected, model,

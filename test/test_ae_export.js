@@ -839,6 +839,32 @@ describe("export keys", function () {
         eq(quiet, true, "an unauthored ease is not reported as one");
     });
 
+    it("keeps the authored keys as pre_conform_keys when it conforms",
+       function () {
+        // The conform destroys authored timing irreversibly - the shape
+        // survives via the bake, but the artist's ease curves used to be gone
+        // from the file forever, foreclosing any future importer that could
+        // honour them (spec/rbj-v3-draft.md section 5). Provenance, like
+        // warnings: importers ignore it.
+        var doc = runExport(mock.install(everyFrame({
+            inType: BEZIER, outType: BEZIER, inEase: ease(0, 91.176),
+            outEase: ease(0, 33.333)
+        })));
+        var before = doc.shapes[0].pre_conform_keys;
+        ok(before !== undefined, "pre_conform_keys missing");
+        eq(before[2].interp["in"], "ease");
+        ok(RB.util.hasOwn(before[2], "ease"), "the ease block is the point");
+        eq(doc.shapes[0].keys[2].interp["in"], "linear",
+           "the conformed keys are still the ones that count");
+        eq(RB.rbj.validate(doc).length, 0, RB.rbj.validate(doc).join(" | "));
+    });
+
+    it("writes no pre_conform_keys when nothing was conformed", function () {
+        var doc = runExport(mock.install(keyedAt([at(0), at(2), at(4)])));
+        eq(doc.shapes[0].pre_conform_keys, undefined,
+           "an untouched shape says nothing about conforming");
+    });
+
     it("leaves a shape with no eased side untouched", function () {
         // Nothing to conform, nothing added, nothing said.
         var keys = keysOf(everyFrame({ inType: LINEAR, outType: LINEAR }));

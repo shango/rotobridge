@@ -224,6 +224,16 @@ def _validate_shape(errs, index, shape, frames_expected, version):
     frame_keys = _validate_frames(errs, where, shape.get("frames"),
                                   frames_expected, model, closed, version)
     _validate_keys(errs, where, shape.get("keys"), frame_keys)
+    if "pre_conform_keys" in shape:
+        # Optional provenance (spec/rbj-v3-draft.md section 5): the authored
+        # keys exactly as they were before the exporter conformed them, ease
+        # blocks intact. Same schema as keys, so the same machinery.
+        if shape["pre_conform_keys"] is None:
+            errs.append("%s: pre_conform_keys is null; omit the member "
+                        "instead" % where)
+        else:
+            _validate_keys(errs, "%s pre_conform_keys" % where,
+                           shape["pre_conform_keys"], frame_keys)
 
 
 def _validate_frames(errs, where, frames, frames_expected, model, closed,

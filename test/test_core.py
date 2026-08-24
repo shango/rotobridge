@@ -386,6 +386,25 @@ class TestSchemaRejects(unittest.TestCase):
         self.assertLess(len(errs), 12)
         self.assertIn("suppressed", " | ".join(errs))
 
+    def test_pre_conform_keys_validate_like_keys(self):
+        # Optional provenance (spec/rbj-v3-draft.md section 5): the authored
+        # keys as they were before the exporter conformed them. Legal at any
+        # version - a reader that ignores it loses nothing that renders.
+        doc = valid_doc()
+        doc["shapes"][0]["pre_conform_keys"] = json.loads(
+            json.dumps(doc["shapes"][0]["keys"]))
+        self.assertEqual(rbj.validate(doc), [])
+
+    def test_malformed_pre_conform_keys_are_named(self):
+        self.reject(
+            lambda d: d["shapes"][0].update(
+                pre_conform_keys=[{"frame": 10, "interp": "linear"}]),
+            "pre_conform_keys")
+
+    def test_null_pre_conform_keys_is_rejected(self):
+        self.reject(lambda d: d["shapes"][0].update(pre_conform_keys=None),
+                    "omit the member")
+
     def test_an_invalid_document_names_the_shape(self):
         doc = valid_doc()
         doc["shapes"][0]["frames"]["11"]["points"].pop()
