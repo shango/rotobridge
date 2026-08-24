@@ -477,6 +477,7 @@ def build_record(doc, source_path, node, warnings, reports, offset, tolerance):
     file_warnings = list(doc.get("warnings", []))
     return {
         "written": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "tool": version.LABEL,
         "host": "Nuke %s" % nuke.NUKE_VERSION_STRING,
         "target": node.name(),
         "source_file": source_path,

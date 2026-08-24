@@ -2286,10 +2286,12 @@ class TestImportRecord(unittest.TestCase):
     def record(self, **changes):
         base = {
             "written": "2026-08-22 09:14:03",
+            "tool": "RotoBridge 0.9.0",
             "host": "Nuke 17.1v1",
             "target": "Roto1",
             "source_file": "/shots/ab_010/roto/ab_010.rbj",
             "source": {"app": "After Effects", "app_version": "25.6x101",
+                       "tool_version": "0.9.0",
                        "width": 1920, "height": 1080, "fps": 24.0,
                        "pixel_aspect": 1.0},
             "version": 2,
@@ -2311,6 +2313,24 @@ class TestImportRecord(unittest.TestCase):
                        "Nuke 17.1v1", "feathered", ".rbj version 2",
                        "1920 x 1080 at 24 fps"):
             self.assertIn(wanted, text)
+
+    def test_it_names_the_build_on_both_sides(self):
+        # The record is the one artifact a non-technical tester can send that
+        # answers every question at once, and "which build" is two questions:
+        # the one that wrote the file and the one that read it. They are
+        # routinely different machines and routinely different versions.
+        text = report.render(self.record())
+        self.assertIn("RotoBridge 0.9.0", text)
+        self.assertIn("exported with", text)
+
+    def test_a_file_older_than_the_member_says_so(self):
+        # Every .rbj written before source.tool_version existed. Silence in a
+        # document written to settle an argument is worse than a plain "not
+        # recorded" - a missing row reads as the record having forgotten.
+        source = dict(self.record()["source"])
+        source.pop("tool_version")
+        text = report.render(self.record(source=source))
+        self.assertIn("not recorded", text)
 
     def test_whole_numbers_lose_the_trailing_zero(self):
         # The one accepted divergence between the two writers is how they
@@ -3149,6 +3169,13 @@ class TestEs3CrossCheck(unittest.TestCase):
             file_warnings=["shape 'plain': ease was dropped"],
             import_warnings=["shape 'feathered': 3 vertices were inserted"])
         self.assertEqual(self.es3_render(record), report.render(record))
+
+        # And the branch an older file takes. A document held to byte
+        # identity must not have a path only one implementation has run.
+        source = dict(record["source"])
+        source.pop("tool_version")
+        older = dict(record, source=source)
+        self.assertEqual(self.es3_render(older), report.render(older))
 
     def test_both_implementations_render_the_same_warnings(self):
         # The registry is the fence against the two hosts' prose for the same

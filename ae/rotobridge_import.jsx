@@ -648,6 +648,7 @@
          * did". Mirrors `build_record` in `nuke/rotobridge_import.py`. */
         return {
             written: stamp(new Date()),
+            tool: RB.LABEL,
             host: "After Effects " + app.version,
             target: "comp '" + comp.name + "', layer '" + layer.name + "'",
             source_file: file.fsName,

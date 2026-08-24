@@ -19,6 +19,8 @@ frame the record names.
 
 import math
 
+from core import version
+
 RULE = "-" * 78
 LABEL = 15
 SUFFIX = ".rotobridge.txt"
@@ -119,9 +121,10 @@ def _warnings(subject, messages):
 def render(record):
     """One import as text, ending in a newline.
 
-    `record` carries `written`, `host`, `target`, `source_file`, `source` (the
-    file's own source object), `version`, `range`, `offset`, `tolerance`,
-    `shapes` and the two warning lists. Every field is required: a record
+    `record` carries `written`, `tool` (the build doing the importing),
+    `host`, `target`, `source_file`, `source` (the file's own source object,
+    which may name the build that wrote it), `version`, `range`, `offset`,
+    `tolerance`, `shapes` and the two warning lists. Every field is required: a record
     missing one is a bug in the adapter, and a hole in a document written to
     settle an argument is worse than a crash during the import that wrote it.
     """
@@ -135,11 +138,20 @@ def render(record):
         "RotoBridge import record",
         "",
         _row("written", record["written"]),
+        _row("imported with", record["tool"]),
         _row("into", record["host"]),
         _row("target", record["target"]),
         "",
         _row("source file", record["source_file"]),
         _row("exported by", "%s %s" % (src["app"], src["app_version"])),
+        # The tool, not the host, and spelled like the row above it: the file
+        # stores a bare number because a .rbj needs no reminder whose it is,
+        # but a record sits next to a Nuke script and has to say. Absent from
+        # every file written before the member existed, where a missing row
+        # would read as the record forgetting rather than the file never
+        # saying.
+        _row("exported with", "%s %s" % (version.NAME, src["tool_version"])
+             if src.get("tool_version") else "not recorded"),
         _row("format", ".rbj version %d" % int(record["version"])),
         _row("source comp", "%d x %d at %s fps, pixel aspect %s"
              % (int(src["width"]), int(src["height"]), _num(src["fps"]),

@@ -1066,11 +1066,19 @@ var RB = (function () {
             "RotoBridge import record",
             "",
             reportRow("written", record.written),
+            reportRow("imported with", record.tool),
             reportRow("into", record.host),
             reportRow("target", record.target),
             "",
             reportRow("source file", record.source_file),
             reportRow("exported by", src.app + " " + src.app_version),
+            /* The tool, not the host, and spelled like the row above it. The
+             * file stores a bare number; a record sits next to a project and
+             * has to say whose. Absent from every file written before the
+             * member existed, where a missing row would read as the record
+             * forgetting rather than the file never saying. */
+            reportRow("exported with", src.tool_version
+                      ? RB.NAME + " " + src.tool_version : "not recorded"),
             reportRow("format", ".rbj version " + reportInt(record.version)),
             reportRow("source comp", reportInt(src.width) + " x "
                       + reportInt(src.height) + " at " + reportNum(src.fps)
