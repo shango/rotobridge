@@ -210,15 +210,52 @@ describe("import", function () {
 
     it("collapses an attribute that never changes to one key", function () {
         // An artist opening a shape whose feather was never animated should
-        // find one key on it, not one per frame. Opacity moves in this fixture
-        // and stays dense; feather y does not.
+        // find one key on it, not one per frame.
         var host = importInto(exported({ mask: {
-            opacityAt: function (t) { return 100 - t * 48; },
             featherAt: function () { return [12, 5]; }
         } }));
         var mask = host.comp.layer(1)._masks[0];
+        eq(mask.property("ADBE Mask Feather").numKeys, 1);
+    });
+
+    it("collapses a straight ramp to the two keys that draw it", function () {
+        // Opacity and uniform feather have no sparse layer in the file, so
+        // they arrive one value per frame. An artist who ramped opacity
+        // authored two keys and should get two back - the line between them
+        // lands on every frame the file dropped.
+        var host = importInto(exported({ mask: {
+            opacityAt: function (t) { return 100 - t * 48; },
+            featherAt: function (t) { return [10 + t * 24, 5]; }
+        } }));
+        var mask = host.comp.layer(1)._masks[0];
+        eq(mask.property("ADBE Mask Opacity").numKeys, 2);
+        eq(mask.property("ADBE Mask Feather").numKeys, 2);
+    });
+
+    it("keeps every attribute sample at tolerance 0", function () {
+        // Tolerance 0 is the mode that reproduces the file exactly, so the
+        // collapse steps aside: the line through two of these values is
+        // arithmetic, not the bit-exact sample the artist asked for. A value
+        // that never changes still collapses, because one key is every sample.
+        var host = importInto(exported({ mask: {
+            opacityAt: function (t) { return 100 - t * 48; },
+            featherAt: function () { return [12, 5]; }
+        } }), { answers: ["0", "", "0"] });
+        var mask = host.comp.layer(1)._masks[0];
         eq(mask.property("ADBE Mask Opacity").numKeys, 5);
         eq(mask.property("ADBE Mask Feather").numKeys, 1);
+    });
+
+    it("leaves an attribute the line cannot follow dense", function () {
+        // The other half of the rule: a value that curves is still carried
+        // frame by frame, because dropping a sample there would change what
+        // renders. Same policy the mask path gets from the drift pass.
+        var host = importInto(exported({ mask: {
+            opacityAt: function (t) { return 100 - 1152 * t * t; }
+        } }));
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Opacity");
+        ok(prop.numKeys > 2, "the curve was flattened to its ends");
+        eq(prop.valueAtTime(2 / 24, false), 100 - 1152 * (2 / 24) * (2 / 24));
     });
 
     it("sets a corrective key linear rather than leaving the host default", function () {

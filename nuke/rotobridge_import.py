@@ -352,7 +352,7 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
                               "residual": messages.px(residual, 4),
                               "frame": at}))
 
-    _write_attributes(shape, spec, frames, offset, warn)
+    _write_attributes(shape, spec, frames, offset, tolerance, warn)
 
     return {
         "name": name,
@@ -367,22 +367,58 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
     }
 
 
-def _collapse(samples):
-    """One key instead of one per frame when the value never changes.
+# How far a dropped opacity or feather sample may sit from the line drawn
+# through the samples kept either side of it: a ten-thousandth of a pixel of
+# feather, or of a unit of opacity - Nuke's `opc` runs 0 to 1, not 0 to 100, so
+# this is a hundredth of the percent an artist sees. Both are far below what
+# Nuke can render, and it sits above the float32 storage residual Phase 2
+# measured at about 3e-05 px, so a straight ramp collapses instead of buying
+# keys to chase the host's own arithmetic.
+COLLAPSE_TOLERANCE = 1e-4
+
+
+def _collapse(samples, tolerance):
+    """The samples a linear reconstruction of this attribute needs.
 
     An artist opening a shape whose opacity was never animated should find one
-    key on it, not a hundred and fifty. This changes nothing about the values -
-    the dense layer is still where they came from - only how much of the curve
-    editor an unanimated attribute takes up.
+    key on it, not a hundred and fifty - and one who ramped it across a hundred
+    frames authored two keys and should get two back. Opacity and uniform
+    feather have no sparse layer in the format (spec section 7.2): they arrive
+    as one value per frame, so writing them straight out keys every frame of
+    the range whatever the artist did.
+
+    The dense layer is still where the values come from. What changes is only
+    which of them are spelled as keys, and a sample is dropped only where the
+    line through the keys either side of it lands on top of it anyway. A curve
+    that line cannot follow stays dense, which is the policy the shape already
+    gets from the drift pass: honour what can be honoured, pin the rest.
+
+    Tolerance 0 keeps every sample. It is the mode that reproduces the file
+    exactly at the cost of an uneditable shape (prd.md section 8), and a line
+    drawn through two of these values reproduces the rest to within the
+    arithmetic, not to the bit - a real Nuke file's uniform feather crosses
+    7e-07 px off it. An artist who asked for exact gets exact. Collapsing a
+    value that never changes is not that trade and happens either way: one key
+    is every sample, spelled once.
     """
     first = samples[0][1]
     for _, value in samples:
         if abs(value - first) > 1e-9:
-            return samples
-    return samples[:1]
+            break
+    else:
+        return samples[:1]
+
+    if tolerance <= 0.0:
+        return samples
+
+    frames = [int(at) for at, _ in samples]
+    dense = dict((int(at), [value]) for at, value in samples)
+    keep = set(drift.linear_fit(frames, dense, [frames[0], frames[-1]],
+                                COLLAPSE_TOLERANCE)[0])
+    return [sample for sample in samples if int(sample[0]) in keep]
 
 
-def _write_attributes(shape, spec, frames, offset, warn):
+def _write_attributes(shape, spec, frames, offset, tolerance, warn):
     """Opacity and uniform feather per frame; falloff and blend once."""
     attrs = shape.getAttributes()
     dense = spec["frames"]
@@ -398,7 +434,8 @@ def _write_attributes(shape, spec, frames, offset, warn):
     for name, samples in ((ATTR_OPACITY, opacity),
                           (ATTR_FEATHER_X, feather_x),
                           (ATTR_FEATHER_Y, feather_y)):
-        set_curve_linear(write_attr_curve(attrs, name, _collapse(samples)))
+        set_curve_linear(write_attr_curve(attrs, name,
+                                          _collapse(samples, tolerance)))
 
     # Static per shape, so one key each. Attribute curves default to curved too
     # (Phase 0 case 62), but a single-key curve has nothing to interpolate.

@@ -30,6 +30,13 @@
 
     var AFFINE_TOLERANCE = 1e-4;
 
+    /* How far a dropped opacity or feather sample may sit from the line drawn
+     * through the samples kept either side of it: a thousandth of a percent of
+     * opacity, or a thousandth of a pixel of feather. Both are far below what
+     * After Effects can render, and it is loose enough that the residue of the
+     * host's own arithmetic cannot masquerade as a curve worth keys. */
+    var COLLAPSE_TOLERANCE = 1e-3;
+
     /* Adding a mask, and the `Shape` members that carry feather points, are the
      * calls Phase 0 exercised in probe section E2 rather than inferred: run 6
      * wrote `featherRadii = [30, -15]` with `featherTypes = [0, 1]` and read
@@ -498,20 +505,60 @@
         return Math.abs(a - b) <= 1e-9;
     }
 
-    function collapse(samples) {
-        /* One key instead of one per frame when the value never changes.
+    function collapse(frames, samples, tolerance) {
+        /* The samples a linear reconstruction of this attribute needs.
          *
          * An artist opening a shape whose opacity was never animated should
-         * find one key on it, not a hundred and fifty. This changes nothing
-         * about the values - the dense layer is still where they came from -
-         * only how much of the timeline an unanimated attribute takes up. */
-        for (var i = 1; i < samples.length; i++) {
-            if (!same(samples[i].value, samples[0].value)) { return samples; }
+         * find one key on it, not a hundred and fifty - and one who ramped it
+         * across a hundred frames authored two keys and should get two back.
+         * Opacity and uniform feather have no sparse layer in the format (spec
+         * section 7.2): they arrive as one value per frame, so writing them
+         * straight out keys every frame of the range whatever the artist did.
+         *
+         * The dense layer is still where the values come from. What changes is
+         * only which of them are spelled as keys, and a sample is dropped only
+         * where the line through the keys either side of it lands on top of it
+         * anyway. A curve that line cannot follow stays dense, which is the
+         * policy the mask path already gets from the drift pass: honour what
+         * can be honoured, pin the rest.
+         *
+         * Tolerance 0 keeps every sample. It is the mode that reproduces the
+         * file exactly at the cost of an uneditable shape (prd.md section 8),
+         * and a line drawn through two of these values reproduces the rest to
+         * within the arithmetic, not to the bit - a real Nuke file's uniform
+         * feather crosses 7e-07 px off it. An artist who asked for exact gets
+         * exact. Collapsing a value that never changes is not that trade and
+         * happens either way: one key is every sample, spelled once.
+         */
+        var i;
+        for (i = 1; i < samples.length; i++) {
+            if (!same(samples[i].value, samples[0].value)) { break; }
         }
-        return samples.slice(0, 1);
+        if (i >= samples.length) { return samples.slice(0, 1); }
+        if (tolerance <= 0) { return samples; }
+
+        var dense = {};
+        for (i = 0; i < frames.length; i++) {
+            dense[String(frames[i])] = RB.util.isArray(samples[i].value)
+                ? samples[i].value : [samples[i].value];
+        }
+        var got = RB.drift.linearFit(frames, dense,
+                                     [frames[0], frames[frames.length - 1]],
+                                     COLLAPSE_TOLERANCE);
+        var keep = {};
+        for (i = 0; i < got.keys.length; i++) {
+            keep[String(got.keys[i])] = true;
+        }
+        var out = [];
+        for (i = 0; i < frames.length; i++) {
+            if (RB.util.hasOwn(keep, String(frames[i]))) {
+                out[out.length] = samples[i];
+            }
+        }
+        return out;
     }
 
-    function writeAttributes(comp, mask, spec, frames, offset) {
+    function writeAttributes(comp, mask, spec, frames, offset, tolerance) {
         /* Opacity and uniform feather are per frame in the format because both
          * animate (spec section 7.2, and Phase 0 run 6 measured a keyed
          * `maskFeather`), so they come out of the dense layer rather than the
@@ -526,8 +573,10 @@
                            value: [Number(record["feather_uniform"][0]),
                                    Number(record["feather_uniform"][1])] };
         }
-        setSamples(ae.maskProp(mask, ae.MASK_OPACITY), collapse(opacity));
-        setSamples(ae.maskProp(mask, ae.MASK_FEATHER), collapse(feather));
+        setSamples(ae.maskProp(mask, ae.MASK_OPACITY),
+                   collapse(frames, opacity, tolerance));
+        setSamples(ae.maskProp(mask, ae.MASK_FEATHER),
+                   collapse(frames, feather, tolerance));
     }
 
     function setSamples(prop, samples) {
@@ -579,7 +628,8 @@
             var mask = liveMask(layer, maskIndex[s]);
             reports[s] = buildOne(comp, mask, specs[s], targets[s], frames,
                                   offset, tolerance, warn);
-            writeAttributes(comp, mask, specs[s], frames, offset);
+            writeAttributes(comp, mask, specs[s], frames, offset,
+                            tolerance);
         }
         return { count: specs.length, frames: frames, reports: reports };
     }

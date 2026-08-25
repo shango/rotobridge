@@ -2366,3 +2366,43 @@ Also measured while doing this, and it closes the open question above:
 `test/test_nuke_roundtrip.py` **passes when run over the WSL share**, so Python
 imports resolve across the UNC path under Nuke. The share is a viable install
 route for this machine; the zip installer stays the route for everyone else.
+
+**Opacity and uniform feather keyed every frame, 2026-08-25.** Reported from
+the host on an AE to AE crossing: a mask whose opacity was a straight ramp came
+back with a key on every frame of the range, and the same for the mask's x/y
+feather. The mask path was right - two authored keys, no correctives - which is
+the discriminator worth keeping: the import record's `N authored key(s), M
+corrective` line counts the **path only**, so `0 corrective` alongside a
+timeline full of keys means the extras are on the attributes.
+
+Neither attribute has a sparse layer in the format (spec section 7.2). Both
+arrive as one value per frame, and both importers wrote them straight out. The
+only reduction either had was a constant check - one key when the value never
+moves at all - so anything that moved, however simply, stayed dense.
+
+Both now run the dense samples through `drift.linear_fit`, the same fit the AE
+exporter already uses to conform ease, and keep only the frames a linear
+reconstruction needs. A straight ramp of 101 samples comes back as 2 keys; a
+parabola stays at 87 and converges inside the tolerance. Nothing new in core
+and nothing new to cross-check: the ES3 port of `linearFit` was already there
+and already checked against the Python.
+
+**Tolerance 0 opts out**, and finding out why is the useful part. The first cut
+did not, and `test_ae_crossapp` caught it: a real Nuke file's uniform feather
+crossed 7.03e-07 px off, because a line drawn through two float32-quantised
+samples reproduces the ones between them to within the arithmetic and not to
+the bit. Tolerance 0 is documented as reproducing the file exactly at the cost
+of an uneditable shape (prd.md section 8), so the collapse now steps aside
+there, exactly as the drift pass does. The constant collapse still runs at 0 -
+one key **is** every sample, spelled once, and loses nothing.
+
+The two tolerances are deliberately different and are not the artist's: AE uses
+1e-3 (a thousandth of a percent of opacity, a thousandth of a pixel of feather)
+and Nuke 1e-4, because Nuke's `opc` runs 0 to 1 rather than 0 to 100 and
+because Phase 2 measured its float32 storage residual at about 3e-05 px - a
+tolerance under that would buy keys to chase the host's own arithmetic.
+
+Covered by `test_ae_import` (ramp collapses, curve stays dense, tolerance 0
+keeps everything, constant still collapses to one). The Nuke half has no unit
+test, since `_collapse` cannot be imported without `nuke`; it rides on
+`test_nuke_roundtrip.py`, which passes, and on the shared fit.
