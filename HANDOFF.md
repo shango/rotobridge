@@ -2318,3 +2318,51 @@ section guarding against - there is no longer a second copy that can fall
 behind. `dist/` stays untracked: `tools/package.sh` regenerates it from a
 clean tree, so the zip and both paste sources are reproducible from a commit
 rather than kept as artefacts.
+
+**The name `core` was a collision, and a tester found it, 2026-08-25.** The
+first install on someone else's machine raised
+
+```
+cannot import name 'drift' from 'core' (unknown location)
+```
+
+Nothing was wrong with that install. Nuke runs one interpreter for every tool
+in the session, so top-level module names are shared, and `core` is a name a
+studio tool can plausibly own. If theirs is imported first, `sys.modules`
+already holds it and `_bootstrap_core`'s `sys.path.insert` never gets looked
+at - the path is only consulted for a name that is not already bound.
+
+Reproduced and then fixed against real Nuke 17.1v1, four cases:
+
+| session | before | after |
+| --- | --- | --- |
+| clean | imports | imports |
+| foreign namespace `core` (bare directory) | **the tester's error, exactly** | imports |
+| foreign regular `core` (has `__init__.py`) | same failure, message names their path | imports |
+| their `core` afterwards | - | still theirs |
+
+`(unknown location)` is the discriminator worth remembering: it means the
+`core` that won is a **namespace** package, a directory with no `__init__.py`.
+A foreign regular package fails the same way but prints its path instead. Our
+own payload missing its `__init__.py` does **not** produce this - it still
+imports, because `drift.py` is in the namespace portion either way. So the
+message can only mean someone else's `core`.
+
+The fix is in `nuke/rotobridge_nuke.py`: `_bootstrap_core` no longer touches
+`sys.path`. It loads `core/` from its own absolute path with
+`importlib.util.spec_from_file_location` under the private name
+`rotobridge_core`, which takes the collision off the table in both directions -
+we cannot lose the name and we can no longer shadow theirs. `core/report.py`'s
+`from core import version` became `from . import version`, the one internal
+cross-import in the package, since `core` is not a name the package can count
+on any more. Tests still `from core import ...` at the repo root and are
+unaffected.
+
+Worth knowing for the next generic name: the top-level names this tool still
+puts in Nuke's shared namespace are `rotobridge_nuke`, `rotobridge_export` and
+`rotobridge_import`. Those are distinctive enough to leave alone.
+
+Also measured while doing this, and it closes the open question above:
+`test/test_nuke_roundtrip.py` **passes when run over the WSL share**, so Python
+imports resolve across the UNC path under Nuke. The share is a viable install
+route for this machine; the zip installer stays the route for everyone else.

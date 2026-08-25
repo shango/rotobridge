@@ -38,8 +38,8 @@ mkdir -p "${STAGE}/after_effects/lib" "${STAGE}/nuke/rotobridge"
 cp ae/rotobridge_panel.jsx "${STAGE}/after_effects/"
 cp ae/lib/*.jsx "${STAGE}/after_effects/lib/"
 
-# core/ must stay beside nuke/: rotobridge_nuke.py walks up one level to put
-# the root on sys.path, which is how `from core import ...` resolves in Nuke.
+# core/ must stay beside nuke/: rotobridge_nuke.py walks up one level and loads
+# core from there by path, under a private module name.
 cp -r core "${STAGE}/nuke/rotobridge/core"
 cp -r nuke "${STAGE}/nuke/rotobridge/nuke"
 find "${STAGE}" -name '__pycache__' -type d -exec rm -rf {} +

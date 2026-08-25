@@ -41,7 +41,7 @@
      * `tools/bump_version.py`; a cross-check test fails if they drift. This
      * file cannot share the port's constant because it deliberately includes
      * nothing - see the header. */
-    var VERSION = "0.9.0";
+    var VERSION = "0.9.1";
     var LABEL = "RotoBridge " + VERSION;
 
     /* Deliberately version-free, unlike LABEL: the settings section is where

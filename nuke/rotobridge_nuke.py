@@ -9,25 +9,44 @@ mapping is still unverified it says so at the point of use, and the export
 records a warning in the file rather than pretending.
 """
 
+import importlib.util
 import os
 import sys
 
 import nuke
 import nuke.rotopaint as rp
 
+# One interpreter serves every tool in a Nuke session, so top-level module
+# names are shared and `core` is a name someone else can plausibly own. Putting
+# the repo root on sys.path is not enough to win it: if another tool imported
+# its own `core` first, `sys.modules` already holds that one and ours is never
+# looked for. Measured in 17.1v1 against a bare `core/` directory belonging to
+# another tool - the import fails with "cannot import name 'drift' from 'core'
+# (unknown location)", and a reinstall cannot fix it because nothing is wrong
+# with the install. So load our `core` from its own path under a name nobody
+# else will take, and take the name collision off the table in both directions.
+_PKG = "rotobridge_core"
+
 
 def _bootstrap_core():
-    """Put the repo root on sys.path so `core` imports inside Nuke."""
-    here = os.path.dirname(os.path.abspath(__file__))
-    root = os.path.dirname(here)
-    if root not in sys.path:
-        sys.path.insert(0, root)
+    """Import the `core/` beside this file, under a name of our own."""
+    if _PKG in sys.modules:
+        return
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    package = os.path.join(root, "core")
+    spec = importlib.util.spec_from_file_location(
+        _PKG, os.path.join(package, "__init__.py"),
+        submodule_search_locations=[package])
+    module = importlib.util.module_from_spec(spec)
+    # Registered before it is executed so submodule imports resolve against it.
+    sys.modules[_PKG] = module
+    spec.loader.exec_module(module)
 
 
 _bootstrap_core()
 
-from core import (drift, geom, interp, messages, rbj, report, timing,  # noqa: E402
-                  version)
+from rotobridge_core import (drift, geom, interp, messages, rbj,  # noqa: E402
+                             report, timing, version)
 
 VIEW = "main"
 

@@ -19,7 +19,9 @@ frame the record names.
 
 import math
 
-from core import version
+# Relative: under Nuke this package is imported under a private name,
+# so `core` is not a name it can count on. See `nuke/rotobridge_nuke.py`.
+from . import version
 
 RULE = "-" * 78
 LABEL = 15
