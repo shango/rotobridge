@@ -1975,6 +1975,25 @@ kept because someone will assemble one by hand.
 `tools/bump_version.py` now points at `ae/lib/rotobridge_core.jsx`. Verified
 by re-running it at 0.9.0: all three sites still match exactly once.
 
+**`locate()` measured against the real zip, 2026-08-24.** No suite models
+ScriptUI, so this was run under node with a `File`/`Folder` stub thin enough
+to be honest - `fsName`, `parent`, `exists`, nothing else - over the actual
+unzipped drop, pulling `locate()` out of the IIFE rather than reaching
+`build()`:
+
+| layout | result |
+| --- | --- |
+| the drop as shipped | `after_effects/lib` |
+| flat folder assembled by hand | beside the panel |
+| legacy `rotobridge/` subfolder | found |
+| panel with nothing else | `null` |
+| `lib` missing `rotobridge_import.jsx` | `null` |
+
+The last two are the ones worth having: `holdsAdapters` wants both adapters,
+so a half-copied folder prompts rather than half-running. This does **not**
+retire the host visit below - it says the folder arithmetic is right, not
+that After Effects evaluates any of it.
+
 ## The crossing harness only worked on one file, 2026-08-22
 
 **`test_ae_to_nuke.py` takes any `.rbj` as a second argument, and until today it
