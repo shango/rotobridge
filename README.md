@@ -35,9 +35,19 @@ and Access Network`
 Restart After Effects afterwards. RotoBridge checks for this when the panel
 opens and tells you if it is off, but doing it first saves a round trip.
 
-**2. Put `rotobridge_panel.jsx` and the `lib` folder beside it** in a folder
-anywhere you like. The panel is the only file you open; `lib` holds the five
-it evaluates, which include each other.
+**2. Put the `ae/` folder anywhere you like, keeping this shape.** The panel
+finds `lib` on its own, so there is nothing to configure - but it has to be
+beside the panel, and all five files have to be in it.
+
+```
+rotobridge_panel.jsx     <- the only file you ever open
+lib/
+    rotobridge_export.jsx
+    rotobridge_import.jsx
+    rotobridge_ae.jsx
+    rotobridge_core.jsx
+    rotobridge_rbj.jsx
+```
 
 **3. `File > Scripts > Run Script File...`** and pick
 `rotobridge_panel.jsx`. A small two-button window opens. Nothing is installed
