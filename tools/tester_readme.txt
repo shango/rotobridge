@@ -10,7 +10,7 @@ AFTER EFFECTS
 -------------
 
 1. Put the "after_effects" folder anywhere you like and keep it together -
-   the six files in it need each other.
+   the one script in it needs the "lib" folder beside it.
 
 2. Turn this preference ON, then restart After Effects:
 

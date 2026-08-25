@@ -35,8 +35,9 @@ and Access Network`
 Restart After Effects afterwards. RotoBridge checks for this when the panel
 opens and tells you if it is off, but doing it first saves a round trip.
 
-**2. Keep the six `ae/*.jsx` files together** in a folder anywhere you like.
-They include each other.
+**2. Put `rotobridge_panel.jsx` and the `lib` folder beside it** in a folder
+anywhere you like. The panel is the only file you open; `lib` holds the five
+it evaluates, which include each other.
 
 **3. `File > Scripts > Run Script File...`** and pick
 `rotobridge_panel.jsx`. A small two-button window opens. Nothing is installed
@@ -45,7 +46,7 @@ Effects.
 
 To dock it in the Window menu instead, the header comment in
 `rotobridge_panel.jsx` explains the layout. You can also skip the panel and
-run `rotobridge_export.jsx` / `rotobridge_import.jsx` directly.
+run `lib/rotobridge_export.jsx` / `lib/rotobridge_import.jsx` directly.
 
 ### Nuke
 
@@ -69,7 +70,9 @@ which builds were on both ends, and what was warned about.
 ## Layout
 
 - `core/` - the format, geometry, and drift logic, host-free Python
-- `ae/` - the After Effects side, ExtendScript (ES3), including a port of core
+- `ae/` - the After Effects side, ExtendScript (ES3): the panel, over
+  `ae/lib/` holding the two adapters, the shared host helpers, and a port
+  of core
 - `nuke/` - the Nuke side, Python
 - `spec/` - the `.rbj` format specification
 - `docs/` - screenshots the README points at

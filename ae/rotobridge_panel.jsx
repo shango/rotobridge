@@ -10,17 +10,18 @@
  *
  * Two ways to use it:
  *
- *   Quick, no install. Keep this file beside the five `rotobridge_*.jsx` and
- *   open it with `File > Scripts > Run Script File...`. It comes up as a
- *   floating palette.
+ *   Quick, no install. Keep this file beside the `lib` folder holding the
+ *   five adapters - the layout the drop already has - and open it with
+ *   `File > Scripts > Run Script File...`. It comes up as a floating palette.
  *
  *   Docked. Copy this file into `Scripts/ScriptUI Panels/` - rename the copy
  *   `RotoBridge.jsx` if you want that name in the Window menu, since After
- *   Effects labels the entry with the file name - and put the five adapters in
- *   a `rotobridge` folder beside it. AE lists every .jsx sitting *directly* in
- *   `ScriptUI Panels`, so keeping the adapters one level down is what stops
- *   five more entries appearing in the Window menu. The panel looks in that
- *   subfolder second, which is why the layout works with no configuration.
+ *   Effects labels the entry with the file name - and put the `lib` folder
+ *   beside it. AE lists every .jsx sitting *directly* in `ScriptUI Panels`,
+ *   so keeping the adapters one level down is what stops five more entries
+ *   appearing in the Window menu. That is the same layout as the quick route,
+ *   which is why neither needs configuring. A folder named `rotobridge` works
+ *   too, for anyone who set one up before `lib` existed.
  *
  * **The panel shows the folder it is running from, and that is the point of
  * the footer.** The recurring failure in this project is a stale deployment:
@@ -50,6 +51,13 @@
     var FOLDER_KEY = "scriptsFolder";
     var EXPORT = "rotobridge_export.jsx";
     var IMPORT = "rotobridge_import.jsx";
+
+    /* The subfolder the drop puts the five adapters in, and the one the repo
+     * keeps them in. `tools/package.sh` builds this layout and a test holds
+     * the two names equal, because a panel looking in the wrong place fails
+     * as "nothing happens when I click", which is the worst thing a tester
+     * can be asked to describe. */
+    var LIB = "lib";
 
     /* Captured at load, deliberately. `$.fileName` inside a button callback
      * reports whatever is being evaluated at that moment, which after the
@@ -100,9 +108,12 @@
     }
 
     function locate() {
-        /* Beside this file, then the `rotobridge` subfolder a docked install
-         * uses, then wherever the artist pointed us last time. */
-        var candidates = [HERE,
+        /* `lib` first, because that is how the drop is laid out and how the
+         * tests load the adapters. Then beside this file, for a flat folder
+         * someone assembled by hand; then `rotobridge`, the name a docked
+         * install uses; then wherever the artist pointed us last time. */
+        var candidates = [new Folder(HERE.fsName + "/" + LIB),
+                          HERE,
                           new Folder(HERE.fsName + "/rotobridge"),
                           remembered()];
         for (var i = 0; i < candidates.length; i++) {

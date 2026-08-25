@@ -251,7 +251,7 @@ back at `(segment i-1, 1)` - and **regroups the arrays by feather type** when
 the value is read between keyframes rather than on one (`HANDOFF.md`, "Two
 probes, and the answer needed both"). Both transformations preserve `seg + rel`.
 The format stores that invariant and leaves each adapter to spell it however its
-host does. `ae/rotobridge_import.jsx` already compares feather this way, so this
+host does. `ae/lib/rotobridge_import.jsx` already compares feather this way, so this
 is a rule with a working implementation behind it rather than a new idea.
 
 Range: `0 <= t < len(points)` on a closed shape, and `0 <= t <= len(points) - 1`

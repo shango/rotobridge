@@ -276,7 +276,7 @@ measured in probe runs 4, 5 and 6. Checked before flagging; do not re-flag it.
 
 The alert read `RotoBridge import failed: ... object invalid`. **The exact line
 number was never captured - get it.** The catch block at the foot of
-`ae/rotobridge_import.jsx` appends `(line N)` when After Effects supplies one.
+`ae/lib/rotobridge_import.jsx` appends `(line N)` when After Effects supplies one.
 
 **Hypothesis, not a diagnosis.** `importShapes` creates all six masks up front
 and then goes back and writes into them:
@@ -550,7 +550,7 @@ segment units, which wraps to the same value under both.
 
 **The fix.** `deviation` now compares feather as a map keyed by
 `(seg + rel) % vertexCount` instead of by array index, in
-`ae/rotobridge_import.jsx`. It is deliberately **not** a raw anchor match on
+`ae/lib/rotobridge_import.jsx`. It is deliberately **not** a raw anchor match on
 `(segLocs, relSegLocs)`, which is the obvious fix and would have matched nothing:
 the target shape is built in JS and never sees the host, so it carries
 `(i, 0)` while everything from the host carries `(i-1, 1)`.
@@ -760,7 +760,7 @@ in the host. Do not restate the strong claim without measuring it.
 **Decided by the user**, on the grounds that the Nuke artist should get an
 accurate spline without touching a tolerance control, and that After Effects is
 likely the only source application needing this reinterpretation - so the onus
-belongs on it. Implemented in `ae/rotobridge_export.jsx` `conformEase`, over
+belongs on it. Implemented in `ae/lib/rotobridge_export.jsx` `conformEase`, over
 `core/drift.linear_fit` / `RB.drift.linearFit`.
 
 **And a correction to what this file used to say.** The masks in
@@ -841,7 +841,7 @@ worth carrying forward:
   retired.** It was true and is not any more: a parameterless key now stays
   parameterless instead of acquiring influence 16.667 on the way through.
 
-**One line turns it off**: `CONFORM_TOLERANCE` in `ae/rotobridge_export.jsx`.
+**One line turns it off**: `CONFORM_TOLERANCE` in `ae/lib/rotobridge_export.jsx`.
 Nothing else branches on it.
 
 ## Decisions made, so they are not relitigated
@@ -1152,7 +1152,7 @@ for a feather anchor location. Spec section 8 gives a point `c`, `in`, `out`,
 `feather` and an optional `feather_offset`; section 11.1 defines `feather` as a
 signed distance along the normal *at that vertex*. There is nowhere to put
 `(segLoc, relSegLoc)`. The AE exporter calls `geom.snapFeatherPoints` at
-`ae/rotobridge_export.jsx:163`, **per frame, before anything is written**, so
+`ae/lib/rotobridge_export.jsx:163`, **per frame, before anything is written**, so
 the anchor is destroyed at the source adapter. Nuke never had the chance to lose
 it. Confirmed by dumping `feathered`: every frame carries four scalars and no
 anchor, and they are constant only because that mask's path is never keyed
@@ -1748,7 +1748,7 @@ Chunks, in order (mark each DONE with its commit as it lands):
    Run Script File runs, deployment is copy-five-files, acceptance measured
    that path.
 2. **Structured warnings** (item 1). New `core/messages.py` + `RB.messages` in
-   `ae/rotobridge_core.jsx`: every warning is `render(code, params)` producing
+   `ae/lib/rotobridge_core.jsx`: every warning is `render(code, params)` producing
    "[code] prose". Params are strings/ints only; floats pre-formatted via
    shared helpers mirroring report's `_num`. Migrate all ~37 warn sites in the
    four adapters + core-side warners in `nuke/rotobridge_import.py`. Cross-check
@@ -1819,9 +1819,9 @@ The findings' full descriptions as reviewed follow.
 **F1. AE export silently drops feather tension / corner type / interp.**
 `prd.md` section 9.3 names `featherRelCornerAngles`, `featherInterps`,
 `featherTensions` as readable, the export never reads them, the import writes
-zeros (`ae/rotobridge_import.jsx:195-197`), and no warning fires - unlike
+zeros (`ae/lib/rotobridge_import.jsx:195-197`), and no warning fires - unlike
 maskExpansion and the inverted flag, which warn for the same class of loss.
-Fix: in `applyFeather` (`ae/rotobridge_export.jsx`), record whether any of the
+Fix: in `applyFeather` (`ae/lib/rotobridge_export.jsx`), record whether any of the
 three arrays holds a non-default value (0 is the default for all three); warn
 once per shape in `finishFeather`. Match existing warning style ("mask '...':").
 
@@ -1844,16 +1844,16 @@ prints "nan px". AE side throws via isNaN - a divergence. Fix:
 `core/rbj.py:_validate_keys`: frame/order errors go into the capped `key_errs`,
 but `_validate_interp` (line 440) appends straight to `errs` and the break
 watches only `key_errs`, so 150 bad interps emit 150+ errors past
-MAX_ERRORS_PER_SHAPE. Same bypass mirrored in `ae/rotobridge_rbj.jsx`
+MAX_ERRORS_PER_SHAPE. Same bypass mirrored in `ae/lib/rotobridge_rbj.jsx`
 validateKeys/validateInterp. Fix: route interp errors through key_errs on both
 sides; keep the two implementations' messages aligned.
 
-**F5 (cosmetic, opportunistic).** `linearError` in `ae/rotobridge_core.jsx:665`
+**F5 (cosmetic, opportunistic).** `linearError` in `ae/lib/rotobridge_core.jsx:665`
 declares `var held` shadowing the `held` parameter (same binding under ES3
 hoisting; correct only because the branch returns immediately) - rename the
 local; `core/drift.py:204` rebinds `held` the same way, rename to match.
 `shapeHeader`'s odd guard on the path property before reading maskMode
-(`ae/rotobridge_export.jsx:72`) deserves either removal or a comment.
+(`ae/lib/rotobridge_export.jsx:72`) deserves either removal or a comment.
 
 **Also in flight, unrelated:** `prd.md` section 18 (host API facts moved from
 this file) sits UNCOMMITTED in the tree - step 1 of the consolidation above,
@@ -1921,7 +1921,7 @@ already prompt for everything they need, and a panel that collected its own
 parameters and passed them in would be a second entry point to keep in step
 with the one every test and every host run goes through. It works as a floating
 palette with no install, or docked from `Scripts/ScriptUI Panels/` with the
-adapters in a `rotobridge` subfolder beside it.
+adapters in a subfolder beside it - `lib` since 2026-08-24, see below.
 
 The footer names the folder the scripts are being run from. That is not
 decoration: the recurring failure here is a stale deployment, and it produces a
@@ -1944,6 +1944,36 @@ What to check: it opens, the footer names the right folder, both buttons run
 their adapter, and the Change... button finds a folder and remembers it across
 a restart. Nothing downstream depends on the answer, because the adapters are
 unchanged.
+
+## DONE: the AE side is a panel over a `lib` folder, 2026-08-24
+
+`ae/` is now `rotobridge_panel.jsx` alone, over `ae/lib/` holding the five it
+evaluates: the two adapters, `rotobridge_ae.jsx`, and the two host-free ports.
+The zip mirrors it - `after_effects/rotobridge_panel.jsx` beside
+`after_effects/lib/`.
+
+**Why**: the drop handed a non-technical tester six files with similar names
+and asked them to pick. One file at the top is the whole point; nothing about
+the code needed it. `#include` is relative to the including file and all five
+moved together, so not one include path changed.
+
+**The repo moved too, not just the zip.** Shipping a layout the tests never
+load is the stale-deployment failure this project keeps paying for, in a new
+costume.
+
+**Three places name `lib` and none can see the other two**: `ae/lib/` on disk,
+`after_effects/lib` in `tools/package.sh`, and `var LIB` in the panel.
+`TestUiEntryPoints.test_the_panel_looks_where_the_drop_puts_the_adapters`
+holds all three equal, because disagreement surfaces as "I click the button
+and nothing happens" - the least debuggable report that can arrive from
+someone else's machine. Mutation-checked: renaming `LIB` fails it.
+
+The panel searches `lib`, then beside itself, then `rotobridge`. The last is
+kept only so a docked install predating this still works; the flat case is
+kept because someone will assemble one by hand.
+
+`tools/bump_version.py` now points at `ae/lib/rotobridge_core.jsx`. Verified
+by re-running it at 0.9.0: all three sites still match exactly once.
 
 ## The crossing harness only worked on one file, 2026-08-22
 
@@ -2179,7 +2209,7 @@ Starting at `0.9.0`. Patch bump per tester drop.
 Chunks, each a commit:
 
 1. Version single source: `core/version.py`, `RB.VERSION` in
-   `ae/rotobridge_core.jsx`, a literal in `ae/rotobridge_panel.jsx` (it includes
+   `ae/lib/rotobridge_core.jsx`, a literal in `ae/rotobridge_panel.jsx` (it includes
    nothing by design), a cross-check test that all three agree, and
    `tools/bump_version.py`.
 2. The After Effects scripting-preference guard. `Allow Scripts to Write Files

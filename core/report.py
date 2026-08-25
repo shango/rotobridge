@@ -8,7 +8,7 @@ material as text, which an adapter writes next to the host project, so the
 answer outlives the session and the argument happens over evidence.
 
 Pure: the caller supplies the timestamp and every measurement. Mirrored in
-`ae/rotobridge_core.jsx` and checked against it byte for byte, because two
+`ae/lib/rotobridge_core.jsx` and checked against it byte for byte, because two
 implementations formatting the same record differently would make two hosts
 disagree about the same import.
 

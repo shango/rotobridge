@@ -99,13 +99,15 @@ group instead of the `Shape` object).
 Not probes - the Phase 4 adapter pair. They install like any other script:
 
 ```
-File > Scripts > Run Script File...  ->  ae/rotobridge_export.jsx
-File > Scripts > Run Script File...  ->  ae/rotobridge_import.jsx
+File > Scripts > Run Script File...  ->  ae/lib/rotobridge_export.jsx
+File > Scripts > Run Script File...  ->  ae/lib/rotobridge_import.jsx
 ```
 
 Both `#include` `rotobridge_ae.jsx`, which includes `rotobridge_core.jsx` and
-`rotobridge_rbj.jsx`, so **all five files must sit in the same folder**. Copy
-the whole `ae/` directory rather than one script.
+`rotobridge_rbj.jsx`, so **all five files must sit in the same folder** - they
+do, in `ae/lib/`. Point the host at the whole `ae/` directory rather than one
+script; `ae/rotobridge_panel.jsx` runs either of these from a button and finds
+`lib` on its own.
 
 Unlike the Nuke pair, most of this is testable with no application present:
 
@@ -188,15 +190,15 @@ used to guard it.
 
 The panel's footer names the folder it is running from, so it now reads as a
 `wsl.localhost` path. That is the in-host confirmation that no copy is
-involved. The six `ae/*.jsx` load each other and must stay together, which they
-do in the repo; `setup_ae_scene.jsx` lives under `test/probe/`, so point the
-host at it there.
+involved. The five files in `ae/lib/` load each other and must stay together,
+which they do in the repo; `setup_ae_scene.jsx` lives under `test/probe/`, so
+point the host at it there.
 
 **Unverified, 2026-08-24.** After Effects has not yet been asked to run these
 from the share. ExtendScript spells a UNC path `//wsl.localhost/...` internally
 and `#include` resolution across it is untested, which is exactly the sort of
 thing this file exists to make someone measure rather than assume. If it fails,
-copying `ae/*.jsx` and `test/probe/setup_ae_scene.jsx` into one local folder
+copying `ae/` and `test/probe/setup_ae_scene.jsx` into one local folder
 still works - but then the `diff` against the repo comes back with it, because
 the failure above comes back with it too.
 
@@ -628,7 +630,7 @@ wrong area. Ground it on a `Constant` and the frame is the frame.
 
 ## The export conforms ease, so a re-export will differ
 
-`ae/rotobridge_export.jsx` rewrites every `ease` key side as `linear` and adds
+`ae/lib/rotobridge_export.jsx` rewrites every `ease` key side as `linear` and adds
 the keys that costs (`prd.md` section 9.1 step 6a), so **a file exported with
 the current adapters carries no `ease` block at all** and has more keys than
 `test/golden/ae_scene.rbj` does. That is the intended change, not a regression:
@@ -776,7 +778,7 @@ them by reading the file back rather than by trusting the return of `open`.
 Two probes, both about one number: importing `feathered` from
 `test/golden/ae_scene.rbj` leaves exactly **27.0000 px** at frame 15 that the
 drift pass cannot remove. The file's per-vertex feather is `[30, -15, 0, 12]`
-and `12 - (-15) = 27`. `deviation()` in `ae/rotobridge_import.jsx` compares
+and `12 - (-15) = 27`. `deviation()` in `ae/lib/rotobridge_import.jsx` compares
 `featherRadii` by array index, which is only sound if the host preserves order.
 
 Both need any open comp and are run with `File > Scripts > Run Script File...`.
@@ -822,7 +824,7 @@ could tell those apart.
 **Nothing is lost.** The anchors move with the radii: `segLoc 3` carries 30 in
 both rows, `segLoc 0` carries -15 in both. So `seg + rel`, the position in
 segment units, identifies a point under both the rename and the regroup, and
-that is what `deviation()` in `ae/rotobridge_import.jsx` now keys on. A raw
+that is what `deviation()` in `ae/lib/rotobridge_import.jsx` now keys on. A raw
 `(segLocs, relSegLocs)` match would **not** work: the target shape is built in
 JS and never sees the host, so it carries `(i, 0)` while the host returns
 `(i-1, 1)`.

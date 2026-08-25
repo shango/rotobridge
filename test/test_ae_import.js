@@ -68,7 +68,7 @@ function has(haystack, needle, note) {
 function source(name) {
     var seen = {};
     function read(file) {
-        var full = path.join(ROOT, "ae", file);
+        var full = path.join(ROOT, "ae", "lib", file);
         if (seen[full]) { return ""; }
         seen[full] = true;
         return fs.readFileSync(full, "utf8").replace(

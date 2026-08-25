@@ -398,7 +398,7 @@
             both("  APPEND OVERWRITES. \"a\" truncates in this host, so every"
                  + " import erases the record of the last one.");
             say("  The fix is read-then-write through ae.readText /");
-            say("  ae.writeText in ae/rotobridge_ae.jsx - appendText is the");
+            say("  ae.writeText in ae/lib/rotobridge_ae.jsx - appendText is the");
             say("  only function that changes.");
         } else {
             both("  APPEND DID SOMETHING ELSE. Read the file itself.");
@@ -489,7 +489,7 @@
     say("  golden (ae_static_ease.rbj). Folding them in needs no script: the");
     say("  exporter already gathers every layer that carries a mask.");
     say("");
-    say("  Run ae/rotobridge_export.jsx over this comp with nothing selected,");
+    say("  Run ae/lib/rotobridge_export.jsx over this comp with nothing selected,");
     say("  save over test/golden/ae_scene.rbj, and re-run");
     say("  test/test_ae_to_nuke.py, which reads that file. The matte above");
     say("  would then need re-rendering with both layers in it.");

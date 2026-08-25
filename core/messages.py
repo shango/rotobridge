@@ -12,7 +12,7 @@ so tests and tools match the bracketed code and the prose can be rewritten
 freely. The code also survives translation of the sentence, if that ever
 matters.
 
-This table is mirrored in ES3 (`ae/rotobridge_core.jsx`, `RB.messages`) like
+This table is mirrored in ES3 (`ae/lib/rotobridge_core.jsx`, `RB.messages`) like
 the rest of core, and the cross-check test renders every code in both
 implementations and compares bytes - which is also what keeps the two hosts'
 prose for the same loss from drifting apart, something the inline sentences

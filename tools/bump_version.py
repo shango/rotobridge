@@ -22,7 +22,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (path, pattern with one group around the version, replacement template)
 SITES = [
     ("core/version.py", r'^VERSION = "([^"]+)"$', 'VERSION = "%s"'),
-    ("ae/rotobridge_core.jsx", r'^    RB\.VERSION = "([^"]+)";$',
+    ("ae/lib/rotobridge_core.jsx", r'^    RB\.VERSION = "([^"]+)";$',
      '    RB.VERSION = "%s";'),
     ("ae/rotobridge_panel.jsx", r'^    var VERSION = "([^"]+)";$',
      '    var VERSION = "%s";'),

@@ -30,9 +30,13 @@ STAGE="dist/${NAME}"
 
 echo "== building ${NAME} from ${COMMIT} =="
 rm -rf dist
-mkdir -p "${STAGE}/after_effects" "${STAGE}/nuke/rotobridge"
+mkdir -p "${STAGE}/after_effects/lib" "${STAGE}/nuke/rotobridge"
 
-cp ae/*.jsx "${STAGE}/after_effects/"
+# The panel alone at the top, so the one file a tester opens is the only file
+# they see. The five it evaluates go in `lib`, which is where the panel looks
+# first and where the repo keeps them; a test holds those two names equal.
+cp ae/rotobridge_panel.jsx "${STAGE}/after_effects/"
+cp ae/lib/*.jsx "${STAGE}/after_effects/lib/"
 
 # core/ must stay beside nuke/: rotobridge_nuke.py walks up one level to put
 # the root on sys.path, which is how `from core import ...` resolves in Nuke.

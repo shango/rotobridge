@@ -49,6 +49,9 @@ COMP_HEIGHT = 1080
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AE = os.path.join(REPO, "ae")
+# The panel sits at the root of `ae/`; everything it evaluates,
+# and everything those files include, sits one level down.
+AE_LIB = os.path.join(AE, "lib")
 NUKE_DIR = os.path.join(REPO, "nuke")
 NODE = shutil.which("node") or shutil.which("nodejs")
 
@@ -1684,7 +1687,25 @@ class TestUiEntryPoints(unittest.TestCase):
         self.assertEqual(sorted(set(named)),
                          ["rotobridge_export.jsx", "rotobridge_import.jsx"])
         for name in named:
-            self.assertTrue(os.path.exists(os.path.join(AE, name)), name)
+            self.assertTrue(os.path.exists(os.path.join(AE_LIB, name)), name)
+
+    def test_the_panel_looks_where_the_drop_puts_the_adapters(self):
+        # Three places name the same subfolder and none of them can see the
+        # others: the repo has `ae/lib`, `tools/package.sh` stages
+        # `after_effects/lib`, and the panel searches `LIB`. Disagreement
+        # between them is invisible until an artist clicks a button and
+        # nothing happens, which is the least debuggable bug report this
+        # project can receive from someone else's machine.
+        with io.open(os.path.join(AE, "rotobridge_panel.jsx"),
+                     encoding="utf-8") as handle:
+            found = re.search(r'var LIB = "([^"]+)";', handle.read())
+        self.assertIsNotNone(found, "the panel has no LIB constant")
+        self.assertEqual(found.group(1), os.path.basename(AE_LIB))
+
+        with io.open(os.path.join(REPO, "tools", "package.sh"),
+                     encoding="utf-8") as handle:
+            packager = handle.read()
+        self.assertIn('after_effects/%s' % found.group(1), packager)
 
 
 class TestGoldenSparseExport(unittest.TestCase):
@@ -2279,7 +2300,7 @@ class TestImportRecord(unittest.TestCase):
 
     Rendering is the whole of it: an adapter hands over what it measured and
     gets back the document it writes next to the host project. The mirror in
-    `ae/rotobridge_core.jsx` is held to the same output byte for byte by
+    `ae/lib/rotobridge_core.jsx` is held to the same output byte for byte by
     `TestEs3CrossCheck`.
     """
 
@@ -2892,7 +2913,7 @@ class TestLinearFit(unittest.TestCase):
 def dense_vectors(shape):
     """The flat per-frame vectors the exporter builds, same order.
 
-    `ae/rotobridge_export.jsx` `denseVectors`, in Python: every scalar a
+    `ae/lib/rotobridge_export.jsx` `denseVectors`, in Python: every scalar a
     destination will interpolate, laid end to end, one list per frame.
     """
     out = {}
@@ -3006,7 +3027,7 @@ class TestConformAsAfterEffectsWroteIt(unittest.TestCase):
 
     `TestConformOverRealHostData` above pins the *rule* - that a straight line
     between the chosen keys reproduces a real AE ease. This pins the *wiring*:
-    that `ae/rotobridge_export.jsx` running under ExtendScript reaches the same
+    that `ae/lib/rotobridge_export.jsx` running under ExtendScript reaches the same
     keys as `core.drift.linear_fit` does here, over the same bake. Those are
     two implementations of one fit in two languages, and only a host run can
     put them side by side - `test/ae_mock.js` refuses to bake a bezier segment,
@@ -3118,8 +3139,8 @@ class TestEs3CrossCheck(unittest.TestCase):
             "  var doc = RB.rbj.parse(chunks.join(''));"
             "  process.stdout.write(RB.rbj.stringify(doc));"
             "});"
-        ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),
-             json.dumps(os.path.join(AE, "rotobridge_rbj.jsx")))
+        ) % (json.dumps(os.path.join(AE_LIB, "rotobridge_core.jsx")),
+             json.dumps(os.path.join(AE_LIB, "rotobridge_rbj.jsx")))
         proc = subprocess.run([NODE, "-e", script],
                               input=rbj.dumps(doc).encode("utf-8"),
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -3138,7 +3159,7 @@ class TestEs3CrossCheck(unittest.TestCase):
             "  if (rec.tolerance === 'inf') { rec.tolerance = Infinity; }"
             "  process.stdout.write(RB.report.render(rec));"
             "});"
-        ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),)
+        ) % (json.dumps(os.path.join(AE_LIB, "rotobridge_core.jsx")),)
         # JSON has no infinity, and an unbounded tolerance is exactly one of
         # the values the two languages spell differently. It crosses as a
         # string and the script above turns it back.
@@ -3200,7 +3221,7 @@ class TestEs3CrossCheck(unittest.TestCase):
             "  }"
             "  process.stdout.write(JSON.stringify(out));"
             "});"
-        ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),)
+        ) % (json.dumps(os.path.join(AE_LIB, "rotobridge_core.jsx")),)
         params = dict((code, TestMessages.params_for(code))
                       for code in messages.codes())
         proc = subprocess.run([NODE, "-e", script],
@@ -3231,8 +3252,8 @@ class TestEs3CrossCheck(unittest.TestCase):
             "  var doc = JSON.parse(chunks.join(''));"
             "  process.stdout.write(RB.rbj.stringify(RB.rbj.foldFrames(doc)));"
             "});"
-        ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),
-             json.dumps(os.path.join(AE, "rotobridge_rbj.jsx")))
+        ) % (json.dumps(os.path.join(AE_LIB, "rotobridge_core.jsx")),
+             json.dumps(os.path.join(AE_LIB, "rotobridge_rbj.jsx")))
         proc = subprocess.run([NODE, "-e", script],
                               input=json.dumps(doc).encode("utf-8"),
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -3251,7 +3272,7 @@ class TestEs3CrossCheck(unittest.TestCase):
         # three at once, and this fails if one is edited by hand.
         script = ("global.RB = require(%s);"
                   "process.stdout.write(RB.VERSION);"
-                  ) % (json.dumps(os.path.join(AE, "rotobridge_core.jsx")),)
+                  ) % (json.dumps(os.path.join(AE_LIB, "rotobridge_core.jsx")),)
         proc = subprocess.run([NODE, "-e", script],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
@@ -3366,7 +3387,7 @@ class TestEs3CrossCheck(unittest.TestCase):
         process.stdout.write(host.written);
         """ % (json.dumps(os.path.join(os.path.dirname(
                    os.path.abspath(__file__)), "ae_mock.js")),
-               json.dumps(AE))
+               json.dumps(AE_LIB))
         proc = subprocess.run([NODE, "-e", script],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
@@ -3409,7 +3430,7 @@ class TestEs3CrossCheck(unittest.TestCase):
             "  out.push(RB.geom.snapFeatherPoints(c[0], c[1], c[2], c[3]));"
             "}"
             "process.stdout.write(JSON.stringify(out));"
-        ) % json.dumps(os.path.join(AE, "rotobridge_core.jsx"))
+        ) % json.dumps(os.path.join(AE_LIB, "rotobridge_core.jsx"))
         proc = subprocess.run([NODE, "-e", script, json.dumps(cases)],
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:

@@ -2,7 +2,7 @@
  * A mock After Effects, enough to run the adapters under node.
  *
  * The adapters are the one part of the AE side that must touch the host, so
- * they cannot be tested the way `ae/rotobridge_core.jsx` is. This is the next
+ * they cannot be tested the way `ae/lib/rotobridge_core.jsx` is. This is the next
  * best thing: a stand-in that answers the same calls, counts them, and lets the
  * export and import scripts run end to end with no application present.
  *

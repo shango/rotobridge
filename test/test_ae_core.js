@@ -1,7 +1,7 @@
 /*
  * Tests for the ExtendScript core, run under plain node.
  *
- * `ae/rotobridge_core.jsx` and `ae/rotobridge_rbj.jsx` touch no host, exactly
+ * `ae/lib/rotobridge_core.jsx` and `ae/lib/rotobridge_rbj.jsx` touch no host, exactly
  * as `core/` touches no host, so both are testable without the application.
  * That is the point of the split: After Effects cannot be driven from CI, and a
  * port verified only by running it inside After Effects is a port verified once
@@ -21,8 +21,8 @@ var path = require("path");
 var fs = require("fs");
 
 var ROOT = path.dirname(__dirname);
-global.RB = require(path.join(ROOT, "ae", "rotobridge_core.jsx"));
-require(path.join(ROOT, "ae", "rotobridge_rbj.jsx"));
+global.RB = require(path.join(ROOT, "ae", "lib", "rotobridge_core.jsx"));
+require(path.join(ROOT, "ae", "lib", "rotobridge_rbj.jsx"));
 
 var timing = RB.timing;
 var geom = RB.geom;
