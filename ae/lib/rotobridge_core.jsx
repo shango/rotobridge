@@ -567,7 +567,7 @@ var RB = (function () {
     }
 
     RB.drift.correct = function (frames, keys, applyKeys, measure, tolerance,
-                                 maxPasses) {
+                                 maxPasses, authoredFrames) {
         /* Add corrective keys until nothing drifts past `tolerance`.
          *
          * `applyKeys(keyFrames)` writes exactly those keys into the
@@ -593,9 +593,14 @@ var RB = (function () {
          * number of gaps.
          *
          * Bisecting overshoots, so sweep() then takes back what it can. **Only
-         * keys this pass added are ever removed** - the frames the caller asked
-         * for are the artist's and are not this function's to optimise away,
-         * whatever the tolerance would allow.
+         * invented keys are ever removed.** By default every frame the caller
+         * asked for counts as authored and survives; a caller that knows
+         * better - an importer reading a file that names the artist's own
+         * frames - passes `authoredFrames`, and then the keys the caller
+         * seeded but the artist never made (an exporter's pinned endpoints, a
+         * layer transform's frames) are the sweep's to give back too. The
+         * artist's keys are never this function's to optimise away, whatever
+         * the tolerance would allow.
          */
         if (maxPasses === undefined) { maxPasses = 8; }
         frames = sortedInts(frames);
@@ -626,7 +631,11 @@ var RB = (function () {
                             + frames[0] + ", " + frames[frames.length - 1] + "]");
         }
         var authored = {};
-        for (var a = 0; a < current.length; a++) { authored[current[a]] = true; }
+        var authoredSource = authoredFrames === undefined
+            || authoredFrames === null ? current : authoredFrames;
+        for (var a = 0; a < authoredSource.length; a++) {
+            authored[authoredSource[a]] = true;
+        }
 
         var converged = false;
         var result = { additions: [], worst: 0.0, at: null };
@@ -675,10 +684,13 @@ var RB = (function () {
          * neighbour landed after it.
          *
          * Removing a key only changes what the destination draws **between its
-         * two neighbours**, so only that window is re-measured. The first and
-         * last key are never candidates: dropping one truncates the keyed span
-         * rather than merging two segments, and both hosts hold the nearest
-         * key's value beyond it.
+         * two neighbours**, so only that window is re-measured. An endpoint is
+         * a candidate like any other unauthored key: dropping one truncates
+         * the keyed span rather than merging two segments, and both hosts
+         * hold the nearest key's value beyond it - so its window is everything
+         * past its surviving neighbour, and a span that really is flat out to
+         * the edge gives its endpoint back. One key always survives, because a
+         * destination cannot hold a shape with none.
          *
          * **On return the destination holds exactly what is returned**, which
          * is what lets correct() keep its own promise. A trial has to be
@@ -689,18 +701,19 @@ var RB = (function () {
         var stale = false;
         for (var k = keys.length - 1; k >= 0; k--) {
             var frame = keys[k];
-            if (hasOwn(authored, frame)
-                || frame === keep[0] || frame === keep[keep.length - 1]) {
+            if (hasOwn(authored, frame) || keep.length === 1) {
                 continue;
             }
             var at = indexOf(keep, frame);
-            var low = keep[at - 1], high = keep[at + 1];
+            var low = at > 0 ? keep[at - 1] : null;
+            var high = at + 1 < keep.length ? keep[at + 1] : null;
             var trial = keep.slice(0, at).concat(keep.slice(at + 1));
             applyKeys(trial);
             stale = true;
             var worst = 0.0;
             for (var f = 0; f < frames.length; f++) {
-                if (frames[f] > low && frames[f] < high) {
+                if ((low === null || frames[f] > low)
+                        && (high === null || frames[f] < high)) {
                     var here = Number(measure(frames[f]));
                     if (here > worst) { worst = here; }
                     if (worst > tolerance) { break; }
@@ -760,7 +773,8 @@ var RB = (function () {
         return worst;
     }
 
-    RB.drift.linearFit = function (frames, dense, keys, tolerance, holds) {
+    RB.drift.linearFit = function (frames, dense, keys, tolerance, holds,
+                                   authoredFrames) {
         /* The key frames a LINEAR sparse layer needs to reproduce the dense
          * one. Mirrors core/drift.py `linear_fit`, which carries the full
          * reasoning.
@@ -777,7 +791,11 @@ var RB = (function () {
          * Nuke importer already applies: a tangent that drifts bends the
          * rendered edge exactly as far as a vertex that drifts.
          *
-         * Returns {keys, worst, at}, as correct() does.
+         * Returns {keys, worst, at}, as correct() does, and
+         * `authoredFrames` passes straight through to it: a caller whose seed
+         * keys are all its own invention - an attribute collapse seeding the
+         * range endpoints - passes an empty array, and the fit may then land
+         * fewer keys than it was given.
          */
         var chosen = sortedInts(keys);
         var held = {};
@@ -790,7 +808,8 @@ var RB = (function () {
             return linearError(dense, chosen, frame, held);
         }
 
-        return RB.drift.correct(frames, keys, applyKeys, measure, tolerance);
+        return RB.drift.correct(frames, keys, applyKeys, measure, tolerance,
+                                undefined, authoredFrames);
     };
 
 

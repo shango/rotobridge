@@ -2539,7 +2539,7 @@ ease costs extra keys only where measurement demands them - with every scrap
 of authored ease saved in the file for an AE-to-AE trip. The plan, updated as
 each chunk commits:
 
-1. [ ] core: `correct`/`linear_fit` take `authored`; `_sweep` may drop an
+1. [x] core: `correct`/`linear_fit` take `authored`; `_sweep` may drop an
    unauthored endpoint, measuring the truncated span (both hosts hold the
    nearest key beyond it). Python + ES3 + tests.
 2. [ ] format: `authored_frames` (spline keys the artist authored, may be

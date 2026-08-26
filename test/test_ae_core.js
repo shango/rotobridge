@@ -851,6 +851,32 @@ describe("drift.correct over a monotone gap", function () {
         }
     });
 
+    it("gives back a seeded end the geometry does not need", function () {
+        // The importer's case: the file names the artist's own frames, and
+        // seeds it does not name - an exporter's pinned endpoints - come home
+        // only if the geometry needs them. A constant needs none of them.
+        var host = new HoldingHost(function (f) { return 7.0; }, null);
+        var r = drift.correct(timing.frameRange(0, 10), [0, 5, 10],
+                              function (k) { host.applyKeys(k); },
+                              function (f) { return host.measure(f); },
+                              0.5, undefined, [5]);
+        deepEq(r.keys, [5]);
+        eq(r.worst, 0.0);
+        deepEq(host.applied, r.keys);
+    });
+
+    it("keeps a seeded end the geometry still needs", function () {
+        // Dropping an end truncates the keyed span and the host holds the
+        // nearest key beyond it - on a moving line that hold is exactly what
+        // the window past the surviving neighbour measures.
+        var host = new HoldingHost(function (f) { return 10.0 * f; }, null);
+        var r = drift.correct(timing.frameRange(0, 10), [0, 5, 10],
+                              function (k) { host.applyKeys(k); },
+                              function (f) { return host.measure(f); },
+                              0.5, undefined, [5]);
+        deepEq(r.keys, [0, 5, 10]);
+    });
+
     it("leaves every unkeyed frame inside tolerance", function () {
         var r = runHeld(0.5);
         var frames = timing.frameRange(0, 24);

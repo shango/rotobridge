@@ -28,7 +28,8 @@ def gaps(frames, keys):
     return runs
 
 
-def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
+def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8,
+            authored=None):
     """Add corrective keys until nothing drifts past `tolerance`.
 
     `apply_keys(key_frames)` writes exactly those keys into the destination.
@@ -53,10 +54,14 @@ def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
     does not scale with the number of gaps - only with how deep the worst one
     has to subdivide.
 
-    Bisecting overshoots, so `_sweep` then takes back what it can. **Only keys
-    this pass added are ever removed** - the frames the caller asked for are
-    the artist's and are not this function's to optimise away, whatever the
-    tolerance would allow.
+    Bisecting overshoots, so `_sweep` then takes back what it can. **Only
+    invented keys are ever removed.** By default every frame the caller asked
+    for counts as authored and survives; a caller that knows better - an
+    importer reading a file that names the artist's own frames - passes
+    `authored`, and then the keys the caller seeded but the artist never made
+    (an exporter's pinned endpoints, a layer transform's frames) are the
+    sweep's to give back too. The artist's keys are never this function's to
+    optimise away, whatever the tolerance would allow.
     """
     frames = sorted(set(int(f) for f in frames))
     if not frames:
@@ -76,7 +81,8 @@ def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
         raise ValueError("drift pass needs at least one key inside the frame "
                          "range; got %r against [%d, %d]"
                          % (list(keys), frames[0], frames[-1]))
-    authored = set(current)
+    authored = set(current) if authored is None \
+        else set(int(f) for f in authored)
 
     converged = False
     worst, at = 0.0, None
@@ -173,9 +179,14 @@ def _sweep(frames, keys, authored, apply_keys, measure, tolerance):
 
     Removing a key only changes what the destination draws **between its two
     neighbours** - every other segment still runs between the same pair - so
-    only that window is re-measured. The first and last key are never
-    candidates: dropping one does not merge two segments, it truncates the
-    keyed span, and both hosts hold the nearest key's value beyond it.
+    only that window is re-measured. An endpoint is a candidate like any other
+    unauthored key: dropping one does not merge two segments, it truncates the
+    keyed span, and both hosts hold the nearest key's value beyond it - so the
+    window it re-measures is everything past its surviving neighbour, and a
+    span that really is flat out to the edge gives its endpoint back. That is
+    what lets a mask the artist never keyed come home with one key instead of
+    the two the exporter pinned around it. One key always survives, because a
+    destination cannot hold a shape with none.
 
     **On return the destination holds exactly what is returned**, which is what
     lets `correct` keep its own promise. A trial has to be applied to be
@@ -185,16 +196,18 @@ def _sweep(frames, keys, authored, apply_keys, measure, tolerance):
     keep = list(keys)
     stale = False
     for frame in reversed(list(keys)):
-        if frame in authored or frame == keep[0] or frame == keep[-1]:
+        if frame in authored or len(keep) == 1:
             continue
         at = keep.index(frame)
-        low, high = keep[at - 1], keep[at + 1]
+        low = keep[at - 1] if at > 0 else None
+        high = keep[at + 1] if at + 1 < len(keep) else None
         trial = keep[:at] + keep[at + 1:]
         apply_keys(trial)
         stale = True
         worst = 0.0
         for candidate in frames:
-            if low < candidate < high:
+            if (low is None or candidate > low) \
+                    and (high is None or candidate < high):
                 worst = max(worst, float(measure(candidate)))
                 if worst > tolerance:
                     break
@@ -206,7 +219,7 @@ def _sweep(frames, keys, authored, apply_keys, measure, tolerance):
     return keep
 
 
-def linear_fit(frames, dense, keys, tolerance, holds=None):
+def linear_fit(frames, dense, keys, tolerance, holds=None, authored=None):
     """The key frames a LINEAR sparse layer needs to reproduce the dense one.
 
     The export side of the question `correct` answers at import, and the same
@@ -223,7 +236,10 @@ def linear_fit(frames, dense, keys, tolerance, holds=None):
     `nuke/rotobridge_import.py:_deviation` already applies: a tangent that
     drifts bends the rendered edge exactly as far as a vertex that drifts.
 
-    Returns `(key_frames, worst, at)`, as `correct` does.
+    Returns `(key_frames, worst, at)`, as `correct` does, and `authored`
+    passes straight through to it: a caller whose seed keys are all its own
+    invention - an attribute collapse seeding the range endpoints - passes an
+    empty set, and the fit may then land fewer keys than it was given.
 
     **What this is for.** An adapter whose host has an interpolation the
     destination cannot hold can spend the keys here instead of leaving them to
@@ -243,7 +259,8 @@ def linear_fit(frames, dense, keys, tolerance, holds=None):
     def measure(frame):
         return _linear_error(dense, chosen["keys"], int(frame), held)
 
-    return correct(frames, keys, apply_keys, measure, tolerance)
+    return correct(frames, keys, apply_keys, measure, tolerance,
+                   authored=authored)
 
 
 def _linear_error(dense, keys, frame, held=()):

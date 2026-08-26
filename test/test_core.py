@@ -1422,12 +1422,57 @@ class TestSweep(unittest.TestCase):
         got, _ = self.straight([0, 2, 5, 8, 10], authored=[0, 5, 10])
         self.assertEqual(got, [0, 5, 10])
 
-    def test_it_never_removes_an_end_of_the_keyed_span(self):
-        # Dropping an end does not merge two segments, it truncates the span,
-        # and both hosts hold the nearest key's value beyond it - which is a
-        # change no window measurement around the key would have seen.
+    def test_it_keeps_an_end_the_geometry_still_needs(self):
+        # Dropping an end truncates the keyed span, and both hosts hold the
+        # nearest key's value beyond it. On a moving line that hold is exactly
+        # the drift the window past the surviving neighbour measures, so the
+        # end stays.
         got, _ = self.straight([0, 5, 10], authored=[5])
         self.assertEqual(got, [0, 5, 10])
+
+    def flat(self, keys, authored, tolerance=0.5):
+        # A constant, so the hold beyond any truncated span is exact and every
+        # removal is admissible. What survives is again purely the policy.
+        frames = list(range(0, 11))
+        host = FakeHost(lambda f: 7.0)
+        got = drift._sweep(frames, keys, set(authored), host.apply_keys,
+                           host.measure, tolerance)
+        return got, host
+
+    def test_it_gives_back_an_end_nothing_needs(self):
+        got, _ = self.flat([0, 5, 10], authored=[5])
+        self.assertEqual(got, [5])
+
+    def test_one_key_always_survives(self):
+        # A destination cannot hold a shape with no keys at all; saying which
+        # one key means is the adapter's call, not this function's.
+        got, _ = self.flat([0, 5, 10], authored=[])
+        self.assertEqual(len(got), 1)
+
+    def test_an_authored_end_survives_even_when_nothing_needs_it(self):
+        got, _ = self.flat([0, 5, 10], authored=[0, 10])
+        self.assertEqual(got, [0, 10])
+
+    def test_it_keeps_an_end_that_pins_a_flat_tail(self):
+        # Flat up to 5, then a ramp the keys cannot see: the far end holds the
+        # ramp's last value, so the near end of the flat stretch still matters.
+        frames = list(range(0, 11))
+        host = FakeHost(lambda f: 10.0 * max(f - 5, 0))
+        got = drift._sweep(frames, [0, 5, 10], set(), host.apply_keys,
+                           host.measure, 0.5)
+        self.assertEqual(got, [5, 10])
+
+    def test_correct_passes_authored_through_to_the_sweep(self):
+        # The importer's case: the file names the artist's own frames, and the
+        # seeds it does not name - an exporter's pinned endpoints - come home
+        # only if the geometry needs them.
+        frames = list(range(0, 11))
+        host = FakeHost(lambda f: 7.0)
+        keys, worst, _ = drift.correct(frames, [0, 5, 10], host.apply_keys,
+                                       host.measure, 0.5, authored=[5])
+        self.assertEqual(keys, [5])
+        self.assertEqual(worst, 0.0)
+        self.assertEqual(host.applied, keys)
 
     def test_the_destination_holds_exactly_what_is_returned(self):
         # The sweep applies each trial in order to measure it, so the last
