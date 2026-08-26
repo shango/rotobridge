@@ -2561,4 +2561,56 @@ each chunk commits:
    headless Nuke roundtrip PASS (dense, sparse, open, anchored; thinned pass
    2 authored + 10 corrective, worst 0.465 px at tolerance 0.5), version
    0.9.4 -> 0.9.5, drop packaged as `dist/RotoBridge-0.9.5.zip`.
-7. [ ] full code review of the repo.
+7. [x] full code review of the repo (2026-08-26, four review passes over
+   core/, the ES3 port, nuke/ and ae/). Fixed and committed:
+   - three AE import ease tests passed against a half-dead import (mock
+     bezier refusal became the failure alert; assertions read pre-crash
+     state). runImport now throws on a mock-limit failure and the three
+     fixtures leave no bezier gap.
+   - AE attribute collapse pinned its seeded range ends; Nuke's _collapse
+     already marked them unauthored. A foreign opacity ramp with flat
+     tails arrived as 4 keys in AE, 2 in Nuke. Now 2 both sides.
+   - validators: authored_attributes entry spelled null passed; ease
+     influence outside 0.0-1.0 passed (undivided AE percentage); integer
+     frames key crashed validate() with TypeError. ES3-only: foldFrames
+     dropped the version stamp when the member was absent; duplicate
+     "__proto__" ids went unreported under node.
+
+### Review findings NOT yet fixed (next session's queue)
+
+Confirmed, in nuke/ (each verified by the reviewing agent, fix sketched):
+
+- **`"keys": []` validates clean, then the import crashes** with the drift
+  pass's "needs at least one key" ValueError AFTER the Roto node exists
+  (tolerance 0 imports fine, oddly). Fix: reject the empty array in both
+  validators - "keys is empty; omit the member instead", matching the
+  null-spelling precedent - plus tests both sides.
+- **A shape keyed at exactly one frame exports as never keyed.**
+  `_keyed_curves` skips curves with < 2 keys, so the frame reaches neither
+  `keys` nor `authored_frames`, and the default import then deletes the
+  artist's key (1 authored arrives as 0). Fix: let single-key curves join
+  the union/authored computation but keep the >= 2 filter for the interp
+  VOTE only (`len(keys) > 1` at the vote site); a vote-less frame already
+  resolves to ease/ease. Update `_keyed_curves`' docstring and the stale
+  `rotobridge_export._votes_at` reference in core/interp.py:93.
+- **Animated `inv`/`bm`/`ff` cross silently wrong**: all three are sampled
+  only at frames[0] (nuke/rotobridge_export.py:230, 306, 309), so a keyed
+  inverted flag or blend change mid-range is dropped with no warning. Fix:
+  warn when `attrs.getCurve(name, VIEW).getNumberOfKeys() > 1` - needs a
+  new message code in BOTH message tables (byte-compared by
+  TestEs3CrossCheck).
+- Minor, same policy family: the Nuke import still writes `ff` as a
+  one-key curve (nuke/rotobridge_import.py:522) where `write_attr_static`
+  now exists; and the Nuke exporter silently snaps subframe key times
+  where the AE side warns.
+
+Noted, not worth fixing now: ES3 stringify byte order diverges from Python
+for negative frame keys under V8 only (for-in reorders integer-like keys;
+ExtendScript preserves insertion order); messageParam number spelling
+diverges outside [1e-4, 1e16); rbj `version_for` returns on the first
+open shape, correct only while the two v2 constants stay equal; an
+out-of-range feather anchor `t` cascades a misleading ordering error.
+
+A fourth review agent over ae/lib export/import/ae/panel had not reported
+by wrap-up; its transcript was not recovered. Re-run that pass if its
+surface changes.
