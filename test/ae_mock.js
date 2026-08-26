@@ -234,6 +234,29 @@ function makeProp(valueFn, seed) {
         setValue: function (value) { prop.setValueAtTime(0, value); },
         keyTime: function (i) { return keys[i - 1].t; },
         keyValue: function (i) { return keys[i - 1].value; },
+
+        /* Removal, and the lookup that addresses it. The host renumbers every
+         * key above the one that goes, which is the whole reason a caller has
+         * to re-find an index rather than keep one; splicing reproduces that.
+         * `nearestKeyIndex` always returns a key when there is one, however far
+         * away it is - answering "which is closest", not "is there one here" -
+         * so a caller that means the latter has to check the time itself. */
+        nearestKeyIndex: function (t) {
+            var best = 1;
+            for (var i = 0; i < keys.length; i++) {
+                if (Math.abs(keys[i].t - t) < Math.abs(keys[best - 1].t - t)) {
+                    best = i + 1;
+                }
+            }
+            return best;
+        },
+        removeKey: function (i) {
+            if (i < 1 || i > keys.length) {
+                throw new Error("removeKey: no key " + i + " of " + keys.length);
+            }
+            keys.splice(i - 1, 1);
+        },
+
         setInterpolationTypeAtKey: function (i, inType, outType) {
             keys[i - 1].inType = inType;
             keys[i - 1].outType = outType === undefined ? inType : outType;

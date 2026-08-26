@@ -591,6 +591,11 @@ var RB = (function () {
          * needed. Every gap is worked in the same pass, so the pass count
          * scales with how deep the worst gap has to subdivide, not with the
          * number of gaps.
+         *
+         * Bisecting overshoots, so sweep() then takes back what it can. **Only
+         * keys this pass added are ever removed** - the frames the caller asked
+         * for are the artist's and are not this function's to optimise away,
+         * whatever the tolerance would allow.
          */
         if (maxPasses === undefined) { maxPasses = 8; }
         frames = sortedInts(frames);
@@ -620,6 +625,8 @@ var RB = (function () {
                             + " range; got [" + wanted.join(", ") + "] against ["
                             + frames[0] + ", " + frames[frames.length - 1] + "]");
         }
+        var authored = {};
+        for (var a = 0; a < current.length; a++) { authored[current[a]] = true; }
 
         var converged = false;
         var result = { additions: [], worst: 0.0, at: null };
@@ -636,10 +643,74 @@ var RB = (function () {
              * describe `current`. */
             applyKeys(current);
             result = survey(frames, current, measure, tolerance);
+            return { keys: current, worst: result.worst, at: result.at };
+        }
+
+        var swept = sweep(frames, current, authored, applyKeys, measure,
+                          tolerance);
+        if (swept.length !== current.length) {
+            /* The sweep left the host holding whichever trial it tried last,
+             * which is not necessarily what it kept. Re-establish the
+             * contract. */
+            current = swept;
+            applyKeys(current);
+            result = survey(frames, current, measure, tolerance);
         }
 
         return { keys: current, worst: result.worst, at: result.at };
     };
+
+    function sweep(frames, keys, authored, applyKeys, measure, tolerance) {
+        /* Give back every added key the fit turns out not to need.
+         *
+         * correct() bisects, and bisection overshoots: it pins a gap's worst
+         * frame and the gap's midpoint together, and the midpoint is usually
+         * made redundant the moment the worst frame lands beside it. Nothing
+         * in the loop revisits that. Mirrors core/drift.py `_sweep`, which
+         * carries the measurement.
+         *
+         * `authored` is a set of the caller's own key frames, which are never
+         * candidates - a shape cannot come back with fewer keys than the artist
+         * put on it. Backwards, because the redundant midpoint is the one whose
+         * neighbour landed after it.
+         *
+         * Removing a key only changes what the destination draws **between its
+         * two neighbours**, so only that window is re-measured. The first and
+         * last key are never candidates: dropping one truncates the keyed span
+         * rather than merging two segments, and both hosts hold the nearest
+         * key's value beyond it.
+         *
+         * **On return the destination holds exactly what is returned**, which
+         * is what lets correct() keep its own promise. A trial has to be
+         * applied to be measured, so a rejected one leaves the host a key short
+         * of the answer - and the last trial is rejected as often as not.
+         */
+        var keep = keys.slice(0);
+        var stale = false;
+        for (var k = keys.length - 1; k >= 0; k--) {
+            var frame = keys[k];
+            if (hasOwn(authored, frame)
+                || frame === keep[0] || frame === keep[keep.length - 1]) {
+                continue;
+            }
+            var at = indexOf(keep, frame);
+            var low = keep[at - 1], high = keep[at + 1];
+            var trial = keep.slice(0, at).concat(keep.slice(at + 1));
+            applyKeys(trial);
+            stale = true;
+            var worst = 0.0;
+            for (var f = 0; f < frames.length; f++) {
+                if (frames[f] > low && frames[f] < high) {
+                    var here = Number(measure(frames[f]));
+                    if (here > worst) { worst = here; }
+                    if (worst > tolerance) { break; }
+                }
+            }
+            if (worst <= tolerance) { keep = trial; stale = false; }
+        }
+        if (stale) { applyKeys(keep); }
+        return keep;
+    }
 
     function linearError(dense, keys, frame, held) {
         /* The worst component of what the destination will draw against the

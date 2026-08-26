@@ -52,6 +52,11 @@ def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
     midpoint is needed. Every gap is worked in the same pass, so the pass count
     does not scale with the number of gaps - only with how deep the worst one
     has to subdivide.
+
+    Bisecting overshoots, so `_sweep` then takes back what it can. **Only keys
+    this pass added are ever removed** - the frames the caller asked for are
+    the artist's and are not this function's to optimise away, whatever the
+    tolerance would allow.
     """
     frames = sorted(set(int(f) for f in frames))
     if not frames:
@@ -71,6 +76,7 @@ def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
         raise ValueError("drift pass needs at least one key inside the frame "
                          "range; got %r against [%d, %d]"
                          % (list(keys), frames[0], frames[-1]))
+    authored = set(current)
 
     converged = False
     worst, at = 0.0, None
@@ -85,6 +91,15 @@ def correct(frames, keys, apply_keys, measure, tolerance, max_passes=8):
     if not converged:
         # The last pass chose frames it never got to apply. Apply and re-measure
         # so the host state and the returned `worst` both describe `current`.
+        apply_keys(current)
+        _, worst, at = _survey(frames, current, measure, tolerance)
+        return current, worst, at
+
+    swept = _sweep(frames, current, authored, apply_keys, measure, tolerance)
+    if len(swept) != len(current):
+        # The sweep left the host holding whichever trial it tried last, which
+        # is not necessarily what it kept. Re-establish the contract.
+        current = swept
         apply_keys(current)
         _, worst, at = _survey(frames, current, measure, tolerance)
 
@@ -135,6 +150,60 @@ def _survey(frames, keys, measure, tolerance):
                 additions.append(run[len(run) // 2])
             additions.append(at)
     return additions, worst, worst_at
+
+
+def _sweep(frames, keys, authored, apply_keys, measure, tolerance):
+    """Give back every added key the fit turns out not to need.
+
+    `correct` bisects, and bisection overshoots: it pins a gap's worst frame
+    and the gap's midpoint together, and the midpoint is usually made redundant
+    the moment the worst frame lands beside it. Nothing in the loop revisits
+    that, so without this pass the result converges above the floor - measured
+    against an exact dynamic-programming minimum in
+    `test/probe/probe_key_minimality.py`, 9 keys where 4 held the shape on
+    `test/golden/held_over_moving_layer.rbj`.
+
+    `authored` names the caller's own keys, which are never candidates. Only
+    the frames this pass invented are, so a shape cannot come back with fewer
+    keys than the artist put on it.
+
+    Backwards, because the redundant midpoint is the one whose neighbour landed
+    after it; reaching it while that neighbour is still in place is what lets a
+    single sweep do the work of several.
+
+    Removing a key only changes what the destination draws **between its two
+    neighbours** - every other segment still runs between the same pair - so
+    only that window is re-measured. The first and last key are never
+    candidates: dropping one does not merge two segments, it truncates the
+    keyed span, and both hosts hold the nearest key's value beyond it.
+
+    **On return the destination holds exactly what is returned**, which is what
+    lets `correct` keep its own promise. A trial has to be applied to be
+    measured, so a rejected one leaves the host a key short of the answer -
+    and the last trial is rejected as often as not.
+    """
+    keep = list(keys)
+    stale = False
+    for frame in reversed(list(keys)):
+        if frame in authored or frame == keep[0] or frame == keep[-1]:
+            continue
+        at = keep.index(frame)
+        low, high = keep[at - 1], keep[at + 1]
+        trial = keep[:at] + keep[at + 1:]
+        apply_keys(trial)
+        stale = True
+        worst = 0.0
+        for candidate in frames:
+            if low < candidate < high:
+                worst = max(worst, float(measure(candidate)))
+                if worst > tolerance:
+                    break
+        if worst <= tolerance:
+            keep = trial
+            stale = False
+    if stale:
+        apply_keys(keep)
+    return keep
 
 
 def linear_fit(frames, dense, keys, tolerance, holds=None):

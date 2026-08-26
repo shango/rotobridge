@@ -757,7 +757,9 @@ describe("drift.linearFit", function () {
         var frames = [0, 1, 2, 3, 4];
         var dense = { "0": [0.0], "1": [0.0], "2": [0.0], "3": [0.0],
                       "4": [100.0] };
-        deepEq(drift.linearFit(frames, dense, [0, 4], 0.5).keys, [0, 2, 3, 4]);
+        // One key, not three: bisection reaches [0, 2, 3, 4] and the sweep
+        // gives 2 back, because the line from 0 to 3 already lands on 1 and 2.
+        deepEq(drift.linearFit(frames, dense, [0, 4], 0.5).keys, [0, 3, 4]);
         deepEq(drift.linearFit(frames, dense, [0, 4], 0.5, [0]).keys, [0, 4]);
     });
 
@@ -808,8 +810,44 @@ describe("drift.correct over a monotone gap", function () {
         if (!(corrective.length < 8)) {
             fail("one key per pass is the degenerate walk, not a split");
         }
-        if (corrective.indexOf(18) < 0) {
-            fail("the gap's midpoint is missing: " + corrective.join(","));
+        // The midpoint that splits the gap is survey()'s doing and is asserted
+        // against survey() directly. It is deliberately not asserted here:
+        // splitting the run is how the pass converges, but once it has, sweep()
+        // hands back whatever the split turned out not to need, and on this gap
+        // a single key does the whole job.
+        if (!(corrective.length <= 3)) {
+            fail("the split converges, then the sweep gives back: "
+                 + corrective.join(","));
+        }
+    });
+
+    it("gives back the keys the split turned out not to need", function () {
+        // The split is what converges; the sweep is what keeps the result from
+        // converging above the floor. Before it, this gap cost six corrective
+        // keys - measured against an exact minimum in
+        // test/probe/probe_key_minimality.py.
+        var r = runHeld(0.5);
+        var corrective = [];
+        for (var i = 0; i < r.keys.length; i++) {
+            var f = r.keys[i];
+            if (f !== 0 && f !== 12 && f !== 24) { corrective.push(f); }
+        }
+        deepEq(corrective, [13]);
+    });
+
+    it("never gives back a key the caller asked for", function () {
+        // Every one of these holds the shape without the others, so tolerance
+        // alone would drop four of the five. They are the artist's.
+        var host = new HoldingHost(function (f) { return 20.0 * f; }, 12);
+        var r = drift.correct(timing.frameRange(0, 24), [0, 6, 12, 18, 24],
+                              function (k) { host.applyKeys(k); },
+                              function (f) { return host.measure(f); }, 0.5);
+        var wanted = [0, 6, 12, 18, 24];
+        for (var i = 0; i < wanted.length; i++) {
+            if (r.keys.indexOf(wanted[i]) < 0) {
+                fail("authored key " + wanted[i] + " was swept: "
+                     + r.keys.join(","));
+            }
         }
     });
 

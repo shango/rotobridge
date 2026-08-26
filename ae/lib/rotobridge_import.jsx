@@ -430,6 +430,24 @@
         return worst;
     }
 
+    function removeKeyAtFrame(comp, prop, frame) {
+        /* Take one key off, addressed by frame rather than by index.
+         *
+         * After Effects renumbers every key above the one that goes, so an
+         * index read before a removal is worthless after it. `nearestKeyIndex`
+         * is the host's own lookup and it always returns something, so the time
+         * it lands on is checked against the one asked for - half a frame is
+         * far wider than the rounding `RB.timing` leaves behind and far
+         * narrower than the gap to the next key.
+         */
+        if (!prop.numKeys) { return; }
+        var at = ae.frameToTime(comp, frame);
+        var index = prop.nearestKeyIndex(at);
+        if (Math.abs(prop.keyTime(index) - at) * comp.frameRate < 0.5) {
+            prop.removeKey(index);
+        }
+    }
+
     function buildOne(comp, mask, spec, targets, frames, offset, tolerance,
                       warn) {
         /* Set one shape's keys, then let the drift pass bound what is left.
@@ -443,12 +461,22 @@
         var written = {};
 
         function applyKeys(wanted) {
-            /* The pass only ever grows its key list, so a frame already written
-             * is already correct and re-issuing it would be a wasted host call.
-             * The interpolation is re-pushed every time, because the new keys
-             * are not the only ones whose indices moved. */
-            for (var i = 0; i < wanted.length; i++) {
-                var frame = wanted[i];
+            /* `RB.drift.correct` asks for exactly this set, not a superset: its
+             * sweep tries the path without a key to find out whether the key is
+             * needed. A frame already written is already correct, so only the
+             * difference in each direction costs a host call. The interpolation
+             * is re-pushed every time, because the keys whose indices moved are
+             * not only the new ones. */
+            var asked = {}, frame, i;
+            for (i = 0; i < wanted.length; i++) { asked[String(wanted[i])] = true; }
+            for (frame in written) {
+                if (!RB.util.hasOwn(written, frame)
+                        || RB.util.hasOwn(asked, frame)) { continue; }
+                removeKeyAtFrame(comp, prop, Number(frame) + offset);
+                delete written[frame];
+            }
+            for (i = 0; i < wanted.length; i++) {
+                frame = wanted[i];
                 if (!RB.util.hasOwn(written, String(frame))) {
                     prop.setValueAtTime(ae.frameToTime(comp, frame + offset),
                                         targets[String(frame)]);

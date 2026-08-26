@@ -245,6 +245,20 @@ def _write_frame(shape, record, at, offsets):
                                                      offsets[i][1], 0.0))
 
 
+def _remove_frame(shape, at):
+    """Take one frame's key back off every control point.
+
+    `AnimControlPoint.removePositionKey(time)` - probed on 17.1v1,
+    `test/probe/probe_nuke_key_removal.py`: the key times drop the frame and
+    the segment interpolates across it again.
+    """
+    for cp in shape:
+        cp.center.removePositionKey(at)
+        cp.leftTangent.removePositionKey(at)
+        cp.rightTangent.removePositionKey(at)
+        cp.featherCenter.removePositionKey(at)
+
+
 def _deviation(position, target):
     """How far a curve's evaluated point sits from the dense layer, in pixels.
 
@@ -317,10 +331,15 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
     written = set()
 
     def apply_keys(wanted):
-        # The drift pass only ever grows its key list, so a frame already
-        # written is already correct and re-issuing it would be wasted host
-        # calls. The types are re-pushed every time, because the new keys are
-        # not the only ones whose indices moved.
+        # `drift.correct` asks for exactly this set, not a superset: its sweep
+        # tries a shape without a key to find out whether the key is needed.
+        # A frame already written is already correct, so only the difference
+        # in each direction costs host calls. The types are re-pushed every
+        # time, because the keys that moved are not only the new ones.
+        asked = set(wanted)
+        for frame in sorted(written - asked):
+            _remove_frame(shape, float(frame + offset))
+        written.intersection_update(asked)
         for frame in wanted:
             if frame not in written:
                 _write_frame(shape, dense[str(frame)], float(frame + offset),

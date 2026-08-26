@@ -8,8 +8,8 @@ Nuke 17.1v1, frames 1001-1020
 --- export ---
   1 shape(s), 20 frames, 4 points
   feather_model = per_point, blend = union, falloff = smooth
-  took 0.014 s
-  warning: shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
+  took 0.012 s
+  warning: [feather-tangential] shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
 
 --- schema ---
   the exported document validates against the frozen v1 schema
@@ -20,24 +20,24 @@ Nuke 17.1v1, frames 1001-1020
 
 --- import at tolerance 0 ---
   rebuilt 'round_trip' with 4 points, closed=True
-  took 0.024 s
+  took 0.028 s
 
 --- the import record ---
-  roundtrip.rotobridge.txt, 831 bytes
+  roundtrip.rotobridge.txt, 979 bytes
   | ------------------------------------------------------------------------------
   | RotoBridge import record
   | 
-  | written        2026-08-22 22:25:14
+  | written        2026-08-26 11:43:44
+  | imported with  RotoBridge 0.9.2
   | into           Nuke 17.1v1
   | target         Roto1
   | 
-  | source file    C:\Users\shann\rotobridge\out\hold\roundtrip.rbj
+  | source file    \\wsl.localhost\Ubuntu-24.04\home\sgold\dev\repos\rotobridge\test\golden\nuke_probe\17.1v1\phase3\roundtrip.rbj
   | exported by    Nuke 17.1v1
+  | exported with  RotoBridge 0.9.2
   | format         .rbj version 1
   | source comp    2048 x 1556 at 24 fps, pixel aspect 1
   | source frames  1001 to 1020
-  | placed at      1001 to 1020 (offset 0)
-  | tolerance      0 px (every frame keyed)
 
 --- geometry, every point on every frame ---
   worst centre deviation:  3.052e-05 px
@@ -57,9 +57,9 @@ Nuke 17.1v1, frames 1001-1020
   imported at offset -1000; worst centre deviation 3.052e-05 px
 
 --- acceptance criterion 11, 20 points over 150 frames ---
-  export: 0.17 s  (budget 10 s)
-  import at tolerance 0:   0.03 s  (budget 30 s)
-  import at tolerance 0.5: 0.03 s  (budget 30 s)
+  export: 0.25 s  (budget 10 s)
+  import at tolerance 0:   0.04 s  (budget 30 s)
+  import at tolerance 0.5: 0.05 s  (budget 30 s)
 
 --- Phase 3: a shape keyed on 5 frames ---
   The acceptance criterion: five authored keys survive as five keys
@@ -84,8 +84,8 @@ Nuke 17.1v1, frames 1001-1020
   dense layer, which is what a foreign exporter's tier-2 output
   looks like, and checks the pass brings it back inside tolerance.
   tolerance inf: 2 key(s), worst deviation 30.919 px
-  tolerance 0.5: 13 key(s), worst deviation 0.465 px
-  report: 2 authored, 11 corrective
+  tolerance 0.5: 12 key(s), worst deviation 0.465 px
+  report: 2 authored, 10 corrective
 
 --- Phase 3: mode switching, acceptance criterion 5 ---
   Re-importing the same file at tolerance 0 must reach the dense
@@ -99,14 +99,14 @@ Nuke 17.1v1, frames 1001-1020
   authored [100.0, 100.0], layer translation (500, 25)
   exported [600.0, 125.0], expected [600.0, 125.0]
   deviation 0.000e+00 px
-  flatten warnings: layer 'moved' flattened to the root
+  flatten warnings: [layer-flattened] layer 'moved' flattened to the root
 
 --- Phase 6: an open spline (spec/rbj-v2-draft.md) ---
   Nuke carries open/closed as a shape FLAG (case 72), so the round
   trip has to keep it and the file has to declare version 2 to be
   allowed to say so at all.
   exported closed=False, version=2
-  render-settings warning: shape 'open_spline': an open spline's render settings are node knobs (openspline_width and the end types), not shape attributes, so they are not carried in the file
+  render-settings warning: [open-spline-knobs] shape 'open_spline': an open spline's render settings are node knobs (openspline_width and the end types), not shape attributes, so they are not carried in the file
   rebuilt 'open_spline' with 4 points, open=True
   worst deviation 0.000e+00 px
   The scalar-feather path on an open spline is arithmetic, not host
@@ -121,7 +121,7 @@ Nuke 17.1v1, frames 1001-1020
   points and does not move. Nothing on the Nuke side WRITES such a
   file (section 6.6), so the fixture is built by hand.
   4 points and 3 anchors in, 6 points out (want 6)
-  insertion warning: shape 'anchored': 2 vertices were inserted to hold feather anchors tha
+  insertion warning: [feather-vertices-inserted] shape 'anchored': 2 vertices were inserted
   worst vertex placement 0.000e+00 px
   worst feather radius error 3.129e-07 px
   What is still unmeasured is section 6.4's open question: whether

@@ -1353,7 +1353,13 @@ class TestDriftOverAMonotoneGap(unittest.TestCase):
         corrective = [f for f in keys if f not in (0, 12, 24)]
         self.assertLess(len(corrective), 8,
                         "one key per pass is the degenerate walk, not a split")
-        self.assertIn(18, corrective, "the gap's midpoint splits it")
+        # The midpoint that splits the gap is `_survey`'s doing and is asserted
+        # against `_survey` directly below. It is deliberately not asserted
+        # here: splitting the run is how the pass converges, but once it has,
+        # `_sweep` hands back whatever the split turned out not to need, and on
+        # this gap a single key does the whole job.
+        self.assertLessEqual(len(corrective), 3,
+                             "the split converges, then the sweep gives back")
 
     def test_every_unkeyed_frame_really_is_within_tolerance(self):
         keys, _, _ = self.run_correct()
@@ -1377,6 +1383,94 @@ class TestDriftOverAMonotoneGap(unittest.TestCase):
         host.apply_keys([1, 41])
         additions, _, at = drift._survey(frames, [1, 41], host.measure, 0.5)
         self.assertEqual(additions, [at])
+
+
+class TestSweep(unittest.TestCase):
+    """`_sweep`: bisection overshoots, and this hands the overshoot back.
+
+    The pass pins a gap's worst frame and the gap's midpoint together, and the
+    midpoint is usually redundant the moment the worst frame lands beside it.
+    Nothing in the loop revisits that, so the result converged above the floor
+    - 9 keys where 4 held the shape on `held_over_moving_layer.rbj`, measured
+    against an exact minimum in `test/probe/probe_key_minimality.py`.
+
+    What it must never do is take back a key the caller asked for. Those are
+    the artist's, and the count is not the only thing read off a curve: an
+    authored key is an edit handle and a statement of intent, a corrective one
+    is neither.
+    """
+
+    def straight(self, keys, authored, tolerance=0.5):
+        # A straight line, so any key set at all reproduces it exactly and
+        # every removal is admissible on the geometry. What survives is then
+        # purely a statement about the policy.
+        frames = list(range(0, 11))
+        host = FakeHost(lambda f: 10.0 * f)
+        got = drift._sweep(frames, keys, set(authored), host.apply_keys,
+                           host.measure, tolerance)
+        return got, host
+
+    def test_it_gives_back_a_key_the_fit_does_not_need(self):
+        got, _ = self.straight([0, 5, 10], authored=[0, 10])
+        self.assertEqual(got, [0, 10])
+
+    def test_it_never_removes_an_authored_key(self):
+        got, _ = self.straight([0, 5, 10], authored=[0, 5, 10])
+        self.assertEqual(got, [0, 5, 10])
+
+    def test_it_keeps_an_authored_key_between_corrective_ones(self):
+        got, _ = self.straight([0, 2, 5, 8, 10], authored=[0, 5, 10])
+        self.assertEqual(got, [0, 5, 10])
+
+    def test_it_never_removes_an_end_of_the_keyed_span(self):
+        # Dropping an end does not merge two segments, it truncates the span,
+        # and both hosts hold the nearest key's value beyond it - which is a
+        # change no window measurement around the key would have seen.
+        got, _ = self.straight([0, 5, 10], authored=[5])
+        self.assertEqual(got, [0, 5, 10])
+
+    def test_the_destination_holds_exactly_what_is_returned(self):
+        # The sweep applies each trial in order to measure it, so the last
+        # thing it touched is not necessarily what it kept. `correct` promises
+        # the host holds the keys it returns.
+        frames = list(range(0, 25))
+        host = HoldingHost(lambda f: 20.0 * f, held=12)
+        keys, _, _ = drift.correct(frames, [0, 12, 24], host.apply_keys,
+                                   host.measure, 0.5)
+        self.assertEqual(host.applied, keys)
+
+    def test_it_re_applies_after_a_rejected_last_trial(self):
+        # The case the sweep gets wrong if it only re-applies when it changed
+        # something: every candidate can be refused, and the host is then left
+        # holding the last refusal - one key short of the answer, silently.
+        # A parabola at 0.3 px lands enough neighbouring keys for the last one
+        # tried to be one that has to stay.
+        frames = list(range(1, 22))
+        host = FakeHost(parabola)
+        keys, _, _ = drift.correct(frames, [1, 21], host.apply_keys,
+                                   host.measure, 0.3)
+        self.assertEqual(host.applied, keys)
+
+    def test_what_it_keeps_still_holds_every_frame(self):
+        frames = list(range(0, 25))
+        host = HoldingHost(lambda f: 20.0 * f, held=12)
+        keys, worst, _ = drift.correct(frames, [0, 12, 24], host.apply_keys,
+                                       host.measure, 0.5)
+        self.assertLessEqual(worst, 0.5)
+        for frame in frames:
+            if frame not in keys:
+                self.assertLessEqual(host.measure(frame), 0.5, "frame %d" % frame)
+
+    def test_a_pass_that_ran_out_is_not_swept(self):
+        # A `worst` above tolerance means the fit is still short of keys.
+        # Giving any back there would make it worse, and would report a state
+        # the host does not hold.
+        frames = list(range(1, 42))
+        host = FakeHost(parabola)
+        keys, worst, _ = drift.correct(frames, [1, 41], host.apply_keys,
+                                       host.measure, 0.5, max_passes=1)
+        self.assertGreater(worst, 0.5)
+        self.assertEqual(host.applied, keys)
 
 
 class TestGoldenStaticEase(unittest.TestCase):
@@ -2888,8 +2982,10 @@ class TestLinearFit(unittest.TestCase):
         # preserve holds would destroy them.
         frames = list(range(0, 5))
         dense = {0: [0.0], 1: [0.0], 2: [0.0], 3: [0.0], 4: [100.0]}
+        # One key, not three: bisection reaches [0, 2, 3, 4] and the sweep
+        # gives 2 back, because the line from 0 to 3 already lands on 1 and 2.
         self.assertEqual(drift.linear_fit(frames, dense, [0, 4], 0.5)[0],
-                         [0, 2, 3, 4])
+                         [0, 3, 4])
         self.assertEqual(
             drift.linear_fit(frames, dense, [0, 4], 0.5, holds=[0])[0], [0, 4])
 

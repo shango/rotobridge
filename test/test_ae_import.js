@@ -172,6 +172,18 @@ function emptyComp(over) {
     return spec;
 }
 
+function pathOfMask(host) {
+    return host.comp.layer(1)._masks[0].property("ADBE Mask Shape");
+}
+
+function keyFramesOf(prop) {
+    var out = [];
+    for (var i = 1; i <= prop.numKeys; i++) {
+        out[out.length] = Math.round(prop.keyTime(i) * 24);
+    }
+    return out;
+}
+
 function importInto(text, over) {
     var spec = emptyComp(over);
     spec.readable = text;
@@ -641,6 +653,30 @@ describe("options", function () {
                 fail("the drift pass gave up: " + host.alerts[i]);
             }
         }
+        // And it converges without overshooting. Splitting the gap is what
+        // makes it converge; the sweep is what stops it converging above the
+        // floor, which here is one key - measured against an exact minimum in
+        // test/probe/probe_key_minimality.py. Before the sweep this cost six.
+        has(host.alerts, "3 authored key(s), 1 corrective");
+        var frames = keyFramesOf(pathOfMask(host));
+        deepEq(frames, [0, 12, 13, 24]);
+    });
+
+    it("leaves the mask holding exactly the keys the pass kept", function () {
+        // The sweep has to apply a trial in order to measure it, so a refused
+        // trial leaves the host one key away from the answer. The report is
+        // built from what the pass returned, so a host that disagrees with it
+        // describes a mask nobody has.
+        var text = fs.readFileSync(path.join(ROOT, "test", "golden",
+                                             "held_over_moving_layer.rbj"),
+                                   "utf8");
+        var host = importInto(text, { workAreaDuration: 25 / 24 });
+        var report = has(host.alerts, "authored key(s)");
+        var counts = /(\d+) authored key\(s\), (\d+) corrective/.exec(report);
+        ok(counts !== null, "no key counts in the report: " + report);
+        eq(pathOfMask(host).numKeys,
+           Number(counts[1]) + Number(counts[2]),
+           "the mask does not hold what the report claims");
     });
 
     it("reports the warnings the exporter recorded in the file", function () {

@@ -94,6 +94,88 @@ exposed Q9. Runs 1 and 2 are kept because they document two probe defects that
 were fixed (`sourcePointToComp` arity, and section E searching the mask property
 group instead of the `Shape` object).
 
+## Tangents, both sides, 2026-08-25
+
+Written for a live report: an After Effects mask with visible bezier handles
+arrived in Nuke as a straight-sided polygon. They split the question in half
+rather than answering it, and either one alone says which half to look in.
+
+`probe_nuke_tangents.py` takes a `.rbj` and reports, per shape, the largest
+tangent the **file** carries beside the largest tangent that ends up on the
+**node** after an import, at tolerance 0.5 and 0:
+
+```
+nuke --nc -t test/probe/probe_nuke_tangents.py <file.rbj>
+```
+
+Run against `test/golden/ae_scene.rbj` on 17.1v1 the two columns agree exactly
+(22.0000 in the file, 22.0000 on the node), so the Nuke importer applies what
+it is given and a flat shape means a flat file.
+
+`probe_ae_tangents.jsx` asks After Effects the other half. Select the layer
+holding the mask, `File > Scripts > Run Script File...`, and it alerts the
+vertex count, `closed`, `rotoBezier`, and the largest in/out tangent the host
+hands a script. It reads and writes nothing. A mask drawn with handles that
+reports zeros is the host withholding them; non-zero means the exporter drops
+them between the host and the file.
+
+## Key economy, and where the ease goes, 2026-08-26
+
+Two questions asked together: does anything reach Nuke that is not needed to
+hold the shape inside tolerance, and does an After Effects round trip keep the
+artist's ease.
+
+`probe_key_minimality.py` answers the first. For each shape in a `.rbj` it
+prints four counts over the same dense layer and tolerance - the keys the file
+carries, what `drift.linear_fit` chooses from them, what one backward removal
+sweep leaves, and the fewest keys any piecewise-linear fit could use, by exact
+dynamic programming over the range:
+
+```
+python3 test/probe/probe_key_minimality.py [tolerance] [file.rbj ...]
+```
+
+It models a held segment as flat, as spec section 10.2 requires; pricing one
+as a line reports the next key's whole travel as drift and makes the drift
+pass look far worse than it is.
+
+Measured on the goldens at 0.5 px, the drift pass buys keys it does not need -
+`held_over_moving_layer` lands 9 where 4 hold, `ae_scene_via_nuke`'s `mixed`
+13 where 10 hold. `_survey` adds a gap's worst frame **and** the gap midpoint,
+and nothing ever revisits a key that a later pass made redundant. One backward
+sweep reaches the DP floor on seven of the eight fixtures and is one key off
+on the eighth.
+
+Authored keys are never examined at all: `ae_scene`'s `linear` carries 15 and
+9 hold it, and those 15 cross to Nuke untouched. Whether that is a defect or
+the artist's intent is a decision, not a measurement.
+
+The ease conform is **not** among the culprits. It reads as one on
+`ae_static_ease.rbj`, which conforms 3 keys to 25 of 25 - but that fixture
+travels 700 px in 24 frames, 101 px on its worst frame, and 25 is also the DP
+floor there. On roto-sized motion the conform is proportionate: a 25-frame
+ease-in-out costs 5 keys over 10 px of travel, 9 over 40 px, 17 over 120 px.
+
+`probe_ae_ease_roundtrip.js` answers the second, through the real adapters:
+
+```
+node test/probe/probe_ae_ease_roundtrip.js
+```
+
+It imports the two goldens that bracket the conform. `ae_static_ease.rbj`
+comes back as 3 bezier keys carrying influence 91.176/33.333 - the importer
+restores an `ease` block exactly. `ae_static_conformed.rbj`, which is what the
+exporter actually writes, comes back as 25 linear keys at the host's default
+16.667. So the loss is not in the format and not in the importer: the exporter
+conforms every eased side before writing, keeps the original in
+`pre_conform_keys`, and nothing reads it back - which is the state
+`spec/rbj-v3-draft.md` section 5.1 describes as foreclosing an AE-to-AE round
+trip.
+
+The "before" import raises partway through, because `ae_mock` refuses to
+interpolate a bezier segment. The keys are set before the drift pass runs, so
+the printed keys are real and the alert is the mock, not the host.
+
 ## After Effects adapters
 
 Not probes - the Phase 4 adapter pair. They install like any other script:
