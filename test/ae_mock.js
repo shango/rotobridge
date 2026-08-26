@@ -309,9 +309,9 @@ function makeMask(spec) {
     var props = {
         "ADBE Mask Shape": makeProp(spec.pathAt, spec.pathKeys),
         "ADBE Mask Feather": makeProp(spec.featherAt
-            || function () { return [0, 0]; }),
+            || function () { return [0, 0]; }, spec.featherKeys),
         "ADBE Mask Opacity": makeProp(spec.opacityAt
-            || function () { return 100; }),
+            || function () { return 100; }, spec.opacityKeys),
         "ADBE Mask Offset": makeProp(spec.expansionAt
             || function () { return 0; })
     };

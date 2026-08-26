@@ -873,6 +873,55 @@ describe("export keys", function () {
            "an untouched shape says nothing about conforming");
     });
 
+    it("names the artist's own path frames, and empty means none", function () {
+        // spec/rbj-v3-draft.md section 5.2: what separates an authored key
+        // from a pinned endpoint is this member, and a mask nobody keyed is
+        // the case it exists for - its two file keys are both inventions.
+        var doc = runExport(mock.install(keyedAt([at(0), at(2), at(4)])));
+        deepEq(doc.shapes[0].authored_frames, [0, 2, 4]);
+        eq(RB.rbj.validate(doc).length, 0, RB.rbj.validate(doc).join(" | "));
+
+        doc = runExport(mock.install(basic()));
+        deepEq(doc.shapes[0].authored_frames, []);
+        eq(doc.shapes[0].keys.length, 2, "the endpoints are still pinned");
+        eq(RB.rbj.validate(doc).length, 0, RB.rbj.validate(doc).join(" | "));
+    });
+
+    it("clips authored_frames to the exported range", function () {
+        var doc = runExport(mock.install(keyedAt([at(0), at(4), at(10)])));
+        deepEq(doc.shapes[0].authored_frames, [0, 4]);
+    });
+
+    it("writes the artist's attribute keys, ease intact", function () {
+        // spec/rbj-v3-draft.md section 5.3. Keyed on every frame because the
+        // mock refuses to interpolate a bezier segment - the same reason
+        // everyFrame() exists. No values: the dense layer already has them.
+        var seed = [];
+        for (var f = 0; f <= 4; f++) {
+            seed[f] = { t: f / 24, value: 100 - f * 12 };
+        }
+        seed[2].outType = BEZIER;
+        seed[2].outEase = ease(0, 91.176);
+        var doc = runExport(mock.install(basic({
+            mask: { opacityKeys: seed }
+        })));
+        var got = doc.shapes[0].authored_attributes;
+        ok(got !== undefined, "authored_attributes missing");
+        eq(got.opacity.length, 5);
+        eq(got.opacity[2].interp["out"], "ease");
+        near(got.opacity[2].ease["out"][0], 0.91176, 5);
+        eq(got.opacity[2].value, undefined, "values stay in the dense layer");
+        eq(got.feather_uniform, undefined,
+           "an unkeyed property has no entry");
+        eq(RB.rbj.validate(doc).length, 0, RB.rbj.validate(doc).join(" | "));
+    });
+
+    it("writes no authored_attributes when nothing was keyed", function () {
+        var doc = runExport(mock.install(basic()));
+        eq(doc.shapes[0].authored_attributes, undefined,
+           "absence is the statement that the property was never keyed");
+    });
+
     it("leaves a shape with no eased side untouched", function () {
         // Nothing to conform, nothing added, nothing said.
         var keys = keysOf(everyFrame({ inType: LINEAR, outType: LINEAR }));

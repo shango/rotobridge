@@ -172,6 +172,13 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
     drift pass bounds that at the far end whatever this says - so the price of
     leaving them in is a fuller curve, and the price of taking them out on a
     guess is a wrong one.
+
+    Returns `(keys, authored_frames)`. The second is the control-point union
+    clipped to the range and nothing else - the frames the artist keyed on the
+    points themselves, before the endpoints are pinned and the transform union
+    folded in (spec/rbj-v3-draft.md section 5.2). It is what lets an importer
+    that measures tell an invented key from an authored one and give the
+    invented ones back.
     """
     curves = list(_keyed_curves(shape))
 
@@ -179,6 +186,7 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
     union = set()
     for keys in curves:
         union.update(keys)
+    authored = sorted(f for f in union if first <= f <= last)
     union.update(_transform_key_frames(shape, ancestors))
     union = set(f for f in union if first <= f <= last)
     union.add(first)
@@ -203,7 +211,7 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
     # nothing on this side calibrates it against After Effects' influence and
     # speed. Spec section 10.3 defines a bare `ease` as "smooth, parameters
     # unknown, rely on the drift pass", which is exactly what is known here.
-    return out
+    return out, authored
 
 
 def export_shape(shape, ancestors, frames, warn):
@@ -288,6 +296,7 @@ def export_shape(shape, ancestors, frames, warn):
         warn(messages.render("feather-tangential",
                              {"subject": "shape '%s'" % name}))
 
+    keys, authored = _sparse_keys(shape, ancestors, frames, warn, name)
     return {
         "name": name,
         # Stable identity where the name is a display label an artist can
@@ -300,7 +309,8 @@ def export_shape(shape, ancestors, frames, warn):
         "feather_falloff": falloff_to_rbj(
             attr_value(attrs, ATTR_FEATHER_FALLOFF, frames[0])),
         "frames": dense,
-        "keys": _sparse_keys(shape, ancestors, frames, warn, name),
+        "keys": keys,
+        "authored_frames": authored,
     }
 
 

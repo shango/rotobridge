@@ -511,7 +511,10 @@
     }
 
     function pathKey(path, at, frame) {
-        /* One mask-path keyframe, both sides, with its ease where it has one. */
+        /* One keyframe of one property, both sides, with its ease where it
+         * has one. Written for the mask path; `attributeKeys` hands it
+         * opacity and feather too, because the reads are Property API, not
+         * path API. */
         var sides = {
             "in": RB.interp.sideFromAe(path.keyInInterpolationType(at)),
             "out": RB.interp.sideFromAe(path.keyOutInterpolationType(at))
@@ -796,6 +799,20 @@
             }
         }
 
+        /* The provenance an importer prunes with (spec/rbj-v3-draft.md
+         * section 5.2): the frames the artist keyed on the path itself,
+         * clipped to the range. May be empty, and empty is the point - it is
+         * what lets a mask nobody keyed come home as a plain value with no
+         * keys at all. */
+        var authoredFrames = [];
+        var onlyPath = RB.util.sortedInts(onPath.frames);
+        for (i = 0; i < onlyPath.length; i++) {
+            if (onlyPath[i] >= first && onlyPath[i] <= last) {
+                authoredFrames[authoredFrames.length] = onlyPath[i];
+            }
+        }
+        baked["authored_frames"] = authoredFrames;
+
         var out = [];
         all = RB.util.sortedInts(wanted);
         var unheld = 0;
@@ -916,6 +933,53 @@
         return found ? out : null;
     }
 
+    function attributeKeys(comp, prop, first, last, warn, what) {
+        /* One attribute's authored keyframes, in exactly the schema of `keys`
+         * (spec/rbj-v3-draft.md section 5.3). No values: the dense layer
+         * already carries the attribute on every frame, and the frames here
+         * are snapped to the same grid, so the value at an authored frame is
+         * the dense layer's. Null where there is nothing inside the range -
+         * the member's absence is itself the statement that the property was
+         * never keyed. */
+        if (!prop || !prop.numKeys) { return null; }
+        var got = { frames: [], index: {} };
+        keyFrames(comp, prop, got, warn, what);
+        var out = [];
+        var all = RB.util.sortedInts(got.frames);
+        for (var i = 0; i < all.length; i++) {
+            if (all[i] < first || all[i] > last) { continue; }
+            out[out.length] = pathKey(prop, got.index[String(all[i])], all[i]);
+        }
+        return out.length ? out : null;
+    }
+
+    function authoredAttributes(comp, entry, frames, warn) {
+        /* The artist's own keys on the properties that cross per frame -
+         * opacity and uniform feather - so an importer with the vocabulary
+         * can put back exactly what was authored, ease included, instead of
+         * refitting the dense samples. */
+        var first = frames[0];
+        var last = frames[frames.length - 1];
+        var name = "mask '" + entry.name + "'";
+        var out = {};
+        var any = false;
+        var opacity = attributeKeys(
+            comp, ae.maskProp(entry.mask, ae.MASK_OPACITY), first, last,
+            warn, name);
+        if (opacity) {
+            out["opacity"] = opacity;
+            any = true;
+        }
+        var feather = attributeKeys(
+            comp, ae.maskProp(entry.mask, ae.MASK_FEATHER), first, last,
+            warn, name);
+        if (feather) {
+            out["feather_uniform"] = feather;
+            any = true;
+        }
+        return any ? out : null;
+    }
+
     function buildDocument(comp, warn) {
         var shapes = collectShapes(comp, warn.fn());
         var range = ae.workAreaFrames(comp);
@@ -927,6 +991,8 @@
              * frame loop costs one pass per shape instead of one per frame. */
             headers[s]["keys"] = sparseKeys(comp, shapes[s], frames, headers[s],
                                             warn.fn());
+            var attrs = authoredAttributes(comp, shapes[s], frames, warn.fn());
+            if (attrs) { headers[s]["authored_attributes"] = attrs; }
         }
         return {
             "format": "rotobridge",

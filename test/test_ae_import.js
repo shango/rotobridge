@@ -114,12 +114,33 @@ function keyed(maskSpec) {
      * artist actually authors, and it is what the mock can interpolate between
      * - probe run 6 section H measured AE's linear mask-path interpolation, and
      * `ae_mock` reproduces only that. The fixture's motion is linear in time,
-     * so the frames between the two keys read exactly as `pathAt` would have. */
-    var seed = [];
-    for (var i = 0; i < KEY_TIMES.length; i++) {
-        seed[i] = { t: KEY_TIMES[i], value: maskSpec.pathAt(KEY_TIMES[i]) };
+     * so the frames between the two keys read exactly as `pathAt` would have.
+     *
+     * Opacity and feather get the same treatment where the fixture animates
+     * them: a real comp cannot animate a property without keyframes, and the
+     * exporter now reads those keyframes as provenance
+     * (`authored_attributes`), so a fixture animating keylessly would be
+     * exercising a comp no artist can make. */
+    function seedFrom(at) {
+        var seed = [];
+        for (var i = 0; i < KEY_TIMES.length; i++) {
+            seed[i] = { t: KEY_TIMES[i], value: at(KEY_TIMES[i]) };
+        }
+        return seed;
     }
-    maskSpec.pathKeys = seed;
+    function moves(seed) {
+        return JSON.stringify(seed[0].value)
+            !== JSON.stringify(seed[seed.length - 1].value);
+    }
+    maskSpec.pathKeys = seedFrom(maskSpec.pathAt);
+    if (maskSpec.opacityAt && !maskSpec.opacityKeys) {
+        var o = seedFrom(maskSpec.opacityAt);
+        if (moves(o)) { maskSpec.opacityKeys = o; }
+    }
+    if (maskSpec.featherAt && !maskSpec.featherKeys) {
+        var f = seedFrom(maskSpec.featherAt);
+        if (moves(f)) { maskSpec.featherKeys = f; }
+    }
     return maskSpec;
 }
 
@@ -305,9 +326,17 @@ describe("import", function () {
     it("leaves an attribute the line cannot follow dense", function () {
         // The other half of the rule: a value that curves is still carried
         // frame by frame, because dropping a sample there would change what
-        // renders. Same policy the mask path gets from the drift pass.
+        // renders. Same policy the mask path gets from the drift pass. The
+        // curve is authored as a key on every frame - the mock interpolates
+        // only linear, so a hand-keyed curve is how a real comp curves.
+        var curve = function (t) { return 100 - 1152 * t * t; };
+        var perFrame = [];
+        for (var f = 0; f <= 4; f++) {
+            perFrame[f] = { t: f / 24, value: curve(f / 24) };
+        }
         var host = importInto(exported({ mask: {
-            opacityAt: function (t) { return 100 - 1152 * t * t; }
+            opacityAt: curve,
+            opacityKeys: perFrame
         } }));
         var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Opacity");
         ok(prop.numKeys > 2, "the curve was flattened to its ends");
