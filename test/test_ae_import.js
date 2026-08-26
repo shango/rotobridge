@@ -354,6 +354,24 @@ describe("import", function () {
         eq(mask.property("ADBE Mask Feather").numKeys, 2);
     });
 
+    it("gives the range ends back when flat tails do not need them", function () {
+        // A foreign file, opacity flat to frame 1, ramped to frame 3, flat
+        // after. The two keys that draw it are 1 and 3: the host holds a key's
+        // value beyond the keyed span, so the range ends the collapse seeds
+        // are its own invention and must not survive it - the Nuke side
+        // already gives them back, and the two importers must agree.
+        var host = importInto(exported({ mask: {
+            opacityAt: function (t) {
+                var f = t * 24;
+                return f <= 1 ? 100 : (f >= 3 ? 52 : 100 - (f - 1) * 24);
+            },
+            opacityKeys: []
+        } }));
+        var prop = host.comp.layer(1)._masks[0]
+            .property("ADBE Mask Opacity");
+        deepEq(keyFramesOf(prop), [1, 3]);
+    });
+
     it("puts back exactly the attribute keys the artist made", function () {
         // The After Effects half of spec/rbj-v3-draft.md section 5.3: the
         // file names the artist's own keys, and the import sets those, not a

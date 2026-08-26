@@ -661,9 +661,13 @@
             dense[String(frames[i])] = RB.util.isArray(samples[i].value)
                 ? samples[i].value : [samples[i].value];
         }
+        /* The two seeds are this function's own invention, so the fit may
+         * drop them too: an attribute keyed at 10 and 90 inside a 0-100
+         * range arrives as those two keys, not as four with the range ends
+         * pinned around them. Same rule as the Nuke side's `_collapse`. */
         var got = RB.drift.linearFit(frames, dense,
                                      [frames[0], frames[frames.length - 1]],
-                                     COLLAPSE_TOLERANCE);
+                                     COLLAPSE_TOLERANCE, undefined, []);
         var keep = {};
         for (i = 0; i < got.keys.length; i++) {
             keep[String(got.keys[i])] = true;
