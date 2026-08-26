@@ -85,7 +85,23 @@ function run(script, host) {
     return host;
 }
 
-function runImport(host) { return run("rotobridge_import.jsx", host); }
+/* The import's own catch turns any exception into a "RotoBridge import
+ * failed" alert, including the mock's refusal to interpolate BEZIER. A test
+ * that lets that happen is asserting against whatever state the crash left
+ * behind - three ease tests passed that way for a while. A refusal names the
+ * mock, so it is the fixture that is wrong, and the run throws rather than
+ * letting the test read half-dead state. Alerts a test expects (bad file,
+ * bad selection) pass through: they name the host's reasons, not the mock. */
+function runImport(host) {
+    run("rotobridge_import.jsx", host);
+    for (var i = 0; i < host.alerts.length; i++) {
+        if (host.alerts[i].indexOf("RotoBridge import failed") === 0
+                && host.alerts[i].indexOf("ae_mock") !== -1) {
+            throw new Error("the import died on a mock limit: " + host.alerts[i]);
+        }
+    }
+    return host;
+}
 function runExport(host) {
     run("rotobridge_export.jsx", host);
     return host.written === null ? null : JSON.parse(host.written);
@@ -1282,10 +1298,14 @@ describe("import keys", function () {
     });
 
     it("puts the ease back into the host's own units", function () {
+        // Two frames, both keyed: the eased segment spans no gap frame, so
+        // the survey never asks `ae_mock` to interpolate a bezier - which it
+        // refuses, and the refusal used to abort the import right after the
+        // ease landed, leaving this test green against half-dead state.
         var keys = [{ "frame": 0, "interp": { "in": "linear", "out": "ease" },
                       "ease": { "out": [0.91176, 2.5] } },
-                    { "frame": LAST, "interp": { "in": "linear", "out": "linear" } }];
-        var prop = pathOf(importedWith(curvedDoc(keys, 0), "inf"));
+                    { "frame": 1, "interp": { "in": "linear", "out": "linear" } }];
+        var prop = pathOf(importedWith(curvedDoc(keys, 0, 1), "inf"));
         near(prop.keyOutTemporalEase(1)[0].influence, 91.176, 3);
         near(prop.keyOutTemporalEase(1)[0].speed, 2.5, 9);
     });
@@ -1307,8 +1327,8 @@ describe("import keys", function () {
         // Effects raises below 0.1%. Degrading beats throwing on a legal file.
         var keys = [{ "frame": 0, "interp": { "in": "linear", "out": "ease" },
                       "ease": { "out": [0.0, 0] } },
-                    { "frame": LAST, "interp": { "in": "linear", "out": "linear" } }];
-        var prop = pathOf(importedWith(curvedDoc(keys, 0), "inf"));
+                    { "frame": 1, "interp": { "in": "linear", "out": "linear" } }];
+        var prop = pathOf(importedWith(curvedDoc(keys, 0, 1), "inf"));
         near(prop.keyOutTemporalEase(1)[0].influence, 0.1, 9);
     });
 
@@ -1317,8 +1337,8 @@ describe("import keys", function () {
         // "smooth, parameters unknown" - which is every eased key a Nuke source
         // produces, so it is the common case, not the odd one.
         var keys = [{ "frame": 0, "interp": { "in": "linear", "out": "ease" } },
-                    { "frame": LAST, "interp": { "in": "linear", "out": "linear" } }];
-        var prop = pathOf(importedWith(curvedDoc(keys, 0), "inf"));
+                    { "frame": 1, "interp": { "in": "linear", "out": "linear" } }];
+        var prop = pathOf(importedWith(curvedDoc(keys, 0, 1), "inf"));
         near(prop.keyOutTemporalEase(1)[0].influence, 16.667, 3);
     });
 
