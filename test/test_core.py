@@ -517,6 +517,40 @@ class TestSchemaRejects(unittest.TestCase):
             lambda d: d["shapes"][0].update(authored_attributes=[]),
             "expected an object")
 
+    def test_a_null_attribute_entry_is_refused(self):
+        # The null spelling used to slip through the gap between the empty
+        # check and _validate_keys, which reads None as an absent member.
+        self.reject(
+            lambda d: d["shapes"][0].update(authored_attributes={
+                "opacity": None}),
+            "is null; omit the entry instead")
+
+    def test_an_ease_influence_outside_the_fraction_is_refused(self):
+        # Spec section 10.3 bounds influence to 0.0-1.0 of the segment. The
+        # likeliest out-of-range value is an undivided After Effects
+        # percentage, and dumps() must refuse it rather than write a file
+        # whose ease silently clamps at the other end.
+        self.reject(
+            lambda d: d["shapes"][0]["keys"].__setitem__(0, {
+                "frame": 10, "interp": {"in": "linear", "out": "ease"},
+                "ease": {"out": [16.667, 0.0]}}),
+            "influence is 16.667, expected 0.0 to 1.0")
+        self.reject(
+            lambda d: d["shapes"][0]["keys"].__setitem__(0, {
+                "frame": 10, "interp": {"in": "ease", "out": "linear"},
+                "ease": {"in": [-0.1, 0.0]}}),
+            "influence is -0.1, expected 0.0 to 1.0")
+
+    def test_an_integer_frames_key_is_an_error_not_a_crash(self):
+        # Only the dumps() direction can produce one - JSON keys are always
+        # strings - but that is exactly the direction adapters feed with
+        # hand-built dicts, and validate() promises a list, never a raise.
+        doc = valid_doc()
+        doc["shapes"][0]["frames"][10] = doc["shapes"][0]["frames"].pop("10")
+        errs = rbj.validate(doc)
+        self.assertTrue(any("not a plain decimal integer" in e for e in errs),
+                        errs)
+
     def test_an_invalid_document_names_the_shape(self):
         doc = valid_doc()
         doc["shapes"][0]["frames"]["11"]["points"].pop()

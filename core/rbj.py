@@ -287,7 +287,12 @@ def _validate_frames(errs, where, frames, frames_expected, model, closed,
 
     present = set(frames.keys())
 
-    malformed = sorted(k for k in present if not FRAME_KEY_RE.match(k))
+    # The isinstance guard is for the dumps() direction: a hand-built dict
+    # can carry int frame keys, and the regex would raise on them instead of
+    # letting validate() keep its no-raise contract.
+    malformed = sorted((k for k in present
+                        if not isinstance(k, str) or not FRAME_KEY_RE.match(k)),
+                       key=str)
     for k in malformed[:MAX_ERRORS_PER_SHAPE]:
         errs.append("%s: frames key %r is not a plain decimal integer" % (where, k))
     if len(malformed) > MAX_ERRORS_PER_SHAPE:
@@ -612,6 +617,13 @@ def _validate_authored_attributes(errs, where, attrs, frame_keys):
         if name not in attrs:
             continue
         entry = attrs[name]
+        if entry is None:
+            # `_validate_keys` reads None as an absent `keys` member, which
+            # would let the null spelling through; spec section 5.3 requires
+            # a non-empty array.
+            errs.append("%s %s is null; omit the entry instead"
+                        % (awhere, name))
+            continue
         if entry == []:
             errs.append("%s %s is empty; omit the entry instead"
                         % (awhere, name))
@@ -681,7 +693,13 @@ def _validate_interp(errs, where, key):
         if sides[side] != "ease":
             errs.append("%s: ease has an entry for the %s side, whose interp is "
                         "%r, not 'ease'" % (where, side, sides[side]))
-        _vec2(errs, where, ease, side)
+        pair = _vec2(errs, where, ease, side)
+        if pair is not None and not (0.0 <= pair[0] <= 1.0):
+            # Influence is a fraction of the segment (spec section 10.3), and
+            # the likeliest way out of range is a writer forgetting to divide
+            # After Effects' percentage down - worth refusing at write time.
+            errs.append("%s: ease %s influence is %r, expected 0.0 to 1.0"
+                        % (where, side, ease[side][0]))
     for side in ease:
         if side not in ("in", "out"):
             errs.append("%s: ease has an unexpected side %r" % (where, side))

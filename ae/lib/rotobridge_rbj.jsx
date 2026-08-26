@@ -243,12 +243,15 @@
             if (typeof got !== "string" || !got) {
                 errs[errs.length] = "shapes[" + i + "]: id is " + show(got)
                     + ", expected a non-empty string";
-            } else if (hasOwn(seen, got)) {
-                errs[errs.length] = "shapes[" + seen[got] + "] and shapes["
+            } else if (hasOwn(seen, "#" + got)) {
+                /* Prefixed because an id of "__proto__" would otherwise hit
+                 * the prototype setter under the node harness and never be
+                 * recorded, hiding a duplicate. */
+                errs[errs.length] = "shapes[" + seen["#" + got] + "] and shapes["
                     + i + "] share the id " + show(got)
                     + "; an id exists to tell shapes apart";
             } else {
-                seen[got] = i;
+                seen["#" + got] = i;
             }
         }
     }
@@ -461,6 +464,14 @@
             name = rbj.ATTRIBUTE_NAMES[i];
             if (!hasOwn(attrs, name)) { continue; }
             var entry = attrs[name];
+            if (entry === null || entry === undefined) {
+                /* validateKeys reads null as an absent keys member, which
+                 * would let the null spelling through; spec section 5.3
+                 * requires a non-empty array. */
+                errs[errs.length] = awhere + " " + name
+                    + " is null; omit the entry instead";
+                continue;
+            }
             if (isArray(entry) && entry.length === 0) {
                 errs[errs.length] = awhere + " " + name
                     + " is empty; omit the entry instead";
@@ -738,7 +749,7 @@
             if (hasOwn(doc, k)) { outDoc[k] = doc[k]; }
         }
         outDoc["shapes"] = shapesOut;
-        if (foldedAny && outDoc["version"] < rbj.VERSION_FRAME_REFS) {
+        if (foldedAny && (outDoc["version"] || 0) < rbj.VERSION_FRAME_REFS) {
             outDoc["version"] = rbj.VERSION_FRAME_REFS;
         }
         return outDoc;
@@ -1000,7 +1011,14 @@
                     + side + " side, whose interp is " + show(sides[side])
                     + ", not 'ease'";
             }
-            vec2(errs, where, ease, side);
+            var pair = vec2(errs, where, ease, side);
+            if (pair !== null && !(pair[0] >= 0.0 && pair[0] <= 1.0)) {
+                /* Influence is a fraction of the segment (spec section
+                 * 10.3), and the likeliest way out of range is a writer
+                 * forgetting to divide After Effects' percentage down. */
+                errs[errs.length] = where + ": ease " + side + " influence is "
+                    + show(ease[side][0]) + ", expected 0.0 to 1.0";
+            }
         }
         for (var k in ease) {
             if (hasOwn(ease, k) && k !== "in" && k !== "out") {

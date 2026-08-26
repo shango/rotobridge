@@ -1081,6 +1081,52 @@ describe("rbj", function () {
            true, errs.join(" | "));
     });
 
+    it("refuses a null attribute entry and an out-of-range influence",
+       function () {
+        // Python mirrors: test_a_null_attribute_entry_is_refused and
+        // test_an_ease_influence_outside_the_fraction_is_refused. The null
+        // spelling used to slip through the gap between the empty check and
+        // validateKeys; influence past 1.0 is an undivided AE percentage.
+        var doc = minimal();
+        doc.shapes[0].authored_attributes = { opacity: null };
+        var errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("is null; omit the entry instead") > -1,
+           true, errs.join(" | "));
+        doc = minimal();
+        doc.shapes[0].keys = [{
+            frame: 1, interp: { "in": "linear", "out": "ease" },
+            ease: { out: [16.667, 0.0] }
+        }];
+        errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("expected 0.0 to 1.0") > -1, true,
+           errs.join(" | "));
+    });
+
+    it("stamps the fold's version even when the input never had one",
+       function () {
+        // `undefined < 3` is false in ES3, so a document without a version
+        // member used to fold references in and leave the member off - a
+        // file validate() then rejects. Python spells it get("version", 0).
+        var doc = held();
+        delete doc.version;
+        var folded = rbj.foldFrames(doc);
+        eq(folded.version, 3);
+        eq(rbj.validate(folded).length, 0, rbj.validate(folded).join(" | "));
+    });
+
+    it("catches two shapes sharing the id __proto__", function () {
+        // Under the node harness a bare `seen[got]` hits the prototype
+        // setter for that one name and records nothing, hiding the
+        // duplicate; the validator keys its map with a prefix instead.
+        var doc = minimal();
+        doc.shapes[1] = JSON.parse(JSON.stringify(doc.shapes[0]));
+        doc.shapes[0].id = "__proto__";
+        doc.shapes[1].id = "__proto__";
+        var errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("share the id") > -1, true,
+           errs.join(" | "));
+    });
+
     it("accepts an open spline at version 2", function () {
         // spec/rbj-v2-draft.md section 3. The Python mirror of this is
         // TestOpenSplines.test_an_open_shape_validates_at_version_2.
