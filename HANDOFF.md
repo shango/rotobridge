@@ -2530,3 +2530,28 @@ transform-key work on any AE-to-AE trip), and spells a placeholder side
 - **Nothing checks the two message tables** was true until `b8f2ba2`; they are
   now compared code for code and byte for byte by `TestEs3CrossCheck`. Noted
   because the same gap may exist elsewhere in the port.
+
+## IN PROGRESS: invented keys become removable, 2026-08-26
+
+The user's ruling closes the static-mask question: a property the artist never
+keyed arrives with no keys, one or two authored keys arrive as one or two, and
+ease costs extra keys only where measurement demands them - with every scrap
+of authored ease saved in the file for an AE-to-AE trip. The plan, updated as
+each chunk commits:
+
+1. [ ] core: `correct`/`linear_fit` take `authored`; `_sweep` may drop an
+   unauthored endpoint, measuring the truncated span (both hosts hold the
+   nearest key beyond it). Python + ES3 + tests.
+2. [ ] format: `authored_frames` (spline keys the artist authored, may be
+   empty) and `authored_attributes` (opacity / feather_uniform keys with
+   value, interp, ease) in spec/rbj-v3-draft.md; both validators; tests.
+3. [ ] AE exporter writes both; Nuke exporter writes `authored_frames` (its
+   point-curve union, before the transform union); tests.
+4. [ ] AE importer: static path when `authored_frames` is empty and the
+   measure allows; `authored` threaded into the drift pass; attributes
+   restored from `authored_attributes` with host-measured correction; tests.
+5. [ ] Nuke importer: `_collapse` marks its seeds unauthored; `authored`
+   threaded into the path drift pass; probe whether a static attr / static
+   point works headless, adopt if clean.
+6. [ ] suites + headless Nuke roundtrip, HANDOFF, bump, package.
+7. [ ] full code review of the repo.
