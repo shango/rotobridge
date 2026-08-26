@@ -278,10 +278,28 @@
          * merged with the tolerance control - a dense document keys every frame
          * whatever tolerance was asked for, and leaves the drift pass nothing to
          * correct.
+         *
+         * `pre_conform_keys` wins where the file carries it. It is the authored
+         * keys as they stood before the exporter rewrote their temporal ease
+         * (spec/rbj-v3-draft.md section 5.1), and the rewrite is done for a
+         * destination that has no vocabulary for ease. This one has the
+         * vocabulary the artist used: `applyKeyInterp` puts an `ease` block
+         * back in the host's own units, exactly. Reading the conformed keys
+         * here instead would hand a mask the artist keyed three times back
+         * keyed twenty-five, all linear - which is what an After Effects round
+         * trip did until now. The bake is the same either way and the drift
+         * pass still bounds whatever is left, so this costs accuracy nothing.
          */
         var keys = RB.util.hasOwn(spec, "keys") ? spec["keys"] : null;
         if (!keys) {
             return { frames: frames.slice(0), byFrame: {}, dense: true };
+        }
+        var restored = false;
+        if (RB.util.hasOwn(spec, "pre_conform_keys")
+                && spec["pre_conform_keys"]
+                && spec["pre_conform_keys"].length) {
+            keys = spec["pre_conform_keys"];
+            restored = true;
         }
         var out = [];
         var byFrame = {};
@@ -290,7 +308,8 @@
             out[out.length] = frame;
             byFrame[String(frame)] = keys[i];
         }
-        return { frames: out, byFrame: byFrame, dense: false };
+        return { frames: out, byFrame: byFrame, dense: false,
+                 restored: restored ? keys.length : 0 };
     }
 
     function easeFor(pair) {
@@ -458,6 +477,15 @@
          */
         var prop = ae.maskProp(mask, ae.MASK_PATH);
         var plan = keyPlan(spec, frames);
+        if (plan.restored) {
+            /* Said out loud because the file carries the exporter's own
+             * warning that the timing was conformed away, and the import
+             * report prints it. Without this the artist reads that their ease
+             * is gone while looking at it. */
+            warn(RB.messages.render("ease-restored",
+                                    { subject: "mask '" + spec["name"] + "'",
+                                      count: plan.restored }));
+        }
         var written = {};
 
         function applyKeys(wanted) {

@@ -10,6 +10,10 @@
  *
  * This imports the two goldens that bracket the conform - the same shape
  * before and after - and prints the keys an artist would find on the mask.
+ * Then a third: the conformed file with the authored keys carried beside it as
+ * `pre_conform_keys`, which is what the exporter writes today. The goldens
+ * predate that member, so the third one has to be assembled here rather than
+ * read; everything in it comes from the two files above.
  *
  * One caveat on the "before" file: `ae_mock` refuses to interpolate a bezier
  * segment (it says so, and why, in its own header), so the drift pass raises
@@ -45,14 +49,14 @@ TYPE[6612] = "linear";
 TYPE[6613] = "bezier";
 TYPE[6614] = "hold";
 
-function importGolden(file) {
+function importText(text) {
     var host = mock.install({
         frameRate: 24,
         workAreaStart: 0,
         workAreaDuration: 25 / 24,
         layers: [],
         selected: [],
-        readable: fs.readFileSync(path.join(ROOT, "test", "golden", file), "utf8")
+        readable: text
     });
     delete global.RB;
     vm.runInThisContext(source("rotobridge_import.jsx"),
@@ -75,10 +79,32 @@ function describeMask(mask) {
     return { count: prop.numKeys, keys: out };
 }
 
-[["ae_static_ease.rbj", "as the artist authored it, before the conform"],
- ["ae_static_conformed.rbj", "as the exporter actually writes it"]
+function golden(file) {
+    return fs.readFileSync(path.join(ROOT, "test", "golden", file), "utf8");
+}
+
+function withProvenance() {
+    /* The conformed file as today's exporter would have written it: the same
+     * document, plus the authored keys it rewrote. */
+    var conformed = JSON.parse(golden("ae_static_conformed.rbj"));
+    var authored = JSON.parse(golden("ae_static_ease.rbj"));
+    for (var i = 0; i < conformed.shapes.length; i++) {
+        var was = authored.shapes[i];
+        if (JSON.stringify(was.keys) !== JSON.stringify(conformed.shapes[i].keys)) {
+            conformed.shapes[i].pre_conform_keys = was.keys;
+        }
+    }
+    return JSON.stringify(conformed);
+}
+
+[["ae_static_ease.rbj", "as the artist authored it, before the conform",
+  golden("ae_static_ease.rbj")],
+ ["ae_static_conformed.rbj", "as the exporter wrote it before it kept provenance",
+  golden("ae_static_conformed.rbj")],
+ ["the same, with pre_conform_keys", "as the exporter writes it today",
+  withProvenance()]
 ].forEach(function (pair) {
-    var host = importGolden(pair[0]);
+    var host = importText(pair[2]);
     console.log("== " + pair[0] + "   (" + pair[1] + ")");
     var masks = host.comp.layer(1)._masks;
     for (var m = 0; m < masks.length; m++) {

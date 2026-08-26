@@ -86,8 +86,19 @@ beside it carry none.
 Why: the ease conform (prd.md §9.1 step 6a) destroys authored timing
 irreversibly at export. The shape survives via the bake, but without this the
 artist's curves were gone from the file forever, foreclosing any future
-importer that could honour them - including an AE-to-AE round trip. Importers
-today ignore it, exactly as they ignore `warnings`.
+importer that could honour them - including an AE-to-AE round trip.
+
+**An importer that can honour the authored keys should prefer them.** After
+Effects does: it reads `pre_conform_keys` where the file carries it and falls
+back to `keys` where it does not, and says which it used. The conform is done
+for a destination with no vocabulary for temporal ease, and that reason does
+not apply to a destination that has one. Nuke reads `keys`, because there the
+reason does apply.
+
+This is why ignoring the member stays legal. An importer that skips it renders
+the same shape - `keys` and the bake still agree, and the drift pass still
+bounds the result - so the choice costs editable timing and nothing else,
+which is exactly the bar §5 sets for a member that does not cost a version.
 
 ### 5.2 `id`
 

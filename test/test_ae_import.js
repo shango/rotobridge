@@ -1049,6 +1049,58 @@ describe("import keys", function () {
         eq(prop.keyOutInterpolationType(2), LINEAR);
     });
 
+    it("puts the artist's ease back on an After Effects round trip", function () {
+        // The exporter conforms every eased side to linear before it writes,
+        // because Nuke's roto curves have no vocabulary for temporal ease, and
+        // keeps the originals as `pre_conform_keys`. Coming back into After
+        // Effects there is nothing to conform for: the vocabulary is right
+        // here. Until this read them, a mask the artist eased came home linear.
+        //
+        // Keyed on every frame because `ae_mock` refuses to interpolate a
+        // bezier segment, so leaving no gap is what lets a bezier key be
+        // exported and reimported here at all. The count is therefore the same
+        // either way; what differs is the timing on it.
+        var BEZIER = 6613;
+        var spec = sourceComp();
+        var seed = [];
+        for (var f = 0; f <= 4; f++) {
+            seed[f] = { t: f / 24, value: movingSquare(f / 24) };
+        }
+        seed[2].inType = BEZIER;
+        seed[2].outType = BEZIER;
+        seed[2].inEase = new mock.KeyframeEase(0, 91.176);
+        seed[2].outEase = new mock.KeyframeEase(0, 33.333);
+        spec.layers[0].masks[0].pathKeys = seed;
+
+        var exportHost = mock.install(spec);
+        runExport(exportHost);
+        var doc = JSON.parse(exportHost.written);
+        ok(doc.shapes[0].pre_conform_keys !== undefined,
+           "the fixture did not conform, so there is nothing to restore");
+        eq(doc.shapes[0].keys[2].interp["in"], "linear",
+           "the file itself still says linear, for Nuke's sake");
+
+        var host = importInto(exportHost.written);
+        var prop = pathOfMask(host);
+        eq(prop.keyInInterpolationType(3), BEZIER, "the key came back linear");
+        near(prop.keyInTemporalEase(3)[0].influence, 91.176, 3);
+        near(prop.keyOutTemporalEase(3)[0].influence, 33.333, 3);
+        has(host.alerts, "authored key(s) were rebuilt");
+    });
+
+    it("says nothing about restoring when the file conformed nothing",
+       function () {
+        // The message is only true where the file carries the provenance. A
+        // plain export has no `pre_conform_keys` and must read exactly as it
+        // did before.
+        var host = importInto(exported());
+        for (var i = 0; i < host.alerts.length; i++) {
+            if (String(host.alerts[i]).indexOf("were rebuilt") > -1) {
+                fail("nothing was conformed: " + host.alerts[i]);
+            }
+        }
+    });
+
     it("puts the ease back into the host's own units", function () {
         var keys = [{ "frame": 0, "interp": { "in": "linear", "out": "ease" },
                       "ease": { "out": [0.91176, 2.5] } },

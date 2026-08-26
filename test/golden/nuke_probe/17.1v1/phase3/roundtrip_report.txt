@@ -8,7 +8,7 @@ Nuke 17.1v1, frames 1001-1020
 --- export ---
   1 shape(s), 20 frames, 4 points
   feather_model = per_point, blend = union, falloff = smooth
-  took 0.012 s
+  took 0.022 s
   warning: [feather-tangential] shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
 
 --- schema ---
@@ -20,10 +20,10 @@ Nuke 17.1v1, frames 1001-1020
 
 --- import at tolerance 0 ---
   rebuilt 'round_trip' with 4 points, closed=True
-  took 0.028 s
+  took 0.044 s
 
 --- the import record ---
-  roundtrip.rotobridge.txt, 979 bytes
+  roundtrip.rotobridge.txt, 2936 bytes
   | ------------------------------------------------------------------------------
   | RotoBridge import record
   | 
@@ -57,9 +57,9 @@ Nuke 17.1v1, frames 1001-1020
   imported at offset -1000; worst centre deviation 3.052e-05 px
 
 --- acceptance criterion 11, 20 points over 150 frames ---
-  export: 0.25 s  (budget 10 s)
-  import at tolerance 0:   0.04 s  (budget 30 s)
-  import at tolerance 0.5: 0.05 s  (budget 30 s)
+  export: 0.38 s  (budget 10 s)
+  import at tolerance 0:   0.06 s  (budget 30 s)
+  import at tolerance 0.5: 0.07 s  (budget 30 s)
 
 --- Phase 3: a shape keyed on 5 frames ---
   The acceptance criterion: five authored keys survive as five keys

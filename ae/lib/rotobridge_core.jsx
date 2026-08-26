@@ -824,6 +824,12 @@ var RB = (function () {
                 + " linear and {added} key(s) added, so the path is within"
                 + " {tolerance} px of this comp on every frame. What is lost is"
                 + " editable timing, not the shape",
+        "ease-restored":
+            "{subject}: the file's keys were conformed to linear on the way"
+                + " out, for a destination that cannot hold temporal ease."
+                + " This one can, so the {count} authored key(s) were rebuilt"
+                + " from the timing the file kept beside them. The conform"
+                + " warning the file carries does not apply here",
         "ease-dropped":
             "{subject}: {count} key(s) carry authored ease. Nuke's roto"
                 + " curves cannot hold it, so the shape arrives as a dense bake"

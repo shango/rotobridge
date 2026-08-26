@@ -3224,6 +3224,27 @@ class TestEs3CrossCheck(unittest.TestCase):
     the host.
     """
 
+    def test_the_two_message_tables_are_the_same_table(self):
+        # Every warning either application raises is spelled once here and once
+        # in the port, because a bug report from someone else's machine arrives
+        # as a screenshot and two hosts describing one loss in two ways is a
+        # question nobody can answer. Nothing else checks the pair, so a typo in
+        # either was invisible until an artist read it.
+        script = (
+            "global.RB = require(%s);"
+            "process.stdout.write(JSON.stringify(RB.messages.TEMPLATES));"
+        ) % json.dumps(os.path.join(AE_LIB, "rotobridge_core.jsx"))
+        proc = subprocess.run([NODE, "-e", script],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if proc.returncode != 0:
+            self.fail("node failed:\n" + proc.stderr.decode("utf-8", "replace"))
+        theirs = json.loads(proc.stdout.decode("utf-8"))
+
+        self.assertEqual(sorted(theirs), sorted(messages.TEMPLATES),
+                         "the two tables do not carry the same codes")
+        for code in sorted(messages.TEMPLATES):
+            self.assertEqual(theirs[code], messages.TEMPLATES[code], code)
+
     def es3_rewrite(self, doc):
         """Round trip `doc` through the ExtendScript writer, via node."""
         script = (

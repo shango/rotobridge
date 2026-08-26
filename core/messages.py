@@ -188,6 +188,12 @@ TEMPLATES = {
         "{subject}: {count} key(s) carry authored ease. Nuke's roto curves"
         " cannot hold it, so the shape arrives as a dense bake and the"
         " keyframe timing is not editable downstream. Geometry is unaffected",
+    "ease-restored":
+        "{subject}: the file's keys were conformed to linear on the way out,"
+        " for a destination that cannot hold temporal ease. This one can, so"
+        " the {count} authored key(s) were rebuilt from the timing the file"
+        " kept beside them. The conform warning the file carries does not"
+        " apply here",
     "open-spline-unverified":
         "{subject} is an open spline from {app}; the geometry is exact but"
         " what it renders as across applications is unverified",

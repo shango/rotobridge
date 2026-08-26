@@ -162,19 +162,24 @@ ease-in-out costs 5 keys over 10 px of travel, 9 over 40 px, 17 over 120 px.
 node test/probe/probe_ae_ease_roundtrip.js
 ```
 
-It imports the two goldens that bracket the conform. `ae_static_ease.rbj`
-comes back as 3 bezier keys carrying influence 91.176/33.333 - the importer
-restores an `ease` block exactly. `ae_static_conformed.rbj`, which is what the
-exporter actually writes, comes back as 25 linear keys at the host's default
-16.667. So the loss is not in the format and not in the importer: the exporter
-conforms every eased side before writing, keeps the original in
-`pre_conform_keys`, and nothing reads it back - which is the state
-`spec/rbj-v3-draft.md` section 5.1 describes as foreclosing an AE-to-AE round
-trip.
+It imports the two goldens that bracket the conform, and then the file today's
+exporter writes - the conformed one with the authored keys carried beside it
+as `pre_conform_keys`, assembled from the other two because both goldens
+predate that member.
 
-The "before" import raises partway through, because `ae_mock` refuses to
-interpolate a bezier segment. The keys are set before the drift pass runs, so
-the printed keys are real and the alert is the mock, not the host.
+`ae_static_ease.rbj` comes back as 3 bezier keys carrying influence
+91.176/33.333: the importer restores an `ease` block exactly, and always
+could. `ae_static_conformed.rbj` comes back as 25 linear keys at the host's
+default 16.667, which is what an After Effects round trip used to give -
+the loss was never in the format or in the importer but in nothing reading the
+provenance back. The third comes back as the 3 bezier keys again, which is the
+fix: the importer prefers `pre_conform_keys` where the file has it.
+
+The imports that end up with bezier keys raise partway through, because
+`ae_mock` refuses to interpolate a bezier segment. The keys are set before the
+drift pass runs, so the printed keys are real and the alert is the mock, not
+the host - `TestGoldenStaticEase` in `test/test_core.py` records what the real
+host did with this same scene: 0 corrective keys and 0.0000 px.
 
 ## After Effects adapters
 
