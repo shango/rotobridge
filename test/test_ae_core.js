@@ -1025,6 +1025,62 @@ describe("rbj", function () {
         eq(errs.join(" | ").indexOf("suppressed") > -1, true);
     });
 
+    it("accepts authored_frames, empty included, and checks what it names",
+       function () {
+        // The Python mirrors are the three authored_frames tests in
+        // TestValidate; spec/rbj-v3-draft.md section 5.2.
+        var doc = minimal();
+        doc.shapes[0].keys = [
+            { frame: 1, interp: { "in": "linear", "out": "linear" } },
+            { frame: 2, interp: { "in": "linear", "out": "linear" } }
+        ];
+        doc.shapes[0].authored_frames = [1];
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+        doc.shapes[0].authored_frames = [];
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+        doc.shapes[0].authored_frames = [3];
+        var errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("no such frame in the dense layer") > -1,
+           true, errs.join(" | "));
+        doc.shapes[0].authored_frames = [2, 1];
+        errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("not sorted ascending") > -1, true,
+           errs.join(" | "));
+        doc.shapes[0].keys = [doc.shapes[0].keys[1]];
+        doc.shapes[0].authored_frames = [1];
+        errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("not present in keys") > -1, true,
+           errs.join(" | "));
+    });
+
+    it("validates authored_attributes with the keys machinery", function () {
+        // The Python mirrors are the three authored_attributes tests in
+        // TestValidate; spec/rbj-v3-draft.md section 5.3.
+        var doc = minimal();
+        doc.shapes[0].authored_attributes = {
+            opacity: [{ frame: 1, interp: { "in": "linear", "out": "ease" },
+                        ease: { out: [0.5, 0.0] } }],
+            feather_uniform: [{ frame: 2,
+                                interp: { "in": "hold", "out": "linear" } }]
+        };
+        eq(rbj.validate(doc).length, 0, rbj.validate(doc).join(" | "));
+        doc.shapes[0].authored_attributes = { expansion: [] };
+        var errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("unexpected attribute") > -1, true,
+           errs.join(" | "));
+        doc.shapes[0].authored_attributes = { opacity: [] };
+        errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("omit the entry instead") > -1, true,
+           errs.join(" | "));
+        doc.shapes[0].authored_attributes = {
+            opacity: [{ frame: 3,
+                        interp: { "in": "linear", "out": "linear" } }]
+        };
+        errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("no such frame in the dense layer") > -1,
+           true, errs.join(" | "));
+    });
+
     it("accepts an open spline at version 2", function () {
         // spec/rbj-v2-draft.md section 3. The Python mirror of this is
         // TestOpenSplines.test_an_open_shape_validates_at_version_2.

@@ -2,7 +2,7 @@
  * Does After Effects give a mask an identity that survives renames and
  * reorders?
  *
- * .rbj shapes carry an optional `id` (spec/rbj-v3-draft.md section 5.2). The
+ * .rbj shapes carry an optional `id` (spec/rbj-v3-draft.md section 5.4). The
  * Nuke exporter writes one ("Roto1/Bezier3") because node name plus shape
  * name is stable within a script. The After Effects exporter writes NONE,
  * because no stable mask identity has been measured - and this project does

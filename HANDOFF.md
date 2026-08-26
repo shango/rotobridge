@@ -2542,7 +2542,7 @@ each chunk commits:
 1. [x] core: `correct`/`linear_fit` take `authored`; `_sweep` may drop an
    unauthored endpoint, measuring the truncated span (both hosts hold the
    nearest key beyond it). Python + ES3 + tests.
-2. [ ] format: `authored_frames` (spline keys the artist authored, may be
+2. [x] format: `authored_frames` (spline keys the artist authored, may be
    empty) and `authored_attributes` (opacity / feather_uniform keys with
    value, interp, ease) in spec/rbj-v3-draft.md; both validators; tests.
 3. [ ] AE exporter writes both; Nuke exporter writes `authored_frames` (its

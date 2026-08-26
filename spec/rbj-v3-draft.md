@@ -100,7 +100,64 @@ the same shape - `keys` and the bake still agree, and the drift pass still
 bounds the result - so the choice costs editable timing and nothing else,
 which is exactly the bar §5 sets for a member that does not cost a version.
 
-### 5.2 `id`
+### 5.2 `authored_frames`
+
+Optional, per shape: the frames the artist actually keyed **on the spline
+itself**, ascending, unique, each naming a frame in `frames`, and each present
+in `keys` where the shape has a `keys` array. **May be empty**, and empty is
+the member's whole point: a mask the artist never keyed still exports with
+the range endpoints pinned so the sparse layer brackets the truth (spec
+section 9), and nothing else in the file distinguishes an endpoint the
+exporter invented from two identical keys the artist authored.
+
+An importer that honours it treats these frames as the only keys that are the
+artist's. Every other frame in `keys` is the exporter's - a pinned endpoint,
+a layer transform's candidate, an ease-conform addition - and may be dropped
+where the importer's own measurement allows. With an empty list and a static
+measure, the shape arrives with **no keyframes at all**, as a plain value,
+which is what the artist had.
+
+Writers: After Effects writes it always, clipped to the exported range. Nuke
+writes its control-point key-time union - the frames before the transform
+union is folded in - for the same reason: a transform frame deserves a key at
+the destination only where the geometry it drives needs one.
+
+Ignoring it cannot change what renders - `keys` and the bake still agree and
+the drift pass still bounds the result - so it is version-independent under
+the section 5 test; the cost of ignoring it is invented keys surviving, not a
+different matte.
+
+### 5.3 `authored_attributes`
+
+Optional, per shape: the artist's own keyframe structure on the attributes
+that have no sparse layer of their own - the properties spec section 7.2
+carries one value per frame. An object whose members are `opacity` and
+`feather_uniform`, each optional, each a **non-empty** array with exactly the
+schema of `keys` (section 9: `frame`, `interp`, `ease` under the section 10
+rules), validated by the same machinery. Values are deliberately absent: the
+dense layer already carries the attribute's value on every frame, and two
+copies of one number is how they come to disagree.
+
+Written only where the property has at least one key inside the exported
+range. A property never keyed has no entry, and that absence is itself the
+statement: the importer then collapses the dense samples, a constant arrives
+as a plain value with no keys, and a straight ramp as its two.
+
+An importer with the vocabulary - After Effects reading an After Effects
+file - sets exactly these keys, with their ease, at the dense layer's values,
+and lets its drift pass add compensation only where measurement demands it
+(a curve clipped by the export range, a foreign ease model). One `[influence,
+speed]` pair per side, as section 10.3 defines shape-wide ease; After Effects
+carries one temporal ease per key on these properties in practice, so nothing
+is lost to that. Nuke neither writes nor reads the member: its attribute keys
+carry Nuke's own cubic interpolation, and the linear collapse from the dense
+layer is the measured route there.
+
+Ignoring it reconstructs the attribute from the dense layer within tolerance,
+so the render is bounded either way; the cost is editable timing and the
+exact key count, which is the section 5 bar.
+
+### 5.4 `id`
 
 Optional, per shape: a stable identity string, non-empty, **unique across the
 file's shapes** (both validators enforce the uniqueness - it is the whole
@@ -118,7 +175,7 @@ Importers accept either an id or a name in a subset request. Writers:
   unprobed host API; `test/probe/probe_ae_mask_id.jsx` is the measurement
   waiting to be run on the next host visit.
 
-### 5.3 `source.tool_version`
+### 5.5 `source.tool_version`
 
 Optional, one per file: the RotoBridge build that wrote it, as a non-empty
 string ("0.9.0"). Absent from every file written before the member existed,

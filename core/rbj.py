@@ -32,6 +32,7 @@ VERSION_FRAME_REFS = 3
 MAX_VERSION = 3
 
 BLENDS = ("union", "difference", "intersection")
+ATTRIBUTE_NAMES = ("opacity", "feather_uniform")
 # spec/rbj-v2-draft.md section 6.2: three exclusive models, not layers.
 # `per_point` is Nuke's - one value per vertex - and is what v1 froze.
 # `anchored` puts the feather layer in the frame's own `feather_points`, keyed
@@ -264,6 +265,12 @@ def _validate_shape(errs, index, shape, frames_expected, version):
         else:
             _validate_keys(errs, "%s pre_conform_keys" % where,
                            shape["pre_conform_keys"], frame_keys)
+    if "authored_frames" in shape:
+        _validate_authored_frames(errs, where, shape["authored_frames"],
+                                  frame_keys, shape.get("keys"))
+    if "authored_attributes" in shape:
+        _validate_authored_attributes(errs, where,
+                                      shape["authored_attributes"], frame_keys)
 
 
 def _validate_frames(errs, where, frames, frames_expected, model, closed,
@@ -552,6 +559,64 @@ def _validate_point(errs, where, pt, model):
         if not has_feather:
             errs.append("%s: feather_offset without feather" % where)
         _vec2(errs, where, pt, "feather_offset")
+
+
+def _validate_authored_frames(errs, where, frames, frame_keys, keys):
+    """Optional provenance (spec/rbj-v3-draft.md section 5.2): the frames the
+    artist keyed on the spline itself. May be empty - that is the member's
+    point - but what it names must exist, both in the dense layer and among
+    the shape's `keys`, or an importer honouring it would pin a frame the
+    file cannot deliver."""
+    awhere = "%s authored_frames" % where
+    if not isinstance(frames, list):
+        errs.append("%s is %r, expected an array" % (awhere, frames))
+        return
+    keyed = None
+    if isinstance(keys, list):
+        keyed = set(k["frame"] for k in keys
+                    if isinstance(k, dict) and _is_int(k.get("frame")))
+    prev = None
+    for i, frame in enumerate(frames):
+        if not _is_int(frame):
+            errs.append("%s[%d] is %r, expected an integer"
+                        % (awhere, i, frame))
+            continue
+        fwhere = "%s[%d] frame %d" % (awhere, i, frame)
+        if frame_keys is not None and str(frame) not in frame_keys:
+            errs.append("%s: no such frame in the dense layer" % fwhere)
+        if keyed is not None and frame not in keyed:
+            errs.append("%s: not present in keys" % fwhere)
+        if prev is not None:
+            if frame == prev:
+                errs.append("%s: duplicate frame" % fwhere)
+            elif frame < prev:
+                errs.append("%s: frames are not sorted ascending (follows %d)"
+                            % (fwhere, prev))
+        prev = frame
+
+
+def _validate_authored_attributes(errs, where, attrs, frame_keys):
+    """Optional provenance (spec/rbj-v3-draft.md section 5.3): the artist's
+    own keyframes on the attributes the dense layer carries per frame. Each
+    entry has exactly the schema of `keys` - values are deliberately absent,
+    since the dense layer already holds the value on every frame - so the
+    same machinery validates it."""
+    awhere = "%s authored_attributes" % where
+    if not isinstance(attrs, dict):
+        errs.append("%s is %r, expected an object" % (awhere, attrs))
+        return
+    for name in attrs:
+        if name not in ATTRIBUTE_NAMES:
+            errs.append("%s has an unexpected attribute %r" % (awhere, name))
+    for name in ATTRIBUTE_NAMES:
+        if name not in attrs:
+            continue
+        entry = attrs[name]
+        if entry == []:
+            errs.append("%s %s is empty; omit the entry instead"
+                        % (awhere, name))
+            continue
+        _validate_keys(errs, "%s %s" % (awhere, name), entry, frame_keys)
 
 
 def _validate_keys(errs, where, keys, frame_keys):

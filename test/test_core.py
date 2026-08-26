@@ -450,6 +450,73 @@ class TestSchemaRejects(unittest.TestCase):
         self.reject(lambda d: d["shapes"][0].update(pre_conform_keys=None),
                     "omit the member")
 
+    def test_authored_frames_accepts_a_subset_and_accepts_empty(self):
+        # Optional provenance (spec/rbj-v3-draft.md section 5.2): the frames
+        # the artist keyed on the spline itself. Empty is the member's point -
+        # a mask the artist never keyed, whose two file keys are both the
+        # exporter's pinned endpoints.
+        doc = valid_doc()
+        doc["shapes"][0]["authored_frames"] = [10]
+        self.assertEqual(rbj.validate(doc), [])
+        doc["shapes"][0]["authored_frames"] = []
+        self.assertEqual(rbj.validate(doc), [])
+
+    def test_authored_frames_must_name_frames_the_file_can_deliver(self):
+        # A frame outside the dense layer, or absent from keys, is one an
+        # importer honouring the member would pin and then fail to find.
+        self.reject(lambda d: d["shapes"][0].update(authored_frames=[12]),
+                    "no such frame in the dense layer")
+        self.reject(lambda d: (d["shapes"][0]["keys"].pop(0),
+                               d["shapes"][0].update(authored_frames=[10])),
+                    "not present in keys")
+
+    def test_authored_frames_are_sorted_unique_integers(self):
+        self.reject(lambda d: d["shapes"][0].update(authored_frames=[11, 10]),
+                    "not sorted ascending")
+        self.reject(lambda d: d["shapes"][0].update(authored_frames=[10, 10]),
+                    "duplicate frame")
+        self.reject(lambda d: d["shapes"][0].update(authored_frames=["10"]),
+                    "expected an integer")
+
+    def test_authored_attributes_validate_like_keys(self):
+        # Optional provenance (spec/rbj-v3-draft.md section 5.3): the artist's
+        # own keys on the per-frame attributes, in exactly the schema of
+        # `keys` - values deliberately absent, the dense layer already has
+        # them.
+        doc = valid_doc()
+        doc["shapes"][0]["authored_attributes"] = {
+            "opacity": [{"frame": 10, "interp": {"in": "linear",
+                                                 "out": "ease"},
+                         "ease": {"out": [0.5, 0.0]}}],
+            "feather_uniform": [{"frame": 11, "interp": {"in": "hold",
+                                                         "out": "linear"}}],
+        }
+        self.assertEqual(rbj.validate(doc), [])
+
+    def test_authored_attributes_reject_what_keys_would_reject(self):
+        self.reject(
+            lambda d: d["shapes"][0].update(authored_attributes={
+                "opacity": [{"frame": 12,
+                             "interp": {"in": "linear", "out": "linear"}}]}),
+            "no such frame in the dense layer")
+        self.reject(
+            lambda d: d["shapes"][0].update(authored_attributes={
+                "opacity": [{"frame": 10, "interp": "linear"}]}),
+            "expected an object with in and out")
+
+    def test_authored_attributes_reject_strangers_and_empties(self):
+        self.reject(
+            lambda d: d["shapes"][0].update(authored_attributes={
+                "expansion": []}),
+            "unexpected attribute")
+        self.reject(
+            lambda d: d["shapes"][0].update(authored_attributes={
+                "opacity": []}),
+            "omit the entry instead")
+        self.reject(
+            lambda d: d["shapes"][0].update(authored_attributes=[]),
+            "expected an object")
+
     def test_an_invalid_document_names_the_shape(self):
         doc = valid_doc()
         doc["shapes"][0]["frames"]["11"]["points"].pop()

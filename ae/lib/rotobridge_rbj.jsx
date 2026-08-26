@@ -62,6 +62,7 @@
     };
 
     rbj.BLENDS = ["union", "difference", "intersection"];
+    rbj.ATTRIBUTE_NAMES = ["opacity", "feather_uniform"];
     /* spec/rbj-v2-draft.md section 6.2: three exclusive models. `anchored`
      * moves the whole per-point feather layer into the frame's own
      * `feather_points`, because After Effects anchors feather anywhere along a
@@ -374,6 +375,98 @@
                 validateKeys(errs, where + " pre_conform_keys",
                              shape["pre_conform_keys"], frameKeys);
             }
+        }
+        if (hasOwn(shape, "authored_frames")) {
+            validateAuthoredFrames(errs, where, shape["authored_frames"],
+                                   frameKeys, shape["keys"]);
+        }
+        if (hasOwn(shape, "authored_attributes")) {
+            validateAuthoredAttributes(errs, where,
+                                       shape["authored_attributes"],
+                                       frameKeys);
+        }
+    }
+
+    function validateAuthoredFrames(errs, where, frames, frameKeys, keys) {
+        /* Optional provenance (spec/rbj-v3-draft.md section 5.2): the frames
+         * the artist keyed on the spline itself. May be empty - that is the
+         * member's point - but what it names must exist, both in the dense
+         * layer and among the shape's keys, or an importer honouring it would
+         * pin a frame the file cannot deliver. */
+        var awhere = where + " authored_frames";
+        if (!isArray(frames)) {
+            errs[errs.length] = awhere + " is " + show(frames)
+                + ", expected an array";
+            return;
+        }
+        var keyed = null;
+        if (isArray(keys)) {
+            keyed = {};
+            for (var k = 0; k < keys.length; k++) {
+                if (isObj(keys[k]) && isInt(keys[k]["frame"])) {
+                    keyed[keys[k]["frame"]] = true;
+                }
+            }
+        }
+        var prev = null;
+        for (var i = 0; i < frames.length; i++) {
+            var frame = frames[i];
+            if (!isInt(frame)) {
+                errs[errs.length] = awhere + "[" + i + "] is " + show(frame)
+                    + ", expected an integer";
+                continue;
+            }
+            var fwhere = awhere + "[" + i + "] frame " + frame;
+            if (frameKeys !== null && !hasOwn(frameKeys, String(frame))) {
+                errs[errs.length] = fwhere
+                    + ": no such frame in the dense layer";
+            }
+            if (keyed !== null && !hasOwn(keyed, frame)) {
+                errs[errs.length] = fwhere + ": not present in keys";
+            }
+            if (prev !== null) {
+                if (frame === prev) {
+                    errs[errs.length] = fwhere + ": duplicate frame";
+                } else if (frame < prev) {
+                    errs[errs.length] = fwhere
+                        + ": frames are not sorted ascending (follows "
+                        + prev + ")";
+                }
+            }
+            prev = frame;
+        }
+    }
+
+    function validateAuthoredAttributes(errs, where, attrs, frameKeys) {
+        /* Optional provenance (spec/rbj-v3-draft.md section 5.3): the
+         * artist's own keyframes on the attributes the dense layer carries
+         * per frame. Exactly the schema of keys - values are deliberately
+         * absent, since the dense layer already holds the value on every
+         * frame - so the same machinery validates it. */
+        var awhere = where + " authored_attributes";
+        if (!isObj(attrs)) {
+            errs[errs.length] = awhere + " is " + show(attrs)
+                + ", expected an object";
+            return;
+        }
+        var name;
+        for (name in attrs) {
+            if (hasOwn(attrs, name)
+                    && RB.util.indexOf(rbj.ATTRIBUTE_NAMES, name) < 0) {
+                errs[errs.length] = awhere + " has an unexpected attribute \""
+                    + name + "\"";
+            }
+        }
+        for (var i = 0; i < rbj.ATTRIBUTE_NAMES.length; i++) {
+            name = rbj.ATTRIBUTE_NAMES[i];
+            if (!hasOwn(attrs, name)) { continue; }
+            var entry = attrs[name];
+            if (isArray(entry) && entry.length === 0) {
+                errs[errs.length] = awhere + " " + name
+                    + " is empty; omit the entry instead";
+                continue;
+            }
+            validateKeys(errs, awhere + " " + name, entry, frameKeys);
         }
     }
 
