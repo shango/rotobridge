@@ -27,7 +27,7 @@ from rotobridge_nuke import (ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              blend_from_rbj, drift, falloff_from_rbj, geom,
                              interp, messages, point_members, rbj, report,
                              roto_knob, set_curve_linear, set_curve_types,
-                             write_attr_curve, version)
+                             write_attr_curve, write_attr_static, version)
 
 DEFAULT_TOLERANCE = 0.5
 
@@ -245,6 +245,26 @@ def _write_frame(shape, record, at, offsets):
                                                      offsets[i][1], 0.0))
 
 
+def _set_static(shape, record, offsets):
+    """One pose as plain values, no keys anywhere.
+
+    A keyless `AnimControlPoint` holds what `setPosition` gives it on every
+    frame (probed 17.1v1, `test/probe/probe_nuke_static.py`), which is what a
+    shape the artist never keyed actually is. Same homogeneous terms as
+    `_write_frame`.
+    """
+    for i, point in enumerate(record["points"]):
+        cp = shape[i]
+        cp.center.setPosition(rp.CVec3(float(point["c"][0]),
+                                       float(point["c"][1]), 1.0))
+        cp.leftTangent.setPosition(rp.CVec3(float(point["in"][0]),
+                                            float(point["in"][1]), 0.0))
+        cp.rightTangent.setPosition(rp.CVec3(float(point["out"][0]),
+                                             float(point["out"][1]), 0.0))
+        cp.featherCenter.setPosition(rp.CVec3(offsets[i][0],
+                                              offsets[i][1], 0.0))
+
+
 def _remove_frame(shape, at):
     """Take one frame's key back off every control point.
 
@@ -330,6 +350,16 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
     key_frames, types = _key_plan(spec, frames, offset, warn)
     written = set()
 
+    # The file may say which of its keys the artist actually made
+    # (spec/rbj-v3-draft.md section 5.2). Every other key - a pinned endpoint,
+    # a transform frame - is then the drift pass's to give back where the
+    # measurement allows. Absent the member, every file key is treated as
+    # authored, which is what the pass did before the member existed.
+    authored = spec.get("authored_frames")
+    if authored is not None:
+        authored = [int(f) for f in authored
+                    if frames[0] <= int(f) <= frames[-1]]
+
     def apply_keys(wanted):
         # `drift.correct` asks for exactly this set, not a superset: its sweep
         # tries a shape without a key to find out whether the key is needed.
@@ -362,8 +392,28 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
                     worst = here
         return worst
 
+    if authored == [] and tolerance > 0 and spec.get("keys") is not None:
+        # Nobody keyed this spline, so before spending any keys, ask whether
+        # it is actually one pose. The dense layer is ground truth, so the
+        # question is data equality, not a host measurement - an animated
+        # ancestor transform shows up right there as frames that differ.
+        head = dense[str(frames[0])]["points"]
+        if all(dense[str(f)]["points"] == head for f in frames[1:]):
+            _set_static(shape, dense[str(frames[0])], offsets[frames[0]])
+            residual = max(measure(f) for f in frames)
+            _write_attributes(shape, spec, frames, offset, tolerance, warn)
+            return {
+                "name": name,
+                "feather_model": carried,
+                "points": len(head),
+                "authored": 0,
+                "corrective": 0,
+                "residual": residual,
+                "worst_frame": None,
+            }
+
     final, residual, at = drift.correct(frames, key_frames, apply_keys, measure,
-                                        tolerance)
+                                        tolerance, authored=authored)
 
     if residual > tolerance:
         warn(messages.render("drift-residual",
@@ -373,12 +423,13 @@ def build_shape(knob, spec, frames, offset, tolerance, warn):
 
     _write_attributes(shape, spec, frames, offset, tolerance, warn)
 
+    count = len(authored) if authored is not None else len(key_frames)
     return {
         "name": name,
         "feather_model": carried,
         "points": len(dense[str(frames[0])]["points"]),
-        "authored": len(key_frames),
-        "corrective": len(final) - len(set(key_frames) & set(frames)),
+        "authored": count,
+        "corrective": len(final) - count,
         "residual": residual,
         # Host numbering, so it names the frame an artist would look at. The
         # drift pass works in source frames and has no offset to apply.
@@ -432,8 +483,11 @@ def _collapse(samples, tolerance):
 
     frames = [int(at) for at, _ in samples]
     dense = dict((int(at), [value]) for at, value in samples)
+    # The two seeds are this function's own invention, so the fit may drop
+    # them too: an attribute keyed at 10 and 90 inside a 0-100 range arrives
+    # as those two keys, not as four with the range ends pinned around them.
     keep = set(drift.linear_fit(frames, dense, [frames[0], frames[-1]],
-                                COLLAPSE_TOLERANCE)[0])
+                                COLLAPSE_TOLERANCE, authored=())[0])
     return [sample for sample in samples if int(sample[0]) in keep]
 
 
@@ -453,8 +507,15 @@ def _write_attributes(shape, spec, frames, offset, tolerance, warn):
     for name, samples in ((ATTR_OPACITY, opacity),
                           (ATTR_FEATHER_X, feather_x),
                           (ATTR_FEATHER_Y, feather_y)):
-        set_curve_linear(write_attr_curve(attrs, name,
-                                          _collapse(samples, tolerance)))
+        kept = _collapse(samples, tolerance)
+        if len(kept) == 1:
+            # One sample is a value, not an animation: an artist whose
+            # opacity was never keyed finds a plain attribute, editable as
+            # one. `_collapse` decides when there is one; this decides what
+            # one means.
+            write_attr_static(attrs, name, kept[0][1])
+        else:
+            set_curve_linear(write_attr_curve(attrs, name, kept))
 
     # Static per shape, so one key each. Attribute curves default to curved too
     # (Phase 0 case 62), but a single-key curve has nothing to interpolate.

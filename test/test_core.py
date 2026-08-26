@@ -2677,7 +2677,8 @@ class _WithoutNuke(unittest.TestCase):
         for name in ("ATTR_FEATHER_FALLOFF", "ATTR_FEATHER_X", "ATTR_FEATHER_Y",
                      "ATTR_OPACITY", "INTERP_LINEAR", "blend_from_rbj",
                      "falloff_from_rbj", "point_members", "roto_knob",
-                     "set_curve_linear", "set_curve_types", "write_attr_curve"):
+                     "set_curve_linear", "set_curve_types", "write_attr_curve",
+                     "write_attr_static"):
             setattr(shared, name, None)
         shared.drift, shared.geom = drift, geom
         shared.interp, shared.rbj, shared.report = interp, rbj, report

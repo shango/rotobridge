@@ -172,6 +172,10 @@ def thin_keys(doc, frames):
         shape["keys"] = [{"frame": f,
                           "interp": {"in": "linear", "out": "linear"}}
                          for f in frames]
+        # A foreign tier-2 exporter says nothing about provenance, and the
+        # member would be a lie here anyway: it names frames the thinning
+        # just removed from `keys`, which the validator rejects.
+        shape.pop("authored_frames", None)
     return thin
 
 

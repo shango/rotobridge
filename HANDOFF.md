@@ -2550,8 +2550,16 @@ each chunk commits:
 4. [x] AE importer: static path when `authored_frames` is empty and the
    measure allows; `authored` threaded into the drift pass; attributes
    restored from `authored_attributes` with host-measured correction; tests.
-5. [ ] Nuke importer: `_collapse` marks its seeds unauthored; `authored`
-   threaded into the path drift pass; probe whether a static attr / static
-   point works headless, adopt if clean.
+5. [x] Nuke importer: `_collapse` marks its seeds unauthored; `authored`
+   threaded into the path drift pass; static adopted after probing 17.1v1
+   (`test/probe/probe_nuke_static.py` and `_static2`): a keyless
+   `AnimControlPoint` holds what `setPosition` gives it, and `attrs.add`
+   with the curve left empty is a true zero-key constant. A shape whose
+   dense frames are identical and whose `authored_frames` is empty now
+   arrives with no point keys at all; a single collapsed attribute sample
+   arrives as a plain value. The real round trip passes
+   (`test_nuke_roundtrip.py`, headless), with `thin_keys` now dropping
+   `authored_frames` since it fakes a foreign tier-2 file. The two-linear
+   probe still lands [0, 50], 0 corrective, 0.0000 px.
 6. [ ] suites + headless Nuke roundtrip, HANDOFF, bump, package.
 7. [ ] full code review of the repo.

@@ -215,6 +215,20 @@ def write_attr_curve(attrs, name, samples):
     return curve
 
 
+def write_attr_static(attrs, name, value):
+    """Set one shape attribute as a plain value, with no keys at all.
+
+    `add` silently shadows any keyed curve (Phase 0 case 62), which is exactly
+    wrong on an attribute you key and exactly right on one you do not: with
+    the curve left empty, the constant is the value everywhere (probed 17.1v1,
+    `test/probe/probe_nuke_static.py` - `add(0.25)` read back 0.25 on every
+    frame with the curve still at zero keys). The `removeAllKeys` is what
+    keeps the two from ever combining.
+    """
+    attrs.getCurve(name, VIEW).removeAllKeys()
+    attrs.add(name, float(value))
+
+
 def set_curve_linear(curve):
     """Make every key on one AnimCurve interpolate linearly."""
     set_curve_types(curve, {}, INTERP_LINEAR)
