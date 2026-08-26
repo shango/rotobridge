@@ -48,3 +48,28 @@ tolerance      0.5 px
 
 no warnings from this import
 
+------------------------------------------------------------------------------
+RotoBridge import record
+
+written        2026-08-26 13:54:40
+imported with  RotoBridge 0.9.3
+into           Nuke 17.1v1
+target         Roto1
+
+source file    \\wsl.localhost\Ubuntu-24.04\home\sgold\dev\repos\rotobridge\test\golden\nuke_probe\17.1v1\phase3\sparse.rbj
+exported by    Nuke 17.1v1
+exported with  RotoBridge 0.9.3
+format         .rbj version 1
+source comp    2048 x 1556 at 24 fps, pixel aspect 1
+source frames  1 to 41
+placed at      1 to 41 (offset 0)
+tolerance      0.5 px
+
+1 shape(s):
+  round_trip: feather per_point, 4 point(s), 5 authored key(s), 0 corrective; worst drift 0.0001 px at frame 16
+
+1 warning recorded when the file was written:
+  - [feather-tangential] shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
+
+no warnings from this import
+

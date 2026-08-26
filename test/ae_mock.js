@@ -185,6 +185,7 @@ function makeProp(valueFn, seed) {
      *   bezier keys leave no gap for the pass to measure.
      */
     var keys = [];   // [{t, value, inType, outType, inEase, outEase}], ascending
+    var stat = null; // the property's own value while nothing is keyed
     var EPS = 1e-9;
 
     function find(t) {
@@ -211,13 +212,15 @@ function makeProp(valueFn, seed) {
     var prop = {
         get numKeys() { return keys.length; },
         get value() {
-            return asHostReturns(keys.length ? keys[0].value : valueFn(0),
-                                 false);
+            if (keys.length) { return asHostReturns(keys[0].value, false); }
+            return asHostReturns(stat === null ? valueFn(0) : stat, false);
         },
         _keys: keys,
 
         valueAtTime: function (t) {
-            if (!keys.length) { return asHostReturns(valueFn(t), false); }
+            if (!keys.length) {
+                return asHostReturns(stat === null ? valueFn(t) : stat, false);
+            }
             var i = find(t);
             return i === -1 ? asHostReturns(between(t), true)
                             : asHostReturns(keys[i].value, false);
@@ -231,7 +234,17 @@ function makeProp(valueFn, seed) {
             keys.sort(function (a, b) { return a.t - b.t; });
         },
 
-        setValue: function (value) { prop.setValueAtTime(0, value); },
+        setValue: function (value) {
+            /* A static value, and no keyframe - which is the whole point of
+             * having it rather than `setValueAtTime`. After Effects raises on a
+             * property that already has keys rather than silently doing
+             * something else, so this does too. */
+            if (keys.length) {
+                throw new Error("setValue: the property has " + keys.length
+                                + " keyframe(s); After Effects raises here");
+            }
+            stat = value;
+        },
         keyTime: function (i) { return keys[i - 1].t; },
         keyValue: function (i) { return keys[i - 1].value; },
 

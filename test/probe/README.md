@@ -181,6 +181,45 @@ drift pass runs, so the printed keys are real and the alert is the mock, not
 the host - `TestGoldenStaticEase` in `test/test_core.py` records what the real
 host did with this same scene: 0 corrective keys and 0.0000 px.
 
+## Two linear keys, fifty frames apart, 2026-08-26
+
+The plainest thing an artist can ask of the tool, and the one worth a fixture:
+two keys, both linear, fifty frames apart, nothing else animated. Anything the
+round trip adds is work nobody asked for.
+
+`test/golden/two_linear_keys.rbj` is what the After Effects exporter writes
+from exactly that comp - 2 keys over 51 frames, both linear, no
+`pre_conform_keys`. `probe_nuke_two_linear.py` takes it into Nuke:
+
+```
+nuke --nc -t test/probe/probe_nuke_two_linear.py
+```
+
+On 17.1v1 the node comes back with key times `[0, 50]`, 0 corrective, 0.0000 px
+- that direction was already right. At tolerance 0 it keys all 51, which is the
+documented dense mode and not a defect.
+
+The After Effects direction was not. Opacity and uniform feather have no sparse
+layer in the format, so they arrive one value per frame; collapsing a constant
+to a single key still left a keyframe on a property the artist had never keyed.
+A constant attribute is now set as a value. `test_ae_import` carries the whole
+scenario as one case, counting path, opacity and feather keys on the way out
+and on the way back.
+
+**What still adds keys, and why it is left alone.** A mask with no path keys at
+all - drawn once and never animated - comes back with two, because the exporter
+pins the range endpoints so the sparse layer brackets the truth rather than
+flattening at its edge. Nothing in the file distinguishes an endpoint the
+exporter invented from two identical keys the artist authored, and dropping
+them on that guess would break the rule that an artist's keys are never the
+tool's to remove. Fixing it properly needs the exporter to say which keys it
+invented.
+
+Note for anyone writing another probe here: read a `.rbj` with `rbj.loads`, not
+`json.loads`. A v3 file may fold a held span as `{"same_as": N}` and expanding
+that is part of reading the format - both probes here got it wrong first, and
+only the file that happened not to fold let it pass.
+
 ## After Effects adapters
 
 Not probes - the Phase 4 adapter pair. They install like any other script:

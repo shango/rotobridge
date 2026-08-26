@@ -220,14 +220,56 @@ describe("import", function () {
         has(host.alerts, "2 authored key(s), 0 corrective");
     });
 
-    it("collapses an attribute that never changes to one key", function () {
-        // An artist opening a shape whose feather was never animated should
-        // find one key on it, not one per frame.
+    it("adds nothing at all to two linear keys fifty frames apart", function () {
+        // The scenario in the plainest terms an artist can state it: two keys,
+        // linear, fifty frames apart, nothing else animated. Every count on
+        // the way back has to match the one on the way out.
+        //
+        // The path was always right. What was not: opacity and uniform feather
+        // have no sparse layer in the format, so they arrive one value per
+        // frame and the importer wrote what it was given. Collapsing a
+        // constant to one key still left a keyframe on a property the artist
+        // had never keyed.
+        var spec = {
+            frameRate: 24, workAreaStart: 0, workAreaDuration: 51 / 24,
+            layers: [{ name: "Solid 1", masks: [{
+                name: "Mask 1",
+                pathAt: movingSquare,
+                opacityAt: function () { return 100; },
+                featherAt: function () { return [0, 0]; },
+                pathKeys: [{ t: 0, value: movingSquare(0) },
+                           { t: 50 / 24, value: movingSquare(50 / 24) }]
+            }] }]
+        };
+        var out = mock.install(spec);
+        var source = out.comp.layer(1)._masks[0];
+        deepEq([source.property("ADBE Mask Shape").numKeys,
+                source.property("ADBE Mask Opacity").numKeys,
+                source.property("ADBE Mask Feather").numKeys],
+               [2, 0, 0], "the fixture is not what this test is about");
+        runExport(out);
+
+        var host = importInto(out.written, { workAreaDuration: 51 / 24 });
+        var mask = host.comp.layer(1)._masks[0];
+        deepEq([mask.property("ADBE Mask Shape").numKeys,
+                mask.property("ADBE Mask Opacity").numKeys,
+                mask.property("ADBE Mask Feather").numKeys],
+               [2, 0, 0], "the tool invented keyframes");
+        has(host.alerts, "2 authored key(s), 0 corrective");
+        deepEq(keyFramesOf(mask.property("ADBE Mask Shape")), [0, 50]);
+    });
+
+    it("gives an attribute that never changes no keys at all", function () {
+        // An artist whose feather was never animated had no keyframe on it.
+        // One key per frame is the bug this started as; one key is still the
+        // tool inventing animation the file does not describe, and it stops
+        // the property being editable as the plain value it is.
         var host = importInto(exported({ mask: {
             featherAt: function () { return [12, 5]; }
         } }));
-        var mask = host.comp.layer(1)._masks[0];
-        eq(mask.property("ADBE Mask Feather").numKeys, 1);
+        var prop = host.comp.layer(1)._masks[0].property("ADBE Mask Feather");
+        eq(prop.numKeys, 0);
+        deepEq(prop.value, [12, 5], "the value has to survive losing the key");
     });
 
     it("collapses a straight ramp to the two keys that draw it", function () {
@@ -255,7 +297,9 @@ describe("import", function () {
         } }), { answers: ["0", "", "0"] });
         var mask = host.comp.layer(1)._masks[0];
         eq(mask.property("ADBE Mask Opacity").numKeys, 5);
-        eq(mask.property("ADBE Mask Feather").numKeys, 1);
+        var feather = mask.property("ADBE Mask Feather");
+        eq(feather.numKeys, 0, "a value that never changes is still a value");
+        deepEq(feather.value, [12, 5]);
     });
 
     it("leaves an attribute the line cannot follow dense", function () {

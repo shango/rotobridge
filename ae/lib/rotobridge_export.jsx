@@ -697,22 +697,18 @@
         var byFrame = {};
         var wanted = [];
         var holds = [];
-        var keep = {};   // a copy: the caller's set is not ours to add to
-        for (var pin in pinned) {
-            if (RB.util.hasOwn(pinned, pin)) { keep[pin] = true; }
-        }
         for (i = 0; i < keys.length; i++) {
             byFrame[String(keys[i]["frame"])] = keys[i];
             /* A held segment is flat by definition, so the fit must not price
              * it as a straight line to the next key. Passing the holds through
-             * is what keeps the conform from paying keys to destroy them. And
-             * a hold is a claim about a segment, so the key carrying it has to
-             * survive the fit whether or not a line would pass through it. */
+             * is what keeps the conform from paying keys to destroy them. The
+             * caller has already pinned them for the same reason: a hold is a
+             * claim about a segment, so the key carrying it survives the fit
+             * whether or not a line would pass through it. */
             if (keys[i]["interp"]["out"] === RB.interp.HOLD) {
                 holds[holds.length] = keys[i]["frame"];
-                keep[String(keys[i]["frame"])] = true;
             }
-            if (RB.util.hasOwn(keep, String(keys[i]["frame"]))) {
+            if (RB.util.hasOwn(pinned, String(keys[i]["frame"]))) {
                 wanted[wanted.length] = keys[i]["frame"];
             }
         }
@@ -852,43 +848,72 @@
                                     { subject: "mask '" + name + "'",
                                       count: unheld }));
         }
-        var authored = copyKeys(out);
+        /* A hold is a claim about a segment, so the key carrying one is not the
+         * fit's to drop. The verdict above is what decides that, so the pinning
+         * has to wait until it has run. */
+        for (i = 0; i < out.length; i++) {
+            if (out[i]["interp"]["out"] === RB.interp.HOLD) {
+                pinned[String(out[i]["frame"])] = true;
+            }
+        }
+
+        /* The provenance, taken before the conform rewrites these objects in
+         * place (spec/rbj-v3-draft.md section 5.1). */
+        var provenance = authoredKeys(out, pinned);
         var conformed = conformEase(out, pinned, baked, frames, name, warn);
-        if (conformed !== out) {
-            /* The conform rewrote something, and it rewrites the key objects
-             * in place - which is why the copy was taken first. The authored
-             * keys ride along as provenance (spec/rbj-v3-draft.md section 5):
-             * the shape survives via the bake either way, but without this
-             * the artist's timing was gone from the file forever, foreclosing
-             * any future importer that could honour it. Importers ignore it,
-             * exactly as they ignore warnings. */
-            baked["pre_conform_keys"] = authored;
+        if (provenance && conformed !== out) {
+            baked["pre_conform_keys"] = provenance;
         }
         return conformed;
     }
 
-    function copyKeys(keys) {
-        /* A deep copy of a keys array - three known levels, written out
-         * rather than recursed because that is all a key can hold. */
+    function authoredKeys(keys, pinned) {
+        /* What the artist actually authored, or null when that is nothing the
+         * conform is about to destroy.
+         *
+         * Two things this is not. It is not every key in `keys`: the transform
+         * frames in there are candidates the fit may drop, and handing them
+         * back through the provenance would undo that on an After Effects
+         * round trip. And it is not written at all unless some side carries a
+         * real `ease` block. A side that is `ease` with no parameters is spec
+         * section 10.3's "smooth, parameters unknown" - the exporter's own
+         * placeholder for a pinned endpoint, not a curve anyone drew - so a
+         * file whose only ease is placeholders has nothing to preserve, and
+         * saying otherwise hands an importer a static mask keyed on bezier
+         * endpoints it never asked for.
+         *
+         * Those placeholders are spelled `linear` here for the same reason:
+         * the conform decided linear for them, the file's own `keys` says
+         * linear, and nothing was authored there to disagree.
+         */
+        var sides = ["in", "out"];
         var out = [];
+        var found = false;
         for (var i = 0; i < keys.length; i++) {
+            if (!RB.util.hasOwn(pinned, String(keys[i]["frame"]))) { continue; }
             var key = { "frame": keys[i]["frame"],
                         "interp": { "in": keys[i]["interp"]["in"],
                                     "out": keys[i]["interp"]["out"] } };
-            if (RB.util.hasOwn(keys[i], "ease")) {
-                var sides = ["in", "out"];
-                var ease = {};
-                for (var s = 0; s < sides.length; s++) {
-                    if (RB.util.hasOwn(keys[i]["ease"], sides[s])) {
-                        ease[sides[s]] =
-                            keys[i]["ease"][sides[s]].slice(0);
-                    }
+            var ease = {};
+            var any = false;
+            for (var s = 0; s < sides.length; s++) {
+                var side = sides[s];
+                var got = RB.util.hasOwn(keys[i], "ease")
+                    && RB.util.hasOwn(keys[i]["ease"], side)
+                    ? keys[i]["ease"][side] : null;
+                if (key["interp"][side] !== RB.interp.EASE) { continue; }
+                if (got) {
+                    ease[side] = got.slice(0);
+                    any = true;
+                    found = true;
+                } else {
+                    key["interp"][side] = RB.interp.LINEAR;
                 }
-                key["ease"] = ease;
             }
+            if (any) { key["ease"] = ease; }
             out[out.length] = key;
         }
-        return out;
+        return found ? out : null;
     }
 
     function buildDocument(comp, warn) {

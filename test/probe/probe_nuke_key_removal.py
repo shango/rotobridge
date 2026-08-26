@@ -76,18 +76,21 @@ def through_the_importer():
     means `apply_keys` is still grow-only and the pass is reporting a shape
     nobody has.
     """
-    import json
     import os
     import sys
 
     here = os.path.dirname(os.path.abspath(__file__))
     repo = os.path.dirname(os.path.dirname(here))
     sys.path.insert(0, os.path.join(repo, "nuke"))
+    sys.path.insert(0, repo)
     import rotobridge_import as rbi
+    from core import rbj
 
+    # `rbj.loads` and not `json.load`: a v3 file may fold a held span as
+    # {"same_as": N}, and expanding that is part of reading the format.
     with open(os.path.join(repo, "test", "golden",
                            "held_over_moving_layer.rbj")) as handle:
-        doc = json.load(handle)
+        doc = rbj.loads(handle.read())
 
     node, warnings, reports = rbi.import_document(doc, tolerance=0.5)
     shape = node["curves"].rootLayer[0]

@@ -636,6 +636,17 @@
     }
 
     function setSamples(prop, samples) {
+        if (samples.length === 1) {
+            /* One sample is a value, not an animation. An artist whose mask
+             * opacity was a flat 100 had no keyframe on it at all, and handing
+             * one back is the tool inventing animation the file does not
+             * describe - it also stops the property being editable as a plain
+             * value, which is how a static attribute is meant to be edited.
+             * `collapse` decides when there is one; this decides what one
+             * means. */
+            prop.setValue(samples[0].value);
+            return;
+        }
         for (var i = 0; i < samples.length; i++) {
             prop.setValueAtTime(samples[i].t, samples[i].value);
         }
