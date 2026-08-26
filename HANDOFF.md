@@ -2505,14 +2505,10 @@ transform-key work on any AE-to-AE trip), and spells a placeholder side
 
 ### Open
 
-- **A mask with no path keys comes back with two.** The exporter pins the range
-  endpoints so the sparse layer brackets the truth rather than flattening at
-  its edge, and nothing in the file distinguishes an endpoint the exporter
-  invented from two identical keys the artist authored. Dropping them on that
-  guess breaks the rule that an artist's keys are never ours to remove - a
-  first cut that did it failed eight tests whose fixtures rely on authored keys
-  being honoured. The fix is for the exporter to say which keys it invented,
-  which is a format question. Recorded in `test/probe/README.md`.
+- **RESOLVED 2026-08-26: a mask with no path keys comes back with none.** The
+  format question this raised became `authored_frames` / `authored_attributes`
+  (spec sections 5.2-5.3), and the pass recorded below under "DONE: invented
+  keys become removable" closed it end to end in both hosts.
 
 - **A circle drawn in After Effects arrives in Nuke as a straight-sided
   polygon.** Reported from the host 2026-08-25 with screenshots, still unfound.
@@ -2531,7 +2527,7 @@ transform-key work on any AE-to-AE trip), and spells a placeholder side
   now compared code for code and byte for byte by `TestEs3CrossCheck`. Noted
   because the same gap may exist elsewhere in the port.
 
-## IN PROGRESS: invented keys become removable, 2026-08-26
+## DONE: invented keys become removable, 2026-08-26
 
 The user's ruling closes the static-mask question: a property the artist never
 keyed arrives with no keys, one or two authored keys arrive as one or two, and
@@ -2561,5 +2557,8 @@ each chunk commits:
    (`test_nuke_roundtrip.py`, headless), with `thin_keys` now dropping
    `authored_frames` since it fakes a foreign tier-2 file. The two-linear
    probe still lands [0, 50], 0 corrective, 0.0000 px.
-6. [ ] suites + headless Nuke roundtrip, HANDOFF, bump, package.
+6. [x] suites green after the bump (Python 364; node 151 + 74 + 80 + 14),
+   headless Nuke roundtrip PASS (dense, sparse, open, anchored; thinned pass
+   2 authored + 10 corrective, worst 0.465 px at tolerance 0.5), version
+   0.9.4 -> 0.9.5, drop packaged as `dist/RotoBridge-0.9.5.zip`.
 7. [ ] full code review of the repo.
