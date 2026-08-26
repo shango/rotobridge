@@ -343,9 +343,20 @@
              * BEZIER, so the types have to go on afterwards or a `hold` side
              * arrives smooth. Doing it in this order keeps the ease values -
              * After Effects stores them per key and honours them only on the
-             * sides that are bezier. */
-            prop.setTemporalEaseAtKey(at, [easeFor(ease["in"])],
-                                      [easeFor(ease["out"])]);
+             * sides that are bezier.
+             *
+             * One KeyframeEase per dimension, and the host itself says how
+             * many that is: a mask path reports one (probe run 6 section G),
+             * a TwoD attribute like uniform feather reports its own count.
+             * The format carries one pair per side (spec section 10.3), so
+             * every dimension gets the same curve. */
+            var dims = prop.keyInTemporalEase(at).length;
+            var inEase = [], outEase = [];
+            for (var d = 0; d < dims; d++) {
+                inEase[d] = easeFor(ease["in"]);
+                outEase[d] = easeFor(ease["out"]);
+            }
+            prop.setTemporalEaseAtKey(at, inEase, outEase);
         }
         prop.setInterpolationTypeAtKey(at, RB.interp.sideToAe(sides["in"]),
                                        RB.interp.sideToAe(sides["out"]));
@@ -520,8 +531,53 @@
                 targets[String(frame)]);
         }
 
+        /* The file may say which of its keys the artist actually made
+         * (spec/rbj-v3-draft.md section 5.2). Every other key - a pinned
+         * endpoint, a transform candidate - is then the drift pass's to give
+         * back where the measurement allows. Absent the member, every file
+         * key is treated as authored, which is what the pass did before the
+         * member existed. */
+        var authored = null;
+        if (RB.util.hasOwn(spec, "authored_frames")) {
+            authored = [];
+            var declared = spec["authored_frames"];
+            var last_ = frames[frames.length - 1];
+            for (var a = 0; a < declared.length; a++) {
+                var af = Math.floor(Number(declared[a]));
+                if (af >= frames[0] && af <= last_) {
+                    authored[authored.length] = af;
+                }
+            }
+        }
+
+        if (authored !== null && !authored.length && !plan.dense
+                && tolerance > 0) {
+            /* Nobody keyed this path, so before spending any keys, try what
+             * the artist had: a plain value. The measurement, not the claim,
+             * decides - an animated ancestor transform can move geometry the
+             * path never keyed, and then keys are owed after all. */
+            prop.setValue(targets[String(frames[0])]);
+            var still = 0.0;
+            var bad = null;
+            for (var s = 0; s < frames.length; s++) {
+                var off = measure(frames[s]);
+                if (off > still) { still = off; bad = frames[s]; }
+                if (still > tolerance) { break; }
+            }
+            if (still <= tolerance) {
+                return { name: spec.name,
+                         feather_model: spec.feather_model,
+                         points: spec.frames[String(frames[0])].points.length,
+                         authored: 0,
+                         corrective: 0,
+                         residual: still,
+                         worst_frame: bad === null ? null : bad + offset };
+            }
+        }
+
         var got = RB.drift.correct(frames, plan.frames, applyKeys, measure,
-                                   plan.dense ? 0.0 : tolerance);
+                                   plan.dense ? 0.0 : tolerance,
+                                   undefined, authored);
 
         if (got.worst > tolerance) {
             warn(RB.messages.render("drift-residual",
@@ -530,11 +586,18 @@
                                       frame: got.at + offset }));
         }
 
-        var authored = 0;
+        var count = 0;
         var last = frames[frames.length - 1];
-        for (var i = 0; i < plan.frames.length; i++) {
-            if (plan.frames[i] >= frames[0] && plan.frames[i] <= last) {
-                authored += 1;
+        if (authored !== null) {
+            /* The file named the artist's frames, and the pass never removes
+             * one, so the difference is exactly what the tool added - pinned
+             * endpoints it kept included. */
+            count = authored.length;
+        } else {
+            for (var i = 0; i < plan.frames.length; i++) {
+                if (plan.frames[i] >= frames[0] && plan.frames[i] <= last) {
+                    count += 1;
+                }
             }
         }
         /* `worst_frame` is in **host** numbering, offset already applied, so
@@ -543,8 +606,8 @@
         return { name: spec.name,
                  feather_model: spec.feather_model,
                  points: spec.frames[String(frames[0])].points.length,
-                 authored: authored,
-                 corrective: got.keys.length - authored,
+                 authored: count,
+                 corrective: got.keys.length - count,
                  residual: got.worst,
                  worst_frame: got.at === null ? null : got.at + offset };
     }
@@ -614,11 +677,96 @@
         return out;
     }
 
+    function attrDeviation(got, target) {
+        /* The attribute counterpart of `deviation`: opacity is a number,
+         * uniform feather a pair, and either is off by its worst component. */
+        if (RB.util.isArray(target)) {
+            var worst = 0.0;
+            for (var i = 0; i < target.length; i++) {
+                var off = Math.abs(Number(got[i]) - Number(target[i]));
+                if (off > worst) { worst = off; }
+            }
+            return worst;
+        }
+        return Math.abs(Number(got) - Number(target));
+    }
+
+    function restoreAttribute(comp, prop, keys, samples, frames, offset,
+                              tolerance) {
+        /* Set exactly the artist's own keys on one attribute - interp and
+         * ease included, values from the dense layer - then let the drift
+         * pass add compensation only where the measurement demands it
+         * (spec/rbj-v3-draft.md section 5.3). Every authored frame is in the
+         * dense layer - the validator enforces it - so every one is in range.
+         *
+         * The same host reading its own ease back reproduces the dense layer
+         * to the arithmetic, so the usual outcome is the authored keys and
+         * nothing else - which is the point: two keys stay two keys. */
+        var byFrame = {};
+        var seed = [];
+        var index = {};
+        var i;
+        for (i = 0; i < frames.length; i++) {
+            index[String(frames[i])] = i;
+        }
+        for (i = 0; i < keys.length; i++) {
+            var frame = Math.floor(Number(keys[i]["frame"]));
+            seed[seed.length] = frame;
+            byFrame[String(frame)] = keys[i];
+        }
+
+        var written = {};
+
+        function applyKeys(wanted) {
+            var asked = {}, f, w;
+            for (w = 0; w < wanted.length; w++) {
+                asked[String(wanted[w])] = true;
+            }
+            for (f in written) {
+                if (!RB.util.hasOwn(written, f)
+                        || RB.util.hasOwn(asked, f)) { continue; }
+                removeKeyAtFrame(comp, prop, Number(f) + offset);
+                delete written[f];
+            }
+            for (w = 0; w < wanted.length; w++) {
+                f = wanted[w];
+                if (!RB.util.hasOwn(written, String(f))) {
+                    var sample = samples[index[String(f)]];
+                    prop.setValueAtTime(sample.t, sample.value);
+                    written[String(f)] = true;
+                }
+            }
+            /* Authored interp on the artist's keys, linear on corrective
+             * ones; by time, because insertions renumber every later index. */
+            for (var k = 1; k <= prop.numKeys; k++) {
+                var at = RB.timing.secondsToFrame(prop.keyTime(k),
+                                                  comp.frameRate,
+                                                  ae.startFrame(comp))
+                         - offset;
+                applyKeyInterp(prop, k,
+                               RB.util.hasOwn(byFrame, String(at))
+                                   ? byFrame[String(at)] : null);
+            }
+        }
+
+        function measure(frame) {
+            var sample = samples[index[String(frame)]];
+            return attrDeviation(prop.valueAtTime(sample.t, false),
+                                 sample.value);
+        }
+
+        RB.drift.correct(frames, seed, applyKeys, measure, tolerance,
+                         undefined, seed);
+    }
+
     function writeAttributes(comp, mask, spec, frames, offset, tolerance) {
         /* Opacity and uniform feather are per frame in the format because both
          * animate (spec section 7.2, and Phase 0 run 6 measured a keyed
          * `maskFeather`), so they come out of the dense layer rather than the
-         * sparse one - the file carries no keys for them to honour. */
+         * sparse one. Where the file names the artist's own keys
+         * (`authored_attributes`), those are honoured instead of refitting
+         * the samples; tolerance 0 is the exception, because it promises the
+         * file's exact values on every frame, keys be what they may. */
         var opacity = [];
         var feather = [];
         for (var f = 0; f < frames.length; f++) {
@@ -629,10 +777,26 @@
                            value: [Number(record["feather_uniform"][0]),
                                    Number(record["feather_uniform"][1])] };
         }
-        setSamples(ae.maskProp(mask, ae.MASK_OPACITY),
-                   collapse(frames, opacity, tolerance));
-        setSamples(ae.maskProp(mask, ae.MASK_FEATHER),
-                   collapse(frames, feather, tolerance));
+        var authored = RB.util.hasOwn(spec, "authored_attributes")
+                && tolerance > 0
+            ? spec["authored_attributes"] : null;
+        var bound = isFinite(tolerance) ? COLLAPSE_TOLERANCE : Infinity;
+        if (authored && RB.util.hasOwn(authored, "opacity")) {
+            restoreAttribute(comp, ae.maskProp(mask, ae.MASK_OPACITY),
+                             authored["opacity"], opacity, frames, offset,
+                             bound);
+        } else {
+            setSamples(ae.maskProp(mask, ae.MASK_OPACITY),
+                       collapse(frames, opacity, tolerance));
+        }
+        if (authored && RB.util.hasOwn(authored, "feather_uniform")) {
+            restoreAttribute(comp, ae.maskProp(mask, ae.MASK_FEATHER),
+                             authored["feather_uniform"], feather, frames,
+                             offset, bound);
+        } else {
+            setSamples(ae.maskProp(mask, ae.MASK_FEATHER),
+                       collapse(frames, feather, tolerance));
+        }
     }
 
     function setSamples(prop, samples) {

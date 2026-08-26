@@ -204,6 +204,12 @@ def _sweep(frames, keys, authored, apply_keys, measure, tolerance):
         trial = keep[:at] + keep[at + 1:]
         apply_keys(trial)
         stale = True
+        if tolerance == float("inf"):
+            # Unbounded means "authored keys only" (prd.md section 8): no
+            # measurement can refuse the trial, so none is taken.
+            keep = trial
+            stale = False
+            continue
         worst = 0.0
         for candidate in frames:
             if (low is None or candidate > low) \

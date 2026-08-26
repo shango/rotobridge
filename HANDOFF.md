@@ -2547,7 +2547,7 @@ each chunk commits:
    value, interp, ease) in spec/rbj-v3-draft.md; both validators; tests.
 3. [x] AE exporter writes both; Nuke exporter writes `authored_frames` (its
    point-curve union, before the transform union); tests.
-4. [ ] AE importer: static path when `authored_frames` is empty and the
+4. [x] AE importer: static path when `authored_frames` is empty and the
    measure allows; `authored` threaded into the drift pass; attributes
    restored from `authored_attributes` with host-measured correction; tests.
 5. [ ] Nuke importer: `_collapse` marks its seeds unauthored; `authored`

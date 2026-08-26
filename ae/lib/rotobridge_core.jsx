@@ -710,6 +710,13 @@ var RB = (function () {
             var trial = keep.slice(0, at).concat(keep.slice(at + 1));
             applyKeys(trial);
             stale = true;
+            if (tolerance === Infinity) {
+                /* Unbounded means "authored keys only" (prd.md section 8): no
+                 * measurement can refuse the trial, so none is taken. */
+                keep = trial;
+                stale = false;
+                continue;
+            }
             var worst = 0.0;
             for (var f = 0; f < frames.length; f++) {
                 if ((low === null || frames[f] > low)

@@ -50,6 +50,7 @@ function near(got, want, places, note) {
     }
 }
 function ok(cond, note) { if (!cond) { fail(note || "expected true"); } }
+var LINEAR = 6612, BEZIER = 6613, HOLD = 6614;
 function deepEq(got, want, note) {
     var g = JSON.stringify(got);
     var w = JSON.stringify(want);
@@ -132,7 +133,9 @@ function keyed(maskSpec) {
         return JSON.stringify(seed[0].value)
             !== JSON.stringify(seed[seed.length - 1].value);
     }
-    maskSpec.pathKeys = seedFrom(maskSpec.pathAt);
+    if (!maskSpec.pathKeys) {
+        maskSpec.pathKeys = seedFrom(maskSpec.pathAt);
+    }
     if (maskSpec.opacityAt && !maskSpec.opacityKeys) {
         var o = seedFrom(maskSpec.opacityAt);
         if (moves(o)) { maskSpec.opacityKeys = o; }
@@ -280,6 +283,31 @@ describe("import", function () {
         deepEq(keyFramesOf(mask.property("ADBE Mask Shape")), [0, 50]);
     });
 
+    it("returns a mask nobody keyed as a plain path, no keys at all", function () {
+        // The file's two keys are both pinned endpoints - inventions, and the
+        // file says so (authored_frames is empty). What the artist had was a
+        // value, so a value is what comes back.
+        var host = importInto(exported({ mask: {
+            pathAt: function () { return movingSquare(0); },
+            pathKeys: []
+        } }));
+        var prop = pathOfMask(host);
+        eq(prop.numKeys, 0);
+        has(host.alerts, "0 authored key(s), 0 corrective");
+    });
+
+    it("keeps exactly the artist's one parked path key", function () {
+        // Not two: the exporter's pinned endpoints go home again. Not zero:
+        // the key is the artist's, wherever they parked it.
+        var host = importInto(exported({ mask: {
+            pathAt: function () { return movingSquare(0); },
+            pathKeys: [{ t: 2 / 24, value: movingSquare(0) }]
+        } }));
+        var prop = pathOfMask(host);
+        deepEq(keyFramesOf(prop), [2]);
+        has(host.alerts, "1 authored key(s), 0 corrective");
+    });
+
     it("gives an attribute that never changes no keys at all", function () {
         // An artist whose feather was never animated had no keyframe on it.
         // One key per frame is the bug this started as; one key is still the
@@ -297,14 +325,80 @@ describe("import", function () {
         // Opacity and uniform feather have no sparse layer in the file, so
         // they arrive one value per frame. An artist who ramped opacity
         // authored two keys and should get two back - the line between them
-        // lands on every frame the file dropped.
+        // lands on every frame the file dropped. `opacityKeys: []` keeps the
+        // fixture's keyframes out of the file, so this exercises the collapse
+        // a foreign file gets - one with no authored_attributes to honour.
         var host = importInto(exported({ mask: {
             opacityAt: function (t) { return 100 - t * 48; },
-            featherAt: function (t) { return [10 + t * 24, 5]; }
+            featherAt: function (t) { return [10 + t * 24, 5]; },
+            opacityKeys: [], featherKeys: []
         } }));
         var mask = host.comp.layer(1)._masks[0];
         eq(mask.property("ADBE Mask Opacity").numKeys, 2);
         eq(mask.property("ADBE Mask Feather").numKeys, 2);
+    });
+
+    it("puts back exactly the attribute keys the artist made", function () {
+        // The After Effects half of spec/rbj-v3-draft.md section 5.3: the
+        // file names the artist's own keys, and the import sets those, not a
+        // refit of the samples. Three collinear keys are what tells the two
+        // paths apart - a line through the ends lands on the middle one, so
+        // the collapse would drop an authored key the artist owns.
+        var seed = [{ t: 0, value: 100 }, { t: 2 / 24, value: 76 },
+                    { t: 4 / 24, value: 52 }];
+        var host = importInto(exported({ mask: {
+            opacityAt: function (t) { return 100 - t * 288; },
+            opacityKeys: seed
+        } }));
+        var prop = host.comp.layer(1)._masks[0]
+            .property("ADBE Mask Opacity");
+        deepEq(keyFramesOf(prop), [0, 2, 4]);
+    });
+
+    it("keeps one authored key on a parked attribute as one", function () {
+        // Not none - the collapse of a constant - and not two: the key is the
+        // artist's, wherever they parked it.
+        var host = importInto(exported({ mask: {
+            opacityAt: function () { return 70; },
+            opacityKeys: [{ t: 2 / 24, value: 70 }]
+        } }));
+        var prop = host.comp.layer(1)._masks[0]
+            .property("ADBE Mask Opacity");
+        deepEq(keyFramesOf(prop), [2]);
+    });
+
+    it("restores the artist's attribute ease, key for key", function () {
+        // Keyed on every frame because the mock refuses to interpolate a
+        // bezier segment; in the host the drift pass measures the curve and
+        // the same host reproduces its own ease exactly.
+        var seed = [];
+        for (var f = 0; f <= 4; f++) {
+            seed[f] = { t: f / 24, value: 100 - f * 12 };
+        }
+        seed[2].outType = BEZIER;
+        seed[2].outEase = new mock.KeyframeEase(0, 91.176);
+        var host = importInto(exported({ mask: {
+            opacityAt: function (t) { return 100 - t * 288; },
+            opacityKeys: seed
+        } }));
+        var prop = host.comp.layer(1)._masks[0]
+            .property("ADBE Mask Opacity");
+        eq(prop.numKeys, 5);
+        eq(prop.keyOutInterpolationType(3), BEZIER);
+        near(prop.keyOutTemporalEase(3)[0].influence, 91.176, 3);
+    });
+
+    it("honours a hold on an authored attribute key", function () {
+        var host = importInto(exported({ mask: {
+            opacityAt: function (t) { return t < 4 / 24 ? 100 : 52; },
+            opacityKeys: [{ t: 0, value: 100, outType: HOLD },
+                          { t: 4 / 24, value: 52 }]
+        } }));
+        var prop = host.comp.layer(1)._masks[0]
+            .property("ADBE Mask Opacity");
+        deepEq(keyFramesOf(prop), [0, 4]);
+        eq(prop.keyOutInterpolationType(1), HOLD);
+        eq(prop.valueAtTime(2 / 24, false), 100, "the segment must freeze");
     });
 
     it("keeps every attribute sample at tolerance 0", function () {
@@ -1035,6 +1129,19 @@ describe("import keys", function () {
         return importInto(text, { answers: ["0", "", String(tolerance)],
                                   workAreaDuration: (LAST + 1) / 24 });
     }
+
+    it("keys a moving shape even when the file says nobody keyed it", function () {
+        // authored_frames empty is a claim about the path property, not about
+        // the geometry: an animated ancestor transform moves a shape the path
+        // never keyed. The measurement decides, and here it refuses the plain
+        // value.
+        var doc = JSON.parse(curvedDoc(straightKeys(), 40));
+        doc.shapes[0].authored_frames = [];
+        var host = importedWith(JSON.stringify(doc), 0.5);
+        var prop = pathOf(host);
+        ok(prop.numKeys >= 2,
+           "a shape that bows 40 px cannot be a plain value");
+    });
 
     it("adds corrective keys where the host leaves the dense layer", function () {
         // Two straight keys over a curve that bows 40 px. Nothing about the
