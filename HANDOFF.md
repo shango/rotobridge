@@ -2406,3 +2406,67 @@ Covered by `test_ae_import` (ramp collapses, curve stays dense, tolerance 0
 keeps everything, constant still collapses to one). The Nuke half has no unit
 test, since `_collapse` cannot be imported without `nuke`; it rides on
 `test_nuke_roundtrip.py`, which passes, and on the shared fit.
+
+**Key economy and the ease, 2026-08-26.** Two questions asked together: does
+anything reach Nuke that is not needed to hold the shape inside tolerance, and
+does an After Effects round trip keep the artist's ease. Both answers were no,
+and they failed in three different places.
+
+`test/probe/probe_key_minimality.py` is what settled the first. It computes the
+true floor by dynamic programming over the range - the fewest keys any
+piecewise-linear fit could use - and prints it beside what the pipeline
+actually chooses. Holds are modelled as flat, as spec section 10.2 requires;
+the first cut priced a held segment as a line, reported the next key's whole
+travel as drift, and made the drift pass look far worse than it was. Pass
+`--free` to unpin the authored keys, which answers the different question of
+how much of a count is the artist's and how much is ours.
+
+**The drift pass converged above the floor.** `_survey` pins a gap's worst
+frame and the gap's midpoint together, because a worst frame that is an end of
+the run shortens it instead of splitting it - and the midpoint is usually
+redundant the moment the worst frame lands beside it. Nothing revisited it.
+`_sweep` now runs after convergence and hands back every added key the fit does
+not need: 9 keys became 4 on `held_over_moving_layer.rbj`, and the export side
+now lands exactly the DP minimum on all eight goldens. Only keys the pass
+invented are candidates.
+
+That cost both importers an assumption. `apply_keys` is documented as writing
+exactly the frames it is given, but both were written when the pass only ever
+grew, so both only ever added - which the sweep turns into a report describing
+a shape nobody has. `AnimControlPoint.removePositionKey(time)` does it in Nuke
+(probed on 17.1v1, `test/probe/probe_nuke_key_removal.py`) and `removeKey` past
+`nearestKeyIndex` in After Effects, addressed by frame because the host
+renumbers every key above the one that goes. The sweep also has to leave the
+host holding what it returns, since a trial must be applied to be measured and
+the last one is refused as often as not; **the ES3 suite caught that before the
+Python suite did**, which is the case for keeping both.
+
+**A layer transform's keys were taken as the shape's own.** They reach a
+shape's `keys` because `.rbj` describes canonical space with the transform
+baked in, so an animated ancestor moves the geometry even when the path never
+does - but that is a reason to consider the frame, not to key it. `sparseKeys`
+now pins only the artist's path keys, the two range endpoints and every held
+key, and hands the rest to `conformEase` as candidates. The Nuke exporter
+unions transform frames the same way and is **deliberately** left alone: its
+`keys` carry Nuke's own interpolation rather than a conformed linear one, so
+fitting a line to decide what to drop would assert something about the curve
+that was never measured. `_sparse_keys` carries that reasoning.
+
+**The ease conform is not a culprit**, which is worth recording because it
+reads as one. `ae_static_ease.rbj` conforms 3 keys to 25 of 25 - but that
+fixture travels 700 px in 24 frames, 101 px on its worst frame, and 25 is the
+DP floor there too. On roto-sized motion it is proportionate: a 25-frame
+ease-in-out costs 5 keys over 10 px of travel, 9 over 40 px, 17 over 120 px.
+
+**AE to AE lost the ease, and nothing in the middle was broken.** The format
+stores it, the importer restores an `ease` block in the host's own units
+exactly, and the exporter has kept the authored keys as `pre_conform_keys`
+since `0096bfe`. Nothing read them. The AE importer now prefers them where the
+file carries them, and says so - the file also carries the exporter's warning
+that the timing was conformed away, and without a line saying otherwise the
+artist reads that their ease is gone while looking at it. Nuke goes on reading
+`keys`. `test/probe/probe_ae_ease_roundtrip.js` shows all three states.
+
+Also: the two message tables, Python and the ES3 port, are now checked against
+each other code for code and byte for byte. Nothing checked them before, and
+the ease-restored message was the first new one in a while.
