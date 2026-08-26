@@ -910,18 +910,54 @@ describe("export keys", function () {
         has(doc.warnings, "off the grid");
     });
 
-    it("takes the layer transform's keys as the shape's own", function () {
+    it("keys the shape where the layer transform bends the geometry", function () {
         // The transform is baked into the exported points, so a layer that
         // moves animates the geometry even when the path never does - the same
-        // reason case 77 made the Nuke side walk its layer chain.
+        // reason case 77 made the Nuke side walk its layer chain. This one
+        // corners: still until frame 2, then 60 px a frame, which no line
+        // through the two path keys can follow.
+        var spec = keyedAt([at(0), at(4)]);
+        spec.layers[0].transformKeys = { "ADBE Position": [2 / 24] };
+        spec.layers[0].transform = {
+            position: function (t) {
+                var f = t * 24;
+                return [f <= 2 ? 0 : (f - 2) * 60, 0];
+            }
+        };
+        var keys = keysOf(spec);
+        eq(keys[0].frame, 0);
+        eq(keys[keys.length - 1].frame, 4);
+        var frames = [];
+        for (var i = 0; i < keys.length; i++) { frames[i] = keys[i].frame; }
+        if (frames.join(",").indexOf("2") < 0) {
+            fail("the corner went unkeyed: " + frames.join(","));
+        }
+        eq(keys[1].interp["out"], "linear",
+           "nothing was authored on the path, and it conforms to linear");
+    });
+
+    it("leaves out a transform key the geometry does not need", function () {
+        // The other half, and the one that cost real keys: a transform key is
+        // not a spline key. It earns a place in the shape's `keys` only where
+        // the geometry it drives leaves the line, and here the layer does not
+        // move at all. Taking every one of them unconditionally is how a mask
+        // the artist keyed twice used to cross with four.
         var spec = keyedAt([at(0), at(4)]);
         spec.layers[0].transformKeys = { "ADBE Position": [1 / 24, 3 / 24] };
         var keys = keysOf(spec);
-        eq(keys.length, 4);
-        eq(keys[1].frame, 1);
-        eq(keys[2].frame, 3);
-        eq(keys[1].interp["out"], "linear",
-           "nothing was authored on the path, and it conforms to linear");
+        deepEq([keys.length, keys[0].frame, keys[1].frame], [2, 0, 4]);
+    });
+
+    it("keeps every key the artist put on the path", function () {
+        // Same straight motion, so tolerance alone would drop the middle three
+        // exactly as it drops the transform's. It must not: they are the
+        // artist's, and an authored key is an edit handle, not a cost.
+        var spec = keyedAt([at(0), at(1), at(2), at(3), at(4)]);
+        spec.layers[0].transformKeys = { "ADBE Position": [1 / 24, 3 / 24] };
+        var keys = keysOf(spec);
+        var frames = [];
+        for (var i = 0; i < keys.length; i++) { frames[i] = keys[i].frame; }
+        deepEq(frames, [0, 1, 2, 3, 4]);
     });
 
     it("calls a synthetic key inside a held segment a hold", function () {

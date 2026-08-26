@@ -159,6 +159,19 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
     exported over 1 to 100 would claim to be static for its first 59 frames.
     Pinning both ends costs two keys and makes the sparse layer bracket the
     truth; the drift pass fills in whatever curves between them.
+
+    A transform key is taken as a shape key whether or not the geometry needs
+    one, which is not what the After Effects exporter does - there the
+    transform's frames are candidates and `conformEase` keeps only the ones a
+    line cannot skip. The asymmetry is deliberate. That fit is sound over there
+    because the conform rewrites the interpolation to linear in the same pass,
+    so the model and the claim agree. Here `keys` carries Nuke's own
+    interpolation, which is often not linear, and fitting a line to decide what
+    to drop would be asserting something about the curve that was never
+    measured. Dropping the wrong one costs nothing in accuracy - the importer's
+    drift pass bounds that at the far end whatever this says - so the price of
+    leaving them in is a fuller curve, and the price of taking them out on a
+    guess is a wrong one.
     """
     curves = list(_keyed_curves(shape))
 

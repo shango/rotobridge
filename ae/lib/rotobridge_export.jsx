@@ -633,7 +633,7 @@
         return RB.util.hasOwn(ease, "in") || RB.util.hasOwn(ease, "out");
     }
 
-    function conformEase(keys, baked, frames, name, warn) {
+    function conformEase(keys, pinned, baked, frames, name, warn) {
         /* Rewrite every `ease` side as `linear` and add the keys that costs.
          *
          * Nuke's roto curves have no vocabulary for After Effects' temporal
@@ -659,6 +659,17 @@
          * destroy something that already transfers for free.
          *
          * A shape with no eased side at all is returned untouched.
+         *
+         * `pinned` names the frames the fit must keep whatever it costs: every
+         * frame the artist keyed on the mask path, the two range endpoints,
+         * and every held key. Everything else in `keys` is a candidate. Those
+         * others are not spline keys at all - they are the layer transform's,
+         * unioned in because `.rbj` describes canonical space with the
+         * transform already baked in, so an ancestor key animates the geometry
+         * even when the path never moves. It earns a key on the shape only
+         * where the geometry it drives actually leaves the line, which is what
+         * the fit decides. Taking all of them was how a mask the artist keyed
+         * five times crossed with fifteen.
          */
         var i, side, name_;
         var sides = ["in", "out"];
@@ -686,14 +697,23 @@
         var byFrame = {};
         var wanted = [];
         var holds = [];
+        var keep = {};   // a copy: the caller's set is not ours to add to
+        for (var pin in pinned) {
+            if (RB.util.hasOwn(pinned, pin)) { keep[pin] = true; }
+        }
         for (i = 0; i < keys.length; i++) {
             byFrame[String(keys[i]["frame"])] = keys[i];
-            wanted[wanted.length] = keys[i]["frame"];
             /* A held segment is flat by definition, so the fit must not price
              * it as a straight line to the next key. Passing the holds through
-             * is what keeps the conform from paying keys to destroy them. */
+             * is what keeps the conform from paying keys to destroy them. And
+             * a hold is a claim about a segment, so the key carrying it has to
+             * survive the fit whether or not a line would pass through it. */
             if (keys[i]["interp"]["out"] === RB.interp.HOLD) {
                 holds[holds.length] = keys[i]["frame"];
+                keep[String(keys[i]["frame"])] = true;
+            }
+            if (RB.util.hasOwn(keep, String(keys[i]["frame"]))) {
+                wanted[wanted.length] = keys[i]["frame"];
             }
         }
 
@@ -761,12 +781,22 @@
         var union = { frames: onPath.frames.slice(0), index: null };
         transformKeyFrames(comp, entry.layer, union, warn);
 
+        /* The frames the fit may not drop: the two endpoints, and every
+         * frame the artist keyed on the path itself. A transform frame is in
+         * `wanted` too, but only as a candidate - see `conformEase`. */
+        var pinned = {};
+        pinned[String(first)] = true;
+        pinned[String(last)] = true;
+
         var wanted = [first, last];
         var all = RB.util.sortedInts(union.frames);
         var i;
         for (i = 0; i < all.length; i++) {
             if (all[i] >= first && all[i] <= last) {
                 wanted[wanted.length] = all[i];
+                if (RB.util.hasOwn(onPath.index, String(all[i]))) {
+                    pinned[String(all[i])] = true;
+                }
             }
         }
 
@@ -823,7 +853,7 @@
                                       count: unheld }));
         }
         var authored = copyKeys(out);
-        var conformed = conformEase(out, baked, frames, name, warn);
+        var conformed = conformEase(out, pinned, baked, frames, name, warn);
         if (conformed !== out) {
             /* The conform rewrote something, and it rewrites the key objects
              * in place - which is why the copy was taken first. The authored
