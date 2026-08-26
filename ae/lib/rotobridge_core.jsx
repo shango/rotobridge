@@ -33,7 +33,7 @@ var RB = (function () {
      */
 
     RB.NAME = "RotoBridge";
-    RB.VERSION = "0.9.3";
+    RB.VERSION = "0.9.4";
     RB.LABEL = RB.NAME + " " + RB.VERSION;
 
     /* --- ES3 shims --------------------------------------------------------
