@@ -2470,3 +2470,63 @@ artist reads that their ease is gone while looking at it. Nuke goes on reading
 Also: the two message tables, Python and the ES3 port, are now checked against
 each other code for code and byte for byte. Nothing checked them before, and
 the ease-restored message was the first new one in a while.
+
+**Two linear keys, fifty frames apart, 2026-08-26.** The plainest thing an
+artist can ask of the tool, and the one that found two bugs. Two keys, both
+linear, fifty apart, nothing else animated: nothing should be added, either
+direction.
+
+AE to Nuke already added nothing - measured in 17.1v1 with
+`test/probe/probe_nuke_two_linear.py` against `test/golden/two_linear_keys.rbj`
+(what the exporter writes from that comp): key times `[0, 50]` on the node, 0
+corrective, 0.0000 px. Tolerance 0 keys all 51, which is the documented dense
+mode.
+
+AE to AE added two, on the attributes. Opacity and uniform feather have no
+sparse layer in the format, so they arrive one value per frame, and the
+collapse of `5f7649e` reduced a constant to **one key rather than none**. One
+key is still one more than the artist had, and it stops the property being
+editable as the plain value it is. `setSamples` now sets a value where the
+collapse leaves a single sample. `ae_mock.setValue` had to grow up for it: it
+was an alias for `setValueAtTime(0, ...)`, which creates a key - the opposite
+of what the call means, and nothing had ever called it.
+
+**And a regression from `c00eed1`, which is the real lesson.** The scenario's
+static variant made the import fail outright. `pre_conform_keys` was written
+whenever the conform changed anything, including when all it changed was the
+exporter's own placeholders - a pinned endpoint carries `ease` with no
+parameters, meaning "unknown, rely on the drift pass", not a curve anyone drew.
+A static mask therefore shipped provenance saying "bezier both sides" and the
+importer, now that it reads the member, built exactly that. It is now written
+only where a real `ease` block was lost, carries the pinned frames rather than
+the transform union it had been quietly handing back (which undid the
+transform-key work on any AE-to-AE trip), and spells a placeholder side
+`linear`.
+
+### Open
+
+- **A mask with no path keys comes back with two.** The exporter pins the range
+  endpoints so the sparse layer brackets the truth rather than flattening at
+  its edge, and nothing in the file distinguishes an endpoint the exporter
+  invented from two identical keys the artist authored. Dropping them on that
+  guess breaks the rule that an artist's keys are never ours to remove - a
+  first cut that did it failed eight tests whose fixtures rely on authored keys
+  being honoured. The fix is for the exporter to say which keys it invented,
+  which is a format question. Recorded in `test/probe/README.md`.
+
+- **A circle drawn in After Effects arrives in Nuke as a straight-sided
+  polygon.** Reported from the host 2026-08-25 with screenshots, still unfound.
+  The Nuke half is cleared: importing `test/golden/ae_scene.rbj`, node tangents
+  equal file tangents exactly (22.0000 against 22.0000) at tolerance 0.5 and 0,
+  so the importer applies what it is given and a flat shape means a flat file.
+  RotoBezier was ruled out by the screenshot - the handles are visible.
+  `test_ae_to_nuke.py` passes but reads a committed golden, so it does not
+  exercise today's live exporter. What is needed is either the reporter's own
+  `.rbj` or a run of `test/probe/probe_ae_tangents.jsx` on the mask in
+  question, which alerts the largest in/out tangent the host hands a script:
+  zeros mean the host is withholding them, non-zero means the exporter drops
+  them between the host and the file.
+
+- **Nothing checks the two message tables** was true until `b8f2ba2`; they are
+  now compared code for code and byte for byte by `TestEs3CrossCheck`. Noted
+  because the same gap may exist elsewhere in the port.
