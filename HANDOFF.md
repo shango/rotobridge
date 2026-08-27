@@ -22,10 +22,16 @@ Queue, committed one chunk at a time:
    Folder.getFiles, instance saveDlg/openDlg.
 3. DONE (commit after 5468087) - same for Nuke: panel addFilenameSearch defaults under
    `<script dir>/rotobridge/` when the script is saved.
-4. TODO import warns when the file's source.tool_version is newer than the
-   running build (both ports; new message code, byte-mirrored tables, SAMPLES).
-5. TODO tester readmes rewritten around the installers; bump minor version;
-   package.
+4. DONE `4d25921` - import warns when the file's source.tool_version is
+   newer than the running build (both ports); headless Nuke roundtrip PASS
+   re-verified after all nuke/ changes.
+5. DONE - tester readmes rewritten around the installers and the bridge
+   folder; bumped to 0.10.0; packaged.
+
+Queue complete. Worth a host probe when next in After Effects: the seeded
+saveDlg/openDlg calls (dialog opens in the seeded folder with the name
+filled in) and `ae/install.jsx` end to end - both are modelled in the mock,
+neither has met the host yet. The panel itself is unchanged.
 
 Host facts for this work: user's AE user-scripts folder already held a stray
 `rotobridge_panel.jsx` (0.9.6, no lib beside it) - the installer's mirror

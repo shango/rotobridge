@@ -9,27 +9,42 @@ You need only the half you use. Installing both on one machine is fine.
 AFTER EFFECTS
 -------------
 
-1. Put the "after_effects" folder anywhere you like and keep it together -
-   the one script in it needs the "lib" folder beside it.
-
-2. Turn this preference ON, then restart After Effects:
+1. Turn this preference ON, then restart After Effects:
 
        Edit > Preferences > Scripting & Expressions >
        Allow Scripts to Write Files and Access Network
 
-   It is off in a fresh install and nothing works without it. RotoBridge will
-   tell you if it is off, but it saves a round trip to just do it now.
+   It is off in a fresh install and nothing works without it - not even the
+   installer, which will tell you so.
 
-3. File > Scripts > Run Script File...  and pick
+2. Unzip the download, then File > Scripts > Run Script File...  and pick
 
-       after_effects\rotobridge_panel.jsx
+       after_effects\Install for After Effects.jsx
 
-   A small RotoBridge window opens with two buttons. That is the whole thing.
-   You do this each time you start After Effects - there is nothing installed
-   and nothing to uninstall.
+   That is the last time you browse for a script. It copies RotoBridge into
+   your own After Effects user folder - no administrator password, nothing
+   outside your user folder - and says what it did.
+
+3. Restart After Effects. RotoBridge is now in the menu:
+
+       Window > RotoBridge.jsx
+
+   A small panel with two buttons that docks like any other. Updating to a
+   later build is the same two steps: run the new download's installer,
+   restart.
 
 To export: select the layers holding the masks you want, then Export.
 To import: open the comp you want the shapes in, then Import.
+
+
+WHERE FILES GO
+--------------
+
+Once your project is saved, both applications offer the same place by
+default: a "rotobridge" folder next to the project file (.aep or .nk).
+Export accepts it with one click, and import opens on the newest .rbj in
+it, so the usual round trip never types a path. Every dialog still lets
+you point anywhere else.
 
 
 NUKE
