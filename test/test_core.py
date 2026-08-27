@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -2760,9 +2761,9 @@ class _WithoutNuke(unittest.TestCase):
         shared = types.ModuleType("rotobridge_nuke")
         for name in ("ATTR_FEATHER_FALLOFF", "ATTR_FEATHER_X", "ATTR_FEATHER_Y",
                      "ATTR_OPACITY", "INTERP_LINEAR", "blend_from_rbj",
-                     "falloff_from_rbj", "point_members", "roto_knob",
-                     "set_curve_linear", "set_curve_types", "write_attr_curve",
-                     "write_attr_static"):
+                     "bridge_folder", "falloff_from_rbj", "point_members",
+                     "roto_knob", "set_curve_linear", "set_curve_types",
+                     "write_attr_curve", "write_attr_static"):
             setattr(shared, name, None)
         shared.drift, shared.geom = drift, geom
         shared.interp, shared.rbj, shared.report = interp, rbj, report
@@ -2789,6 +2790,51 @@ class _WithoutNuke(unittest.TestCase):
             else:
                 sys.modules[key] = was
         sys.modules.pop("rotobridge_import", None)
+
+
+class TestNukeImportSeed(_WithoutNuke):
+    """`_default_input` - what the input box is seeded with, without Nuke."""
+
+    def seeded(self, folder):
+        saved = self.rbi.bridge_folder
+        self.rbi.bridge_folder = lambda: folder
+        try:
+            return self.rbi._default_input()
+        finally:
+            self.rbi.bridge_folder = saved
+
+    def test_an_unsaved_script_seeds_nothing(self):
+        self.assertEqual(self.seeded(None), "")
+
+    def test_a_missing_bridge_folder_seeds_nothing(self):
+        holder = tempfile.mkdtemp()
+        try:
+            self.assertEqual(self.seeded(holder + "/rotobridge"), "")
+        finally:
+            shutil.rmtree(holder)
+
+    def test_the_newest_rbj_wins_and_bystanders_do_not_count(self):
+        holder = tempfile.mkdtemp()
+        try:
+            for name, age in (("old.rbj", 100), ("new.rbj", 50),
+                              ("newest.txt", 0)):
+                path = os.path.join(holder, name)
+                with open(path, "w") as fh:
+                    fh.write("x")
+                stamp = time.time() - age
+                os.utime(path, (stamp, stamp))
+            self.assertEqual(self.seeded(holder),
+                             os.path.join(holder, "new.rbj").replace(
+                                 "\\", "/"))
+        finally:
+            shutil.rmtree(holder)
+
+    def test_an_empty_bridge_folder_seeds_nothing(self):
+        holder = tempfile.mkdtemp()
+        try:
+            self.assertEqual(self.seeded(holder), "")
+        finally:
+            shutil.rmtree(holder)
 
 
 class TestNukeAnchoredFeather(_WithoutNuke):
@@ -3180,9 +3226,9 @@ class _WithoutNukeExport(unittest.TestCase):
         rp_stub = types.ModuleType("nuke.rotopaint")
         nuke_stub.rotopaint = rp_stub
         shared = types.ModuleType("rotobridge_nuke")
-        for name in ("attr_value", "blend_to_rbj", "falloff_to_rbj",
-                     "is_closed", "iter_shapes", "roto_knob", "script_range",
-                     "selected_roto_node", "vec2"):
+        for name in ("attr_value", "blend_to_rbj", "bridge_folder",
+                     "falloff_to_rbj", "is_closed", "iter_shapes", "roto_knob",
+                     "script_range", "selected_roto_node", "vec2"):
             setattr(shared, name, None)
         shared.ATTR_OPACITY, shared.ATTR_BLEND = "opc", "bm"
         shared.ATTR_INVERTED, shared.ATTR_FEATHER_FALLOFF = "inv", "ff"
@@ -3215,6 +3261,36 @@ class _WithoutNukeExport(unittest.TestCase):
             else:
                 sys.modules[key] = was
         sys.modules.pop("rotobridge_export", None)
+
+
+class TestNukeExportSeed(_WithoutNukeExport):
+    """`_default_output` - what the output box is seeded with, without Nuke."""
+
+    class Node:
+        def name(self):
+            return "Roto1"
+
+    def seeded(self, folder):
+        saved = self.rbe.bridge_folder
+        self.rbe.bridge_folder = lambda: folder
+        try:
+            return self.rbe._default_output(self.Node())
+        finally:
+            self.rbe.bridge_folder = saved
+
+    def test_an_unsaved_script_seeds_nothing(self):
+        self.assertEqual(self.seeded(None), "")
+
+    def test_a_saved_script_seeds_folder_and_node_name(self):
+        # The folder is made before the panel shows, so the seed names a
+        # place that exists by the time the artist sees it.
+        holder = tempfile.mkdtemp()
+        try:
+            folder = holder + "/rotobridge"
+            self.assertEqual(self.seeded(folder), folder + "/Roto1.rbj")
+            self.assertTrue(os.path.isdir(folder))
+        finally:
+            shutil.rmtree(holder)
 
 
 class TestNukeSparseKeys(_WithoutNukeExport):

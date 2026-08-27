@@ -267,3 +267,23 @@ def selected_roto_node():
 def script_range():
     root = nuke.root()
     return int(root.firstFrame()), int(root.lastFrame())
+
+
+# The per-project folder .rbj files land in by default, spelled the same as
+# the After Effects side, so the two applications meet in it without either
+# artist being told where to look.
+BRIDGE = "rotobridge"
+
+
+def bridge_folder():
+    """`<script folder>/rotobridge`, or None before the script's first save.
+
+    An unsaved script is named "Root" and has no folder to sit beside, which
+    is the callers' cue to fall back to a bare file box.
+    """
+    name = nuke.root().name()
+    if not name or name == "Root":
+        return None
+    # Forward slashes throughout: Nuke spells its own paths that way on every
+    # platform, and mixing separators in one box reads like a bug.
+    return os.path.dirname(name).replace("\\", "/") + "/" + BRIDGE

@@ -15,7 +15,7 @@ Queue, committed one chunk at a time:
    per-user `%APPDATA%/Adobe/After Effects/<major.minor>/Scripts/ScriptUI
    Panels` (confirmed real on the user's machine, AE 25.6). Wiring tests in
    TestUiEntryPoints.
-2. TODO per-project bridge folder, AE side: export seeds its save dialog at
+2. DONE `5468087` - per-project bridge folder, AE side: export seeds its save dialog at
    `<project folder>/rotobridge/<comp>.rbj` (File.saveDlg on a seed File;
    File.saveDialog fallback when the project is unsaved); import seeds
    File.openDlg at the newest .rbj in that folder. Mock needs app.project.file,

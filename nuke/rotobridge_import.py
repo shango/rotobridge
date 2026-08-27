@@ -17,6 +17,7 @@ already baked into the points (prd.md section 9.2 step 5), so adding a
 transform on top would apply it twice.
 """
 
+import os
 import time
 
 import nuke
@@ -24,9 +25,10 @@ import nuke.rotopaint as rp
 
 from rotobridge_nuke import (ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              ATTR_FEATHER_Y, ATTR_OPACITY, INTERP_LINEAR,
-                             blend_from_rbj, drift, falloff_from_rbj, geom,
-                             interp, messages, point_members, rbj, report,
-                             roto_knob, set_curve_linear, set_curve_types,
+                             blend_from_rbj, bridge_folder, drift,
+                             falloff_from_rbj, geom, interp, messages,
+                             point_members, rbj, report, roto_knob,
+                             set_curve_linear, set_curve_types,
                              write_attr_curve, write_attr_static, version)
 
 DEFAULT_TOLERANCE = 0.5
@@ -682,9 +684,27 @@ def _parse_tolerance(raw):
     return value
 
 
+def _default_input():
+    """Seed for the input box: the newest .rbj in the bridge folder.
+
+    That is nearly always the file just exported on the other side. Empty
+    whenever the guess has nothing to stand on - no saved script, no bridge
+    folder, nothing in it.
+    """
+    folder = bridge_folder()
+    if folder is None or not os.path.isdir(folder):
+        return ""
+    files = [os.path.join(folder, name) for name in os.listdir(folder)
+             if name.lower().endswith(".rbj")]
+    files = [path for path in files if os.path.isfile(path)]
+    if not files:
+        return ""
+    return max(files, key=os.path.getmtime).replace("\\", "/")
+
+
 def main():
     panel = nuke.Panel("%s import" % version.LABEL)
-    panel.addFilenameSearch("input .rbj", "")
+    panel.addFilenameSearch("input .rbj", _default_input())
     panel.addSingleLineInput("frame offset", "0")
     panel.addSingleLineInput("drift tolerance px (0 = every frame, inf = none)",
                              str(DEFAULT_TOLERANCE))

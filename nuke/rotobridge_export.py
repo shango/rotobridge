@@ -11,14 +11,17 @@ amortise; the frame-major requirement in prd.md section 9.1 is specific to
 `comp.time` and does not apply on this side.
 """
 
+import os
+
 import nuke
 
 from rotobridge_nuke import (ATTR_BLEND, ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
                              ATTR_FEATHER_Y, ATTR_INVERTED, ATTR_OPACITY, VIEW,
-                             attr_value, blend_to_rbj, falloff_to_rbj, geom,
-                             interp, is_closed, iter_shapes, messages,
-                             point_members, rbj, roto_knob, script_range,
-                             selected_roto_node, timing, vec2, version)
+                             attr_value, blend_to_rbj, bridge_folder,
+                             falloff_to_rbj, geom, interp, is_closed,
+                             iter_shapes, messages, point_members, rbj,
+                             roto_knob, script_range, selected_roto_node,
+                             timing, vec2, version)
 
 
 def _read_point(cp, frame, matrix):
@@ -425,12 +428,27 @@ def export_to_file(node, path, first, last):
     return doc
 
 
+def _default_output(node):
+    """Seed for the output box: the bridge folder, named after the node.
+
+    Empty when the script is unsaved - there is no "beside the script" to
+    offer. The folder is created here, not at the write, so the seeded path
+    names a place that exists by the time the artist sees it.
+    """
+    folder = bridge_folder()
+    if folder is None:
+        return ""
+    if not os.path.isdir(folder):
+        os.makedirs(folder)
+    return "%s/%s.rbj" % (folder, node.name())
+
+
 def main():
     node = selected_roto_node()
     first, last = script_range()
 
     panel = nuke.Panel("%s export" % version.LABEL)
-    panel.addFilenameSearch("output .rbj", "")
+    panel.addFilenameSearch("output .rbj", _default_output(node))
     panel.addSingleLineInput("first frame", str(first))
     panel.addSingleLineInput("last frame", str(last))
     if not panel.show():
