@@ -37,6 +37,10 @@ mkdir -p "${STAGE}/after_effects/lib" "${STAGE}/nuke/rotobridge"
 # first and where the repo keeps them; a test holds those two names equal.
 cp ae/rotobridge_panel.jsx "${STAGE}/after_effects/"
 cp ae/lib/*.jsx "${STAGE}/after_effects/lib/"
+# The installer keeps its repo layout - payload beside it - so the staged
+# copy works exactly like `ae/install.jsx` run from the repo. LF endings are
+# fine here: ExtendScript reads it, not cmd.exe.
+cp ae/install.jsx "${STAGE}/after_effects/Install for After Effects.jsx"
 
 # core/ must stay beside nuke/: rotobridge_nuke.py walks up one level and loads
 # core from there by path, under a private module name.

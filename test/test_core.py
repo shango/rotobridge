@@ -1956,6 +1956,48 @@ class TestUiEntryPoints(unittest.TestCase):
         self.assertIn('after_effects/%s' % found.group(1), packager)
 
 
+    def test_the_installer_carries_the_whole_payload(self):
+        # `ae/install.jsx` lists what it copies; an adapter added to `ae/lib`
+        # without touching that list would fail as a missing file on the
+        # artist's machine only, after the download.
+        with io.open(os.path.join(AE, "install.jsx"),
+                     encoding="utf-8") as handle:
+            text = handle.read()
+        listed = set(re.findall(r'"(rotobridge_\w+\.jsx)"', text))
+        on_disk = set(name for name in os.listdir(AE_LIB)
+                      if name.endswith(".jsx"))
+        on_disk.add("rotobridge_panel.jsx")
+        self.assertEqual(listed, on_disk)
+
+        found = re.search(r'var LIB = "([^"]+)";', text)
+        self.assertIsNotNone(found, "the installer has no LIB constant")
+        self.assertEqual(found.group(1), os.path.basename(AE_LIB))
+
+    def test_the_installer_can_read_the_version_it_reports(self):
+        # The installer greps `var VERSION = "..."` out of the panel instead
+        # of carrying a fourth copy for `tools/bump_version.py` to rewrite.
+        # This is the same expression it uses, applied to the same file.
+        with io.open(os.path.join(AE, "install.jsx"),
+                     encoding="utf-8") as handle:
+            self.assertIn('match(/var VERSION = "([0-9.]+)"/)', handle.read())
+        with io.open(os.path.join(AE, "rotobridge_panel.jsx"),
+                     encoding="utf-8") as handle:
+            found = re.search(r'var VERSION = "([0-9.]+)"', handle.read())
+        self.assertIsNotNone(found, "the panel has no VERSION the installer"
+                             " could read")
+        self.assertEqual(found.group(1), version.VERSION)
+
+    def test_the_drop_stages_the_installer_beside_its_payload(self):
+        # The installer copies whatever sits next to it, so the stage must
+        # put it at the top of `after_effects/`, not in a subfolder.
+        with io.open(os.path.join(REPO, "tools", "package.sh"),
+                     encoding="utf-8") as handle:
+            packager = handle.read()
+        self.assertIn(
+            'cp ae/install.jsx "${STAGE}/after_effects/'
+            'Install for After Effects.jsx"', packager)
+
+
 class TestGoldenSparseExport(unittest.TestCase):
     """A real Nuke export of a shape keyed on five frames out of forty-one.
 
