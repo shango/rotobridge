@@ -3251,6 +3251,21 @@ class TestNukeSparseKeys(_WithoutNukeExport):
         self.assertEqual(keys[1]["interp"], {"in": "ease", "out": "ease"})
         self.assertEqual(said, [])
 
+    def test_a_subframe_key_is_snapped_and_said(self):
+        # The AE exporter has warned about off-grid keys since Phase 4; a
+        # Nuke curve keyed at 10.4 was snapped just as silently. Warned once
+        # per distinct time, not per axis carrying it.
+        shape = self.shape([(10.4, 20.0), (10.4, 20.0), (), ()])
+        said = []
+        keys, authored = self.rbe._sparse_keys(shape, (), list(range(0, 31)),
+                                               said.append, "sub")
+        self.assertEqual(authored, [10, 20])
+        self.assertEqual([k["frame"] for k in keys], [0, 10, 20, 30])
+        self.assertEqual(len(said), 1)
+        self.assertIn("[key-off-grid]", said[0])
+        self.assertIn("0.400 of a frame", said[0])
+        self.assertIn("snapped to frame 10", said[0])
+
     def test_a_keyless_curve_still_abstains_from_everything(self):
         shape = self.shape([(), (), (), ()])
         keys, authored = self.rbe._sparse_keys(shape, (), list(range(0, 11)),

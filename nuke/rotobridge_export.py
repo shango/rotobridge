@@ -92,7 +92,12 @@ def _chain_matrix(shape, ancestors, frame):
     return combined, len(parts) > 1
 
 
-def _keyed_curves(shape):
+# A key this far off a whole frame is snapped with a warning; the same
+# threshold the After Effects exporter applies (OFFGRID_FRAMES there).
+OFFGRID_FRAMES = 1e-3
+
+
+def _keyed_curves(shape, offgrid):
     """Every animation curve that can move this shape's geometry, keyed by frame.
 
     Yields `{frame: AnimCurveKey}` per curve. Four members per control point
@@ -107,6 +112,10 @@ def _keyed_curves(shape):
     letting the constant z axis that Phase 2's importer writes on every
     control point vote would outvote the axes that actually move and mark
     every eased shape as mixed.
+
+    A key time off the frame grid is snapped, and its raw time goes into
+    `offgrid` so the caller can warn once per distinct time; spec section 9
+    requires whole frames, and a snap nobody hears about is a moved key.
     """
     for i in range(len(shape)):
         for member in point_members(shape[i]):
@@ -118,7 +127,10 @@ def _keyed_curves(shape):
                 keys = {}
                 for k in range(count):
                     key = curve.getKey(k)
-                    keys[timing.snap_frame(key.time)] = key
+                    frame = timing.snap_frame(key.time)
+                    if abs(key.time - frame) > OFFGRID_FRAMES:
+                        offgrid.add(float(key.time))
+                    keys[frame] = key
                 yield keys
 
 
@@ -131,7 +143,7 @@ TRANSFORM_KEY_TIMES = ("getTransformKeyTimes", "getTranslationKeyTimes",
                        "getSkewXKeyTimes", "getPivotPointKeyTimes")
 
 
-def _transform_key_frames(shape, ancestors):
+def _transform_key_frames(shape, ancestors, offgrid):
     """Key frames on the shape's own transform and on every layer above it.
 
     The transform is baked into the exported points (case 70), so its keys are
@@ -149,7 +161,11 @@ def _transform_key_frames(shape, ancestors):
         for getter in TRANSFORM_KEY_TIMES:
             times = getattr(transform, getter)()
             if len(times) > 1:
-                frames.update(timing.snap_frame(t) for t in times)
+                for t in times:
+                    frame = timing.snap_frame(t)
+                    if abs(t - frame) > OFFGRID_FRAMES:
+                        offgrid.add(float(t))
+                    frames.add(frame)
     return frames
 
 
@@ -183,14 +199,23 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
     that measures tell an invented key from an authored one and give the
     invented ones back.
     """
-    curves = list(_keyed_curves(shape))
+    offgrid = set()
+    curves = list(_keyed_curves(shape, offgrid))
 
     first, last = frames[0], frames[-1]
     union = set()
     for keys in curves:
         union.update(keys)
     authored = sorted(f for f in union if first <= f <= last)
-    union.update(_transform_key_frames(shape, ancestors))
+    union.update(_transform_key_frames(shape, ancestors, offgrid))
+    for time in sorted(offgrid):
+        # Once per distinct time, not per curve: the same subframe key sits
+        # on every axis of the member that carries it.
+        warn(messages.render("key-off-grid",
+                             {"subject": "shape '%s'" % name,
+                              "offset": messages.px(
+                                  time - timing.snap_frame(time), 3),
+                              "frame": timing.snap_frame(time)}))
     union = set(f for f in union if first <= f <= last)
     union.add(first)
     union.add(last)
