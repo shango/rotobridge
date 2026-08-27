@@ -99,10 +99,13 @@ def _keyed_curves(shape):
     times `dim` axes each: a tangent can be keyed where the centre is not, and
     spec section 9 asks for the union across all of them.
 
-    **A curve with fewer than two keys abstains entirely.** It cannot describe
-    an interval, so it has no interpolation to report, and letting it vote
-    would be actively wrong: the constant z axis that Phase 2's importer writes
-    on every control point would outvote the axes that actually move and mark
+    A single-key curve is yielded too: its one frame is a key the artist
+    made, and skipping it exported a shape keyed exactly once as never keyed
+    at all - `authored_frames` then said `[]` and the import deleted the
+    artist's key. It must still abstain from the interpolation VOTE (the
+    caller reads that off `len(keys)`): one key describes no interval, and
+    letting the constant z axis that Phase 2's importer writes on every
+    control point vote would outvote the axes that actually move and mark
     every eased shape as mixed.
     """
     for i in range(len(shape)):
@@ -110,7 +113,7 @@ def _keyed_curves(shape):
             for d in range(member.dim):
                 curve = member.getPositionAnimCurve(d)
                 count = curve.getNumberOfKeys()
-                if count < 2:
+                if not count:
                     continue
                 keys = {}
                 for k in range(count):
@@ -195,8 +198,10 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
     out = []
     mixed = 0
     for frame in sorted(union):
+        # `len(keys) > 1` is the vote filter _keyed_curves describes: a
+        # single-key curve names an authored frame but no interval.
         votes = [interp.sides_from_nuke(keys[frame].interpolationType)
-                 for keys in curves if frame in keys]
+                 for keys in curves if frame in keys and len(keys) > 1]
         sides, is_mixed = interp.reduce_sides(votes)
         mixed += 1 if is_mixed else 0
         out.append({"frame": frame, "interp": sides})

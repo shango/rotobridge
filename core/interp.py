@@ -90,7 +90,8 @@ def reduce_sides(votes):
     control point keyed there at all. Nothing was collapsed, so nothing is
     reported; the side is simply unknown, which is `ease`.
 
-    Curves that abstain never reach here - see `rotobridge_export._votes_at`.
+    Curves that abstain never reach here - see the vote filter in
+    `rotobridge_export._sparse_keys`.
     A curve with fewer than two keys cannot describe an interval, and letting
     the constant z axis of every control point vote `linear` would mark every
     genuinely eased shape as mixed.

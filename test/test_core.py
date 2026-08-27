@@ -3075,6 +3075,137 @@ class TestNukeToleranceParser(_WithoutNuke):
             self.rbi._parse_tolerance("five")
 
 
+class TestNukeSparseKeys(unittest.TestCase):
+    """`_sparse_keys` without Nuke: the union, the vote, and the provenance.
+
+    The exporter cannot be imported without the host modules, so this stubs
+    them the way `_WithoutNuke` does for the importer. The fakes carry only
+    what `_keyed_curves` and `_transform_key_frames` actually read.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import types
+        stubs = {}
+        nuke_stub = types.ModuleType("nuke")
+        rp_stub = types.ModuleType("nuke.rotopaint")
+        nuke_stub.rotopaint = rp_stub
+        shared = types.ModuleType("rotobridge_nuke")
+        for name in ("ATTR_BLEND", "ATTR_FEATHER_FALLOFF", "ATTR_FEATHER_X",
+                     "ATTR_FEATHER_Y", "ATTR_INVERTED", "ATTR_OPACITY",
+                     "attr_value", "blend_to_rbj", "falloff_to_rbj",
+                     "is_closed", "iter_shapes", "roto_knob", "script_range",
+                     "selected_roto_node", "vec2"):
+            setattr(shared, name, None)
+        shared.point_members = lambda cp: (cp.center, cp.leftTangent,
+                                           cp.rightTangent, cp.featherCenter)
+        shared.drift, shared.geom = drift, geom
+        shared.interp, shared.rbj, shared.report = interp, rbj, report
+        shared.messages, shared.timing = messages, timing
+        shared.version = version
+        stubs["nuke"] = nuke_stub
+        stubs["nuke.rotopaint"] = rp_stub
+        stubs["rotobridge_nuke"] = shared
+
+        cls._saved = dict((k, sys.modules.get(k)) for k in stubs)
+        sys.modules.update(stubs)
+        sys.path.insert(0, os.path.join(REPO, "nuke"))
+        try:
+            import rotobridge_export
+            cls.rbe = rotobridge_export
+        finally:
+            sys.path.pop(0)
+
+    @classmethod
+    def tearDownClass(cls):
+        for key, was in cls._saved.items():
+            if was is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = was
+        sys.modules.pop("rotobridge_export", None)
+
+    class Curve(object):
+        def __init__(self, times):
+            self.times = list(times)
+
+        def getNumberOfKeys(self):
+            return len(self.times)
+
+        def getKey(self, k):
+            class Key(object):
+                pass
+            key = Key()
+            key.time = self.times[k]
+            # Never read for a single-key curve: it abstains from the vote.
+            key.interpolationType = None
+            return key
+
+    class Member(object):
+        def __init__(self, curves):
+            self.curves = list(curves)
+            self.dim = len(self.curves)
+
+        def getPositionAnimCurve(self, d):
+            return self.curves[d]
+
+    class Transform(object):
+        def getTransformKeyTimes(self):
+            return (1.0,)
+        getTranslationKeyTimes = getTransformKeyTimes
+        getRotationKeyTimes = getTransformKeyTimes
+        getScaleKeyTimes = getTransformKeyTimes
+        getSkewXKeyTimes = getTransformKeyTimes
+        getPivotPointKeyTimes = getTransformKeyTimes
+
+    def shape(self, times_per_curve):
+        """One control point whose four members each carry one curve."""
+        Curve, Member = self.Curve, self.Member
+
+        class Point(object):
+            def __init__(self):
+                members = [Member([Curve(times)])
+                           for times in times_per_curve]
+                (self.center, self.leftTangent,
+                 self.rightTangent, self.featherCenter) = members
+
+        transform = self.Transform()
+
+        class Shape(object):
+            def __len__(self):
+                return 1
+
+            def __getitem__(self, i):
+                return Point()
+
+            def getTransform(self):
+                return transform
+
+        return Shape()
+
+    def test_one_authored_key_is_still_authored(self):
+        # A shape the artist keyed exactly once used to export as never
+        # keyed: every curve held one key, every curve abstained, and
+        # `authored_frames` said []. The default import then deleted the
+        # artist's key - 1 authored arrived as 0.
+        shape = self.shape([(50.0,), (50.0,), (50.0,), (50.0,)])
+        said = []
+        keys, authored = self.rbe._sparse_keys(shape, (), list(range(0, 101)),
+                                               said.append, "once")
+        self.assertEqual(authored, [50])
+        self.assertEqual([k["frame"] for k in keys], [0, 50, 100])
+        # No two-key curve voted, so the side is unknown, which is `ease`.
+        self.assertEqual(keys[1]["interp"], {"in": "ease", "out": "ease"})
+        self.assertEqual(said, [])
+
+    def test_a_keyless_curve_still_abstains_from_everything(self):
+        shape = self.shape([(), (), (), ()])
+        keys, authored = self.rbe._sparse_keys(shape, (), list(range(0, 11)),
+                                               lambda m: None, "static")
+        self.assertEqual(authored, [])
+        self.assertEqual([k["frame"] for k in keys], [0, 10])
+
+
 class TestLinearFit(unittest.TestCase):
     """The export-side pass: what a LINEAR sparse layer costs.
 
