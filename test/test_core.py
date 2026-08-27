@@ -517,6 +517,14 @@ class TestSchemaRejects(unittest.TestCase):
             lambda d: d["shapes"][0].update(authored_attributes=[]),
             "expected an object")
 
+    def test_an_empty_keys_array_is_refused(self):
+        # A second spelling of "no sparse layer". It used to validate clean
+        # and then crash the Nuke import's drift pass ("needs at least one
+        # key") after the Roto node was already created; dense is spelled by
+        # omitting the member.
+        self.reject(lambda d: d["shapes"][0].update(keys=[]),
+                    "keys is empty; omit the member instead")
+
     def test_a_null_attribute_entry_is_refused(self):
         # The null spelling used to slip through the gap between the empty
         # check and _validate_keys, which reads None as an absent member.

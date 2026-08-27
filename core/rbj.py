@@ -637,6 +637,12 @@ def _validate_keys(errs, where, keys, frame_keys):
     if not isinstance(keys, list):
         errs.append("%s: keys is %r, expected an array" % (where, keys))
         return
+    if not keys:
+        # An empty array is a second spelling of "no sparse layer", and the
+        # drift pass downstream needs at least one key; dense is spelled by
+        # omitting the member (spec section 9).
+        errs.append("%s: keys is empty; omit the member instead" % where)
+        return
 
     key_errs = []
     prev = None

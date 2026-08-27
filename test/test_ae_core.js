@@ -1102,6 +1102,17 @@ describe("rbj", function () {
            errs.join(" | "));
     });
 
+    it("refuses an empty keys array", function () {
+        // Python mirror: test_an_empty_keys_array_is_refused. Dense is
+        // spelled by omitting the member; an empty array used to validate
+        // clean and then blow up the drift pass downstream.
+        var doc = minimal();
+        doc.shapes[0].keys = [];
+        var errs = rbj.validate(doc);
+        eq(errs.join(" | ").indexOf("keys is empty; omit the member instead")
+           > -1, true, errs.join(" | "));
+    });
+
     it("stamps the fold's version even when the input never had one",
        function () {
         // `undefined < 3` is false in ES3, so a document without a version

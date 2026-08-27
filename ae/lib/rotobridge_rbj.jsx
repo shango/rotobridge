@@ -936,6 +936,14 @@
                 + ", expected an array";
             return;
         }
+        if (keys.length === 0) {
+            /* An empty array is a second spelling of "no sparse layer", and
+             * the drift pass downstream needs at least one key; dense is
+             * spelled by omitting the member (spec section 9). */
+            errs[errs.length] = where + ": keys is empty; omit the member"
+                + " instead";
+            return;
+        }
 
         var keyErrs = [];
         var prev = null;
