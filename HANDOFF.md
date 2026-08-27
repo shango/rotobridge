@@ -2576,7 +2576,19 @@ each chunk commits:
      dropped the version stamp when the member was absent; duplicate
      "__proto__" ids went unreported under node.
 
-### Review findings NOT yet fixed (next session's queue)
+### Review findings, second pass 2026-08-26: ALL FIXED
+
+Everything below was fixed the same day, each with tests
+(`0f83d9f`..`f64dbdd`), the headless Nuke roundtrip re-run twice (PASS),
+and the AE review pass re-run to completion after its first attempt died
+on a session limit. Its four verified findings are folded in: animated
+mask expansion parked on a zero frame exported silently (now
+expansion-animated, both tables); conformEase/hold-demotion
+double-wrapped their warning subject; the keys-added count was net
+change and went negative; the conform fit and segment verdict were
+blind to the anchored feather layer (denseVectors + sameAnchors now
+read feather_points; Python mirror follows; the fit half is unreachable
+from the mock - verify on the next AE host run).
 
 Confirmed, in nuke/ (each verified by the reviewing agent, fix sketched):
 
@@ -2609,8 +2621,12 @@ for negative frame keys under V8 only (for-in reorders integer-like keys;
 ExtendScript preserves insertion order); messageParam number spelling
 diverges outside [1e-4, 1e16); rbj `version_for` returns on the first
 open shape, correct only while the two v2 constants stay equal; an
-out-of-range feather anchor `t` cascades a misleading ordering error.
+out-of-range feather anchor `t` cascades a misleading ordering error;
+a second graph-editor ease dimension on a TwoD attribute is dropped
+silently (the format carries one pair per side by design).
 
-A fourth review agent over ae/lib export/import/ae/panel had not reported
-by wrap-up; its transcript was not recovered. Re-run that pass if its
-surface changes.
+Worth a host probe when next in After Effects: whether a layer slid down
+the timeline or time-stretched breaks the comp-time-seconds assumption in
+`keyFrames`/`valueAtTime`/`setValueAtTime` (nothing in the probe notes
+covers layer-local property times); and the anchored-feather conform fit
+above, which no mock fixture can reach.

@@ -22,6 +22,6 @@ build that was never shipped.
 
 NAME = "RotoBridge"
 
-VERSION = "0.9.5"
+VERSION = "0.9.6"
 
 LABEL = "%s %s" % (NAME, VERSION)
