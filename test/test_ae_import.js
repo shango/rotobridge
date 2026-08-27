@@ -324,6 +324,23 @@ describe("import", function () {
         has(host.alerts, "1 authored key(s), 0 corrective");
     });
 
+    it("adds no key to any property the artist never keyed", function () {
+        // The comp from the 2026-08-27 report: two linear path keys, opacity
+        // and feather untouched. The whole AE-to-AE trip must hand back two
+        // path keys and plain values everywhere else - one key on frame one
+        // of an unkeyed property is the tool inventing animation.
+        var host = importInto(exported({ mask: {
+            opacityAt: function () { return 100; },
+            featherAt: function () { return [0, 0]; }
+        } }));
+        var mask = host.comp.layer(1)._masks[0];
+        eq(mask.property("ADBE Mask Shape").numKeys, 2);
+        eq(mask.property("ADBE Mask Opacity").numKeys, 0);
+        eq(mask.property("ADBE Mask Feather").numKeys, 0);
+        eq(mask.property("ADBE Mask Opacity").value, 100);
+        deepEq(mask.property("ADBE Mask Feather").value, [0, 0]);
+    });
+
     it("gives an attribute that never changes no keys at all", function () {
         // An artist whose feather was never animated had no keyframe on it.
         // One key per frame is the bug this started as; one key is still the
