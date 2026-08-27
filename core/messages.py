@@ -130,6 +130,10 @@ TEMPLATES = {
     "record-unwritable":
         "the import record could not be written to {path} ({reason}); this"
         " import is not recorded anywhere but this dialog",
+    "file-from-newer-tool":
+        "this file comes from RotoBridge {theirs} and this side is running"
+        " {ours}, which is older; it should still read correctly, but update"
+        " this side so both speak the same build",
 
     # -- Nuke export ---------------------------------------------------------
     "interp-mixed":

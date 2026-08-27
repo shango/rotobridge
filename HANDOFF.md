@@ -20,7 +20,7 @@ Queue, committed one chunk at a time:
    File.saveDialog fallback when the project is unsaved); import seeds
    File.openDlg at the newest .rbj in that folder. Mock needs app.project.file,
    Folder.getFiles, instance saveDlg/openDlg.
-3. TODO same for Nuke: panel addFilenameSearch defaults under
+3. DONE (commit after 5468087) - same for Nuke: panel addFilenameSearch defaults under
    `<script dir>/rotobridge/` when the script is saved.
 4. TODO import warns when the file's source.tool_version is newer than the
    running build (both ports; new message code, byte-mirrored tables, SAMPLES).

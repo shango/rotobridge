@@ -398,3 +398,53 @@ tolerance      0 px (every frame keyed)
 
 no warnings from this import
 
+------------------------------------------------------------------------------
+RotoBridge import record
+
+written        2026-08-27 10:41:30
+imported with  RotoBridge 0.9.6
+into           Nuke 17.1v1
+target         Roto1
+
+source file    \\wsl.localhost\Ubuntu-24.04\home\sgold\dev\repos\rotobridge\test\golden\nuke_probe\17.1v1\phase3\roundtrip.rbj
+exported by    Nuke 17.1v1
+exported with  RotoBridge 0.9.6
+format         .rbj version 1
+source comp    2048 x 1556 at 24 fps, pixel aspect 1
+source frames  1001 to 1020
+placed at      1001 to 1020 (offset 0)
+tolerance      0 px (every frame keyed)
+
+1 shape(s):
+  round_trip: feather per_point, 4 point(s), 20 authored key(s), 0 corrective; nothing drifted from the file
+
+1 warning recorded when the file was written:
+  - [feather-tangential] shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
+
+no warnings from this import
+
+------------------------------------------------------------------------------
+RotoBridge import record
+
+written        2026-08-27 10:41:30
+imported with  RotoBridge 0.9.6
+into           Nuke 17.1v1
+target         Roto1
+
+source file    \\wsl.localhost\Ubuntu-24.04\home\sgold\dev\repos\rotobridge\test\golden\nuke_probe\17.1v1\phase3\roundtrip.rbj
+exported by    Nuke 17.1v1
+exported with  RotoBridge 0.9.6
+format         .rbj version 1
+source comp    2048 x 1556 at 24 fps, pixel aspect 1
+source frames  1001 to 1020
+placed at      1 to 20 (offset -1000)
+tolerance      0 px (every frame keyed)
+
+1 shape(s):
+  round_trip: feather per_point, 4 point(s), 20 authored key(s), 0 corrective; nothing drifted from the file
+
+1 warning recorded when the file was written:
+  - [feather-tangential] shape 'round_trip': feather offsets depart from the path normal; the tangential component survives in feather_offset but is lost to adapters other than Nuke
+
+no warnings from this import
+

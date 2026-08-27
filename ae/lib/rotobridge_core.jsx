@@ -915,6 +915,11 @@ var RB = (function () {
                 + " that sat mid-segment. The subdivision is exact, so the"
                 + " shape has not moved - it has more points than the artist"
                 + " drew because Nuke can only anchor feather at a vertex",
+        "file-from-newer-tool":
+            "this file comes from RotoBridge {theirs} and this side is"
+                + " running {ours}, which is older; it should still read"
+                + " correctly, but update this side so both speak the same"
+                + " build",
         "fps-differs":
             "the file was exported at {src} fps and this comp is {dst}"
                 + " fps; frame numbers were used as-is, so the timing in"

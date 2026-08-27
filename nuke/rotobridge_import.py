@@ -546,6 +546,28 @@ def _subset(shapes, subset, warn):
     return out
 
 
+def _newer_tool(source):
+    """The file's tool_version when it outranks this build, else None.
+
+    Piecewise numeric on the dotted parts, the shorter side padded with
+    zeros. Anything unparseable is not newer: refusing to warn beats warning
+    on garbage, and the validator already holds the member to a non-empty
+    string when it is present at all.
+    """
+    theirs = source.get("tool_version")
+    if not isinstance(theirs, str):
+        return None
+    try:
+        ours_parts = [int(part) for part in version.VERSION.split(".")]
+        their_parts = [int(part) for part in theirs.split(".")]
+    except ValueError:
+        return None
+    length = max(len(their_parts), len(ours_parts))
+    their_parts += [0] * (length - len(their_parts))
+    ours_parts += [0] * (length - len(ours_parts))
+    return theirs if their_parts > ours_parts else None
+
+
 def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
     """Build a Roto node from a validated .rbj document.
 
@@ -557,6 +579,11 @@ def import_document(doc, offset=0, tolerance=DEFAULT_TOLERANCE, subset=None):
 
     def warn(message):
         warnings.append(message)
+
+    newer = _newer_tool(doc["source"])
+    if newer is not None:
+        warn(messages.render("file-from-newer-tool",
+                             {"theirs": newer, "ours": version.VERSION}))
 
     first, last = doc["range"]
     frames = list(range(int(first), int(last) + 1))

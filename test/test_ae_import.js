@@ -63,6 +63,14 @@ function has(haystack, needle, note) {
     fail((note ? note + ": " : "") + "no entry containing " + JSON.stringify(needle)
          + " in:\n      " + haystack.join("\n      "));
 }
+function hasNot(haystack, needle, note) {
+    for (var i = 0; i < haystack.length; i++) {
+        if (String(haystack[i]).indexOf(needle) > -1) {
+            fail((note ? note + ": " : "") + "unexpected entry containing "
+                 + JSON.stringify(needle) + ": " + haystack[i]);
+        }
+    }
+}
 
 /* --- loading ------------------------------------------------------------ */
 
@@ -1399,6 +1407,32 @@ describe("import keys", function () {
         runImport(host);
         eq(host.alerts.length, 0);
         eq(host.comp.numLayers, 0);
+    });
+});
+
+describe("the tool that wrote the file", function () {
+    it("warns when the file comes from a newer RotoBridge", function () {
+        // A stale side is the recurring failure in this project, and the one
+        // file-detectable case is a .rbj written by a build newer than the
+        // importer reading it.
+        var doc = JSON.parse(exported());
+        doc.source.tool_version = "99.0.0";
+        var host = importInto(JSON.stringify(doc));
+        has(host.alerts, "[file-from-newer-tool]");
+        has(host.alerts, "99.0.0");
+    });
+
+    it("does not warn when both sides are the same build", function () {
+        hasNot(importInto(exported()).alerts, "file-from-newer-tool");
+    });
+
+    it("does not warn about an older file", function () {
+        // Old files must stay quiet forever: warning on them would teach
+        // artists that every import warns, which is how warnings die.
+        var doc = JSON.parse(exported());
+        doc.source.tool_version = "0.0.1";
+        hasNot(importInto(JSON.stringify(doc)).alerts,
+               "file-from-newer-tool");
     });
 });
 

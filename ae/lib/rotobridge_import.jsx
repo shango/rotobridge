@@ -50,6 +50,28 @@
         return RB.rbj.parse(ae.readText(file));
     }
 
+    function newerTool(source) {
+        /* The file's tool_version when it outranks this build, else null.
+         * Piecewise numeric on the dotted parts, the shorter side padded
+         * with zeros. Anything unparseable is not newer: refusing to warn
+         * beats warning on garbage, and the validator already holds the
+         * member to a non-empty string when it is present at all. */
+        var theirs = source["tool_version"];
+        if (typeof theirs !== "string") { return null; }
+        var their_parts = theirs.split(".");
+        var ours_parts = RB.VERSION.split(".");
+        var length = Math.max(their_parts.length, ours_parts.length);
+        for (var i = 0; i < length; i++) {
+            var x = i < their_parts.length ? their_parts[i] : "0";
+            var y = i < ours_parts.length ? ours_parts[i] : "0";
+            if (!/^\d+$/.test(x) || !/^\d+$/.test(y)) { return null; }
+            if (Number(x) !== Number(y)) {
+                return Number(x) > Number(y) ? theirs : null;
+            }
+        }
+        return null;
+    }
+
     function chooseShapes(doc, subset, warn) {
         /* The shapes to build, in file order. An unmatched name is a mistake
          * worth naming: silently importing nothing looks like a broken script. */
@@ -981,6 +1003,12 @@
 
         var doc = readDocument(file);
         var warn = new ae.Warnings();
+        var newer = newerTool(doc.source);
+        if (newer !== null) {
+            warn.add(RB.messages.render("file-from-newer-tool",
+                                        { theirs: newer,
+                                          ours: RB.VERSION }));
+        }
 
         var startRaw = prompt("Start frame in this comp\n\nThe file covers "
             + doc.range[0] + " to " + doc.range[1] + ".",

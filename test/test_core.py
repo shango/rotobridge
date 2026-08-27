@@ -2837,6 +2837,30 @@ class TestNukeImportSeed(_WithoutNuke):
             shutil.rmtree(holder)
 
 
+class TestNukeImportToolVersion(_WithoutNuke):
+    """`_newer_tool` - who outranks whom, without Nuke."""
+
+    def test_a_newer_file_is_named(self):
+        self.assertEqual(self.rbi._newer_tool({"tool_version": "99.0.0"}),
+                         "99.0.0")
+
+    def test_the_same_build_passes_silently(self):
+        self.assertIsNone(
+            self.rbi._newer_tool({"tool_version": version.VERSION}))
+
+    def test_an_older_file_passes_silently(self):
+        self.assertIsNone(self.rbi._newer_tool({"tool_version": "0.0.1"}))
+
+    def test_absent_and_garbage_are_not_newer(self):
+        self.assertIsNone(self.rbi._newer_tool({}))
+        self.assertIsNone(self.rbi._newer_tool({"tool_version": "a build"}))
+
+    def test_a_longer_dotted_tail_counts(self):
+        deeper = version.VERSION + ".1"
+        self.assertEqual(self.rbi._newer_tool({"tool_version": deeper}),
+                         deeper)
+
+
 class TestNukeAnchoredFeather(_WithoutNuke):
     """The Nuke importer's section 6.5 policy, without Nuke."""
 
@@ -3069,7 +3093,7 @@ class TestMessages(unittest.TestCase):
         "path": "/shots/x.txt", "reason": "Permission denied",
         "detail": "4 at frame 2, 5 at frame 3", "noun": "vertices were",
         "app": "After Effects", "blend": "difference", "type": "Stroke",
-        "attr": "the inverted flag",
+        "attr": "the inverted flag", "theirs": "9.9.9", "ours": "1.2.3",
     }
 
     @classmethod
