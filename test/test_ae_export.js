@@ -636,6 +636,17 @@ describe("mapping and failures", function () {
         has(doc.warnings, "mask expansion");
     });
 
+    it("warns when the expansion itself animates, even from zero", function () {
+        // `.value` reads only the playhead; parked on a frame where a keyed
+        // expansion happens to be zero, the whole animation used to be
+        // dropped with no warning at all.
+        var doc = runExport(mock.install(basic({ mask: {
+            expansionAt: function (t) { return t * 240; },
+            expansionKeys: [{ t: 0, value: 0 }, { t: 4 / 24, value: 40 }]
+        } })));
+        has(doc.warnings, "expansion is keyed on more than one frame");
+    });
+
     it("does not warn about a zero expansion", function () {
         var doc = runExport(mock.install(basic()));
         for (var i = 0; i < doc.warnings.length; i++) {
@@ -847,6 +858,19 @@ describe("export keys", function () {
         eq(quiet, true, "an unauthored ease is not reported as one");
     });
 
+    it("names the mask once in the conform warnings", function () {
+        // `name` arrives in conformEase already wrapped; wrapping it again
+        // wrote subjects like "mask 'mask 'Mask 1''" into the file, the
+        // artist alert and the import record, for ease-conformed,
+        // keys-added and hold-under-motion alike.
+        var doc = runExport(mock.install(everyFrame({
+            inType: BEZIER, outType: BEZIER, inEase: ease(0, 91.176),
+            outEase: ease(0, 33.333)
+        })));
+        has(doc.warnings, "carried temporal ease");
+        hasNot(doc.warnings, "mask 'mask");
+    });
+
     it("keeps the authored keys as pre_conform_keys when it conforms",
        function () {
         // The conform destroys authored timing irreversibly - the shape
@@ -995,6 +1019,19 @@ describe("export keys", function () {
         spec.layers[0].transformKeys = { "ADBE Position": [1 / 24, 3 / 24] };
         var keys = keysOf(spec);
         deepEq([keys.length, keys[0].frame, keys[1].frame], [2, 0, 4]);
+    });
+
+    it("does not report dropped candidates as negative additions", function () {
+        // The count is what the fit added, not the net change: two dropped
+        // transform candidates against no additions used to warn
+        // "-2 key(s) added", and an even exchange silenced the warning.
+        var spec = keyedAt([at(0), at(4)]);
+        spec.layers[0].transformKeys = { "ADBE Position": [1 / 24, 3 / 24] };
+        var doc = runExport(mock.install(spec));
+        for (var i = 0; i < doc.warnings.length; i++) {
+            ok(String(doc.warnings[i]).indexOf("key(s) added") === -1,
+               "nothing was added: " + doc.warnings[i]);
+        }
     });
 
     it("keeps every key the artist put on the path", function () {

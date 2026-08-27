@@ -313,7 +313,7 @@ function makeMask(spec) {
         "ADBE Mask Opacity": makeProp(spec.opacityAt
             || function () { return 100; }, spec.opacityKeys),
         "ADBE Mask Offset": makeProp(spec.expansionAt
-            || function () { return 0; })
+            || function () { return 0; }, spec.expansionKeys)
     };
     return {
         name: spec.name,

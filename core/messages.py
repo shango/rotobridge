@@ -50,6 +50,9 @@ TEMPLATES = {
     "expansion-dropped":
         "{subject}: mask expansion of {px} px was dropped; .rbj v1 has no"
         " field for it",
+    "expansion-animated":
+        "{subject}: mask expansion is keyed on more than one frame and was"
+        " dropped entirely, animation and all; .rbj v1 has no field for it",
     "mask-mode-unmapped":
         "{subject}: mask mode '{mode}' has no .rbj equivalent; wrote 'union'",
     "open-spline-stroke":

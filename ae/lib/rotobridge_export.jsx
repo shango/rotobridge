@@ -77,7 +77,14 @@
         }
 
         var expansion = ae.maskProp(mask, ae.MASK_EXPANSION);
-        if (expansion && Math.abs(expansion.value) > 1e-9) {
+        if (expansion && expansion.numKeys > 1) {
+            /* Keyed on more than one frame: the animation is what is being
+             * dropped, and `.value` reads only the playhead - parked on a
+             * frame where the expansion happens to be zero, the loss would
+             * have gone entirely unsaid. */
+            warn(RB.messages.render("expansion-animated",
+                                    { subject: "mask '" + entry.name + "'" }));
+        } else if (expansion && Math.abs(expansion.value) > 1e-9) {
             /* Not in the format and not in prd.md section 10 either - the probe
              * turned it up while looking for feather. Silently dropping a
              * non-zero expansion would change the matte, so it is named. */
@@ -542,6 +549,19 @@
 
     var POINT_VECTORS = ["c", "in", "out"];
 
+    function sameAnchors(a, b) {
+        /* The anchored model's feather layer, compared the way `samePoints`
+         * compares the points it was deleted from. Absent on both sides is
+         * equal; the validator holds the count constant across frames. */
+        if (!a && !b) { return true; }
+        if (!a || !b || a.length !== b.length) { return false; }
+        for (var i = 0; i < a.length; i++) {
+            if (a[i]["t"] !== b[i]["t"]
+                    || a[i]["feather"] !== b[i]["feather"]) { return false; }
+        }
+        return true;
+    }
+
     function samePoints(a, b) {
         /* Exact equality, not a tolerance. Both sides come from the same bake
          * of the same host, so a segment that is genuinely flat is
@@ -589,9 +609,15 @@
         for (f = from + 1; f < to; f++) {
             mid = baked["frames"][String(f)];
             if (!mid) { return null; }
-            if (!samePoints(a["points"], mid["points"])) { return "moves"; }
+            if (!samePoints(a["points"], mid["points"])
+                    || !sameAnchors(a["feather_points"],
+                                    mid["feather_points"])) {
+                return "moves";
+            }
         }
-        return samePoints(a["points"], far["points"]) ? null : "flat";
+        return samePoints(a["points"], far["points"])
+                && sameAnchors(a["feather_points"], far["feather_points"])
+            ? null : "flat";
     }
 
     function holdOut(key) {
@@ -625,6 +651,19 @@
                 flat[flat.length] = point["out"][1];
                 if (RB.util.hasOwn(point, "feather")) {
                     flat[flat.length] = point["feather"];
+                }
+            }
+            var anchors = baked["frames"][key]["feather_points"];
+            if (anchors) {
+                /* The anchored model keeps its radii here, not on the
+                 * points; leaving them out made the conform fit blind to
+                 * eased feather and its accuracy claim false for exactly
+                 * the model invented to protect feather. `t` rides along in
+                 * segment units - not px, but a sliding anchor is motion
+                 * and pretending otherwise is the same blindness. */
+                for (i = 0; i < anchors.length; i++) {
+                    flat[flat.length] = anchors[i]["t"];
+                    flat[flat.length] = anchors[i]["feather"];
                 }
             }
             dense[key] = flat;
@@ -743,15 +782,21 @@
             out[out.length] = key;
         }
 
-        var added = out.length - keys.length;
+        /* What the fit added, not the net change: `keys` includes transform
+         * candidates the fit may drop, and a net count went negative - or to
+         * zero, silencing the warning - whenever drops outweighed adds. */
+        var added = 0;
+        for (i = 0; i < fit.keys.length; i++) {
+            if (!RB.util.hasOwn(byFrame, String(fit.keys[i]))) { added += 1; }
+        }
         if (authored) {
             warn(RB.messages.render("ease-conformed",
-                                    { subject: "mask '" + name + "'",
+                                    { subject: name,
                                       count: authored, added: added,
                                       tolerance: CONFORM_TOLERANCE }));
         } else if (added) {
             warn(RB.messages.render("keys-added",
-                                    { subject: "mask '" + name + "'",
+                                    { subject: name,
                                       added: added,
                                       tolerance: CONFORM_TOLERANCE }));
         }
@@ -862,7 +907,7 @@
         }
         if (unheld) {
             warn(RB.messages.render("hold-under-motion",
-                                    { subject: "mask '" + name + "'",
+                                    { subject: name,
                                       count: unheld }));
         }
         /* A hold is a claim about a segment, so the key carrying one is not the

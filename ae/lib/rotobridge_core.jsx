@@ -866,6 +866,10 @@ var RB = (function () {
         "expansion-dropped":
             "{subject}: mask expansion of {px} px was dropped; .rbj v1"
                 + " has no field for it",
+        "expansion-animated":
+            "{subject}: mask expansion is keyed on more than one frame and"
+                + " was dropped entirely, animation and all; .rbj v1 has no"
+                + " field for it",
         "feather-anchored-v2":
             "{subject}: feather is anchored along the path rather than at"
                 + " vertices, which only .rbj version 2 can express, so this"

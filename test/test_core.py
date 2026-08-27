@@ -3410,6 +3410,11 @@ def dense_vectors(shape):
                      point["out"][0], point["out"][1]]
             if "feather" in point:
                 flat.append(point["feather"])
+        if "feather_points" in frame:
+            # The anchored model keeps its radii here, not on the points -
+            # same rule as the jsx, or the mirror stops being one.
+            for anchor in frame["feather_points"]:
+                flat += [anchor["t"], anchor["feather"]]
         out[int(name)] = flat
     return out
 
