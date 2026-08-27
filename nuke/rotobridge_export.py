@@ -14,7 +14,7 @@ amortise; the frame-major requirement in prd.md section 9.1 is specific to
 import nuke
 
 from rotobridge_nuke import (ATTR_BLEND, ATTR_FEATHER_FALLOFF, ATTR_FEATHER_X,
-                             ATTR_FEATHER_Y, ATTR_INVERTED, ATTR_OPACITY,
+                             ATTR_FEATHER_Y, ATTR_INVERTED, ATTR_OPACITY, VIEW,
                              attr_value, blend_to_rbj, falloff_to_rbj, geom,
                              interp, is_closed, iter_shapes, messages,
                              point_members, rbj, roto_knob, script_range,
@@ -219,6 +219,24 @@ def _sparse_keys(shape, ancestors, frames, warn, name):
     return out, authored
 
 
+def _warn_attr_animation(attrs, warn, name):
+    """Warn for each per-shape attribute whose curve actually animates.
+
+    `inv`, `bm` and `ff` cross as one value per shape, read at the first
+    exported frame - the format has no per-frame field for them - so a curve
+    keyed on more than one frame loses its animation in the crossing. The
+    read stays what it is; this is the warning that loss was missing. One
+    key is a value, not animation, and warns nothing.
+    """
+    for label, attr in (("the inverted flag", ATTR_INVERTED),
+                        ("the blending mode", ATTR_BLEND),
+                        ("the feather falloff", ATTR_FEATHER_FALLOFF)):
+        if attrs.getCurve(attr, VIEW).getNumberOfKeys() > 1:
+            warn(messages.render("attr-animation-dropped",
+                                 {"subject": "shape '%s'" % name,
+                                  "attr": label}))
+
+
 def export_shape(shape, ancestors, frames, warn):
     """One Nuke Shape to an .rbj shape object."""
     name = shape.name
@@ -232,6 +250,7 @@ def export_shape(shape, ancestors, frames, warn):
                              {"subject": "shape '%s'" % name}))
 
     attrs = shape.getAttributes()
+    _warn_attr_animation(attrs, warn, name)
     if abs(attr_value(attrs, ATTR_INVERTED, frames[0])) > 1e-9:
         warn(messages.render("inverted-dropped",
                              {"subject": "shape '%s'" % name}))

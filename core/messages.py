@@ -149,6 +149,10 @@ TEMPLATES = {
     "nuke-blend-unmapped":
         "{subject}: Nuke blending mode '{mode}' is a pixel operation with no"
         " .rbj equivalent; wrote 'union'",
+    "attr-animation-dropped":
+        "{subject}: {attr} is keyed on more than one frame, but .rbj"
+        " carries it as one value per shape; only its value at the"
+        " first exported frame crossed",
     "layer-flattened":
         "layer '{name}' flattened to the root",
     "stroke-skipped":

@@ -954,6 +954,10 @@ var RB = (function () {
         "nuke-blend-unmapped":
             "{subject}: Nuke blending mode '{mode}' is a pixel operation"
                 + " with no .rbj equivalent; wrote 'union'",
+        "attr-animation-dropped":
+            "{subject}: {attr} is keyed on more than one frame, but .rbj"
+                + " carries it as one value per shape; only its value at the"
+                + " first exported frame crossed",
         "open-spline-knobs":
             "{subject}: an open spline's render settings are node knobs"
                 + " (openspline_width and the end types), not shape attributes,"

@@ -2981,6 +2981,7 @@ class TestMessages(unittest.TestCase):
         "path": "/shots/x.txt", "reason": "Permission denied",
         "detail": "4 at frame 2, 5 at frame 3", "noun": "vertices were",
         "app": "After Effects", "blend": "difference", "type": "Stroke",
+        "attr": "the inverted flag",
     }
 
     @classmethod
@@ -3075,12 +3076,58 @@ class TestNukeToleranceParser(_WithoutNuke):
             self.rbi._parse_tolerance("five")
 
 
-class TestNukeSparseKeys(unittest.TestCase):
-    """`_sparse_keys` without Nuke: the union, the vote, and the provenance.
+class TestNukeAttributeWrite(_WithoutNuke):
+    """What `_write_attributes` keys and what it leaves as a plain value."""
+
+    def test_an_unkeyed_falloff_arrives_keyless(self):
+        # `ff` is static per shape. It used to arrive as a one-key curve,
+        # written before probe_nuke_static.py showed a keyless attribute
+        # holds `add`'s value everywhere; one key is still a key nobody
+        # authored.
+        rbi = self.rbi
+        saved = dict((name, getattr(rbi, name))
+                     for name in ("write_attr_static", "write_attr_curve",
+                                  "set_curve_linear", "blend_from_rbj",
+                                  "falloff_from_rbj", "ATTR_FEATHER_FALLOFF",
+                                  "ATTR_OPACITY", "ATTR_FEATHER_X",
+                                  "ATTR_FEATHER_Y"))
+        calls = []
+        try:
+            rbi.write_attr_static = \
+                lambda attrs, name, value: calls.append(("static", name, value))
+            rbi.write_attr_curve = \
+                lambda attrs, name, samples: calls.append(("curve", name))
+            rbi.set_curve_linear = lambda curve: None
+            rbi.blend_from_rbj = lambda blend, warn, name: 0.0
+            rbi.falloff_from_rbj = lambda falloff: 1.0
+            rbi.ATTR_FEATHER_FALLOFF = "ff"
+            rbi.ATTR_OPACITY, rbi.ATTR_FEATHER_X = "opc", "fx"
+            rbi.ATTR_FEATHER_Y = "fy"
+
+            class Shape(object):
+                def getAttributes(self):
+                    return object()
+
+            record = {"opacity": 1.0, "feather_uniform": [0.0, 0.0]}
+            spec = {"name": "s", "blend": "union",
+                    "feather_falloff": "smooth",
+                    "frames": {"0": dict(record), "1": dict(record)}}
+            rbi._write_attributes(Shape(), spec, [0, 1], 0, 0.5,
+                                  lambda m: None)
+        finally:
+            for name, value in saved.items():
+                setattr(rbi, name, value)
+        self.assertIn(("static", "ff", 1.0), calls)
+        self.assertEqual([c for c in calls if c[0] == "curve"], [])
+
+
+class _WithoutNukeExport(unittest.TestCase):
+    """Imports `nuke/rotobridge_export.py` with the host modules stubbed out.
 
     The exporter cannot be imported without the host modules, so this stubs
     them the way `_WithoutNuke` does for the importer. The fakes carry only
-    what `_keyed_curves` and `_transform_key_frames` actually read.
+    what the functions under test actually read; the attribute names and the
+    view are the real ones, because tests reach the code through them.
     """
 
     @classmethod
@@ -3091,12 +3138,14 @@ class TestNukeSparseKeys(unittest.TestCase):
         rp_stub = types.ModuleType("nuke.rotopaint")
         nuke_stub.rotopaint = rp_stub
         shared = types.ModuleType("rotobridge_nuke")
-        for name in ("ATTR_BLEND", "ATTR_FEATHER_FALLOFF", "ATTR_FEATHER_X",
-                     "ATTR_FEATHER_Y", "ATTR_INVERTED", "ATTR_OPACITY",
-                     "attr_value", "blend_to_rbj", "falloff_to_rbj",
+        for name in ("attr_value", "blend_to_rbj", "falloff_to_rbj",
                      "is_closed", "iter_shapes", "roto_knob", "script_range",
                      "selected_roto_node", "vec2"):
             setattr(shared, name, None)
+        shared.ATTR_OPACITY, shared.ATTR_BLEND = "opc", "bm"
+        shared.ATTR_INVERTED, shared.ATTR_FEATHER_FALLOFF = "inv", "ff"
+        shared.ATTR_FEATHER_X, shared.ATTR_FEATHER_Y = "fx", "fy"
+        shared.VIEW = "main"
         shared.point_members = lambda cp: (cp.center, cp.leftTangent,
                                            cp.rightTangent, cp.featherCenter)
         shared.drift, shared.geom = drift, geom
@@ -3124,6 +3173,10 @@ class TestNukeSparseKeys(unittest.TestCase):
             else:
                 sys.modules[key] = was
         sys.modules.pop("rotobridge_export", None)
+
+
+class TestNukeSparseKeys(_WithoutNukeExport):
+    """`_sparse_keys` without Nuke: the union, the vote, and the provenance."""
 
     class Curve(object):
         def __init__(self, times):
@@ -3204,6 +3257,41 @@ class TestNukeSparseKeys(unittest.TestCase):
                                                lambda m: None, "static")
         self.assertEqual(authored, [])
         self.assertEqual([k["frame"] for k in keys], [0, 10])
+
+
+class TestNukeExportWarnings(_WithoutNukeExport):
+    """Per-shape attributes that animate must say so when they cross."""
+
+    class Attrs(object):
+        def __init__(self, counts):
+            self.counts = counts
+
+        def getCurve(self, name, view):
+            assert view == "main"
+            counts = self.counts
+
+            class Curve(object):
+                def getNumberOfKeys(_self):
+                    return counts.get(name, 0)
+            return Curve()
+
+    def test_an_animated_per_shape_attribute_is_warned_about(self):
+        # `inv`, `bm` and `ff` cross as their value at the first exported
+        # frame; a curve keyed on more than one frame used to lose its
+        # animation with no warning at all.
+        said = []
+        self.rbe._warn_attr_animation(self.Attrs({"inv": 2, "bm": 3}),
+                                      said.append, "s")
+        self.assertEqual(len(said), 2)
+        self.assertIn("[attr-animation-dropped]", said[0])
+        self.assertIn("the inverted flag", said[0])
+        self.assertIn("the blending mode", said[1])
+
+    def test_one_key_or_none_is_a_value_not_animation(self):
+        said = []
+        self.rbe._warn_attr_animation(self.Attrs({"inv": 1, "bm": 1, "ff": 0}),
+                                      said.append, "s")
+        self.assertEqual(said, [])
 
 
 class TestLinearFit(unittest.TestCase):

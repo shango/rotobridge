@@ -517,11 +517,11 @@ def _write_attributes(shape, spec, frames, offset, tolerance, warn):
         else:
             set_curve_linear(write_attr_curve(attrs, name, kept))
 
-    # Static per shape, so one key each. Attribute curves default to curved too
-    # (Phase 0 case 62), but a single-key curve has nothing to interpolate.
-    write_attr_curve(attrs, ATTR_FEATHER_FALLOFF,
-                     [(float(frames[0] + offset),
-                       falloff_from_rbj(spec["feather_falloff"]))])
+    # Static per shape, so a plain value with no keys - same as any attribute
+    # nobody keyed (probe_nuke_static.py; a one-key curve was the best this
+    # could do before the probe).
+    write_attr_static(attrs, ATTR_FEATHER_FALLOFF,
+                      falloff_from_rbj(spec["feather_falloff"]))
     blend_from_rbj(spec["blend"], warn, spec["name"])
 
 

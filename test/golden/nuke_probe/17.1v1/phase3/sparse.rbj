@@ -4,7 +4,7 @@
   "source": {
     "app": "Nuke",
     "app_version": "17.1v1",
-    "tool_version": "0.9.4",
+    "tool_version": "0.9.5",
     "width": 2048,
     "height": 1556,
     "pixel_aspect": 1.0,
