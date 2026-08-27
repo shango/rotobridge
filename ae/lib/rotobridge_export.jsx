@@ -1071,7 +1071,13 @@
 
     function main() {
         var comp = ae.activeComp();
-        var target = File.saveDialog("Export RotoBridge .rbj", "*.rbj");
+        /* Seeded when the project is saved: the dialog opens in the bridge
+         * folder with the comp's name filled in, and Save is one keypress.
+         * It is still a dialog - the artist can point it anywhere. */
+        var seed = ae.exportSeed(comp);
+        var target = seed
+            ? seed.saveDlg("Export RotoBridge .rbj", "*.rbj")
+            : File.saveDialog("Export RotoBridge .rbj", "*.rbj");
         if (!target) { return; }
         if (!/\.rbj$/i.test(target.fsName)) {
             target = new File(target.fsName + ".rbj");

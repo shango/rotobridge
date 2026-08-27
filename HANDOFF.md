@@ -3,7 +3,37 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-22. **Phase 4 is complete and has met both hosts.**
+Last updated: 2026-08-27.
+
+## In progress 2026-08-27: install and bridge-folder UX
+
+Agreed with the user (discussion in session): kill run-script-file friction.
+Queue, committed one chunk at a time:
+
+1. DONE `bcfc713` - AE installer `ae/install.jsx`, staged in the drop as
+   `Install for After Effects.jsx`; copies panel + lib into the running AE's
+   per-user `%APPDATA%/Adobe/After Effects/<major.minor>/Scripts/ScriptUI
+   Panels` (confirmed real on the user's machine, AE 25.6). Wiring tests in
+   TestUiEntryPoints.
+2. TODO per-project bridge folder, AE side: export seeds its save dialog at
+   `<project folder>/rotobridge/<comp>.rbj` (File.saveDlg on a seed File;
+   File.saveDialog fallback when the project is unsaved); import seeds
+   File.openDlg at the newest .rbj in that folder. Mock needs app.project.file,
+   Folder.getFiles, instance saveDlg/openDlg.
+3. TODO same for Nuke: panel addFilenameSearch defaults under
+   `<script dir>/rotobridge/` when the script is saved.
+4. TODO import warns when the file's source.tool_version is newer than the
+   running build (both ports; new message code, byte-mirrored tables, SAMPLES).
+5. TODO tester readmes rewritten around the installers; bump minor version;
+   package.
+
+Host facts for this work: user's AE user-scripts folder already held a stray
+`rotobridge_panel.jsx` (0.9.6, no lib beside it) - the installer's mirror
+semantics replace exactly that failure shape. The user offered
+`C:/Users/shann/Documents/dev` for Windows-side installer verification;
+everything authored stays in the repo per the standing rule.
+
+Previous update: 2026-08-22. **Phase 4 is complete and has met both hosts.**
 
 Earlier this session: both After Effects import bugs found, fixed and confirmed
 in the host (stale mask handles; feather compared by array index); the drift

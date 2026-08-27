@@ -753,6 +753,44 @@ describe("mapping and failures", function () {
         eq(runExport(host), null);
         eq(host.alerts.length, 0, "cancelling is not an error");
     });
+
+    it("seeds the save dialog inside the project's bridge folder", function () {
+        // The per-project default: a saved project gets its dialog opened in
+        // `<project folder>/rotobridge/` with the comp's name filled in, so
+        // the usual export is the Save button alone. The folder is made up
+        // front, because a dialog seeded with a missing path opens somewhere
+        // else instead, silently.
+        var host = mock.install(basic({ projectFile: "/shots/ab_010.aep" }));
+        runExport(host);
+        deepEq(host.saveSeeds, ["/shots/rotobridge/Comp 1.rbj"]);
+        deepEq(host.createdFolders, ["/shots/rotobridge"]);
+    });
+
+    it("does not re-create a bridge folder that exists", function () {
+        var host = mock.install(basic({
+            projectFile: "/shots/ab_010.aep",
+            folders: { "/shots/rotobridge": [] }
+        }));
+        runExport(host);
+        deepEq(host.createdFolders, []);
+    });
+
+    it("spells the comp's name with characters a file can keep", function () {
+        var host = mock.install(basic({ projectFile: "/shots/ab_010.aep",
+                                        name: 'shot 12: "final"?' }));
+        runExport(host);
+        deepEq(host.saveSeeds, ["/shots/rotobridge/shot 12_ _final__.rbj"]);
+    });
+
+    it("asks plainly when the project is unsaved", function () {
+        // No project file, no "beside the project": the bare dialog, and
+        // nothing invented on disk.
+        var host = mock.install(basic());
+        runExport(host);
+        deepEq(host.saveSeeds, []);
+        deepEq(host.createdFolders, []);
+        ok(host.written !== null, "the export still ran");
+    });
 });
 
 /* --- the sparse layer ------------------------------------------------------ */

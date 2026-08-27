@@ -1402,6 +1402,37 @@ describe("import keys", function () {
     });
 });
 
+describe("the bridge folder", function () {
+    it("seeds the open dialog at the newest export beside the project", function () {
+        // The file just made on the other side is nearly always the file
+        // wanted, so the dialog opens on it. Choosing differently is still
+        // one click away - the dialog itself remains.
+        var host = importInto(exported(), {
+            projectFile: "/shots/ab_010.aep",
+            folders: { "/shots/rotobridge": [
+                { name: "old.rbj", modified: 10 },
+                { name: "new.rbj", modified: 20 },
+                { name: "notes.txt", modified: 99 }
+            ] }
+        });
+        deepEq(host.openSeeds, ["/shots/rotobridge/new.rbj"]);
+    });
+
+    it("asks plainly when there is no bridge folder", function () {
+        var host = importInto(exported(),
+                              { projectFile: "/shots/ab_010.aep" });
+        deepEq(host.openSeeds, []);
+    });
+
+    it("asks plainly when the bridge folder holds no .rbj", function () {
+        var host = importInto(exported(), {
+            projectFile: "/shots/ab_010.aep",
+            folders: { "/shots/rotobridge": [] }
+        });
+        deepEq(host.openSeeds, []);
+    });
+});
+
 describe("the import record", function () {
     function recorded(host) {
         var paths = [];

@@ -971,7 +971,12 @@
 
     function main() {
         var comp = ae.activeComp();
-        var file = File.openDialog("Import RotoBridge .rbj", "*.rbj");
+        /* Seeded at the newest .rbj in the project's bridge folder, which is
+         * nearly always the file just exported on the other side. */
+        var seed = ae.importSeed();
+        var file = seed
+            ? seed.openDlg("Import RotoBridge .rbj", "*.rbj")
+            : File.openDialog("Import RotoBridge .rbj", "*.rbj");
         if (!file) { return; }
 
         var doc = readDocument(file);

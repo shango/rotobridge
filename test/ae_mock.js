@@ -540,6 +540,15 @@ function install(spec) {
         savePath: spec.savePath === undefined ? "/tmp/out.rbj" : spec.savePath,
         openPath: spec.openPath === undefined ? "/tmp/in.rbj" : spec.openPath,
         readable: spec.readable || "",
+        /* The fake disk's directories: path -> [{name, modified}] entries
+         * `Folder.getFiles` hands back. `modified` is a number where the
+         * host has a Date; both order the same way under `>`. */
+        dirs: spec.folders || {},
+        createdFolders: [],
+        /* What the seeded dialogs were seeded WITH - the half of the new
+         * default the artist never sees when they just press return. */
+        saveSeeds: [],
+        openSeeds: [],
         prompts: [],
         /* Consumed in order by `prompt`; an empty list takes every default,
          * which is the path an artist gets by pressing return. */
@@ -608,6 +617,14 @@ function install(spec) {
     };
     FakeFile.prototype.read = function () { return host.readable || ""; };
     FakeFile.prototype.close = function () { return true; };
+    FakeFile.prototype.saveDlg = function () {
+        host.saveSeeds.push(this.fsName);
+        return FakeFile.saveDialog();
+    };
+    FakeFile.prototype.openDlg = function () {
+        host.openSeeds.push(this.fsName);
+        return FakeFile.openDialog();
+    };
     FakeFile.saveDialog = function () {
         return host.savePath ? new FakeFile(host.savePath) : null;
     };
@@ -615,6 +632,43 @@ function install(spec) {
         return host.openPath ? new FakeFile(host.openPath) : null;
     };
     global.File = FakeFile;
+
+    function dirname(p) {
+        return String(p).split("/").slice(0, -1).join("/");
+    }
+    Object.defineProperty(FakeFile.prototype, "parent", {
+        get: function () { return new FakeFolder(dirname(this.fsName)); }
+    });
+
+    function FakeFolder(path) {
+        this.fsName = path;
+        this.exists = Object.prototype.hasOwnProperty.call(host.dirs, path);
+    }
+    FakeFolder.prototype.create = function () {
+        host.createdFolders.push(this.fsName);
+        host.dirs[this.fsName] = host.dirs[this.fsName] || [];
+        this.exists = true;
+        return true;
+    };
+    FakeFolder.prototype.getFiles = function (pattern) {
+        /* Only the suffix form the adapters use ("*.rbj"); anything fancier
+         * should fail loudly rather than half-match. */
+        if (pattern !== undefined && pattern.indexOf("*.") !== 0) {
+            throw new Error("ae_mock getFiles models only '*.suffix' patterns");
+        }
+        var entries = host.dirs[this.fsName] || [];
+        var out = [];
+        for (var i = 0; i < entries.length; i++) {
+            if (pattern !== undefined
+                    && entries[i].name.slice(-pattern.length + 1)
+                       !== pattern.slice(1)) { continue; }
+            var file = new FakeFile(this.fsName + "/" + entries[i].name);
+            file.modified = entries[i].modified;
+            out.push(file);
+        }
+        return out;
+    };
+    global.Folder = FakeFolder;
 
     return host;
 }

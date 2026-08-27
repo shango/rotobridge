@@ -294,6 +294,53 @@
         file.close();
     };
 
+    /* -- The bridge folder ------------------------------------------------ */
+
+    /* One folder beside the saved project where .rbj files land by default,
+     * spelled the same on the Nuke side, so the two applications meet in it
+     * without either artist being told where to look. */
+    ae.BRIDGE = "rotobridge";
+
+    function bridgeFolder() {
+        if (!app.project.file) { return null; }
+        return new Folder(app.project.file.parent.fsName + "/" + ae.BRIDGE);
+    }
+
+    ae.exportSeed = function (comp) {
+        /* A File to seed the save dialog with: the bridge folder, named after
+         * the comp. Null when the project is unsaved - there is no "beside
+         * the project" to offer - and the caller falls back to the bare
+         * dialog. The folder is created here, not at the write: a dialog
+         * seeded with a path that does not exist opens somewhere else
+         * instead, silently. */
+        var dir = bridgeFolder();
+        if (dir === null) { return null; }
+        if (!dir.exists && !dir.create()) { return null; }
+        /* The characters Windows refuses in file names; a comp name is under
+         * no such rule. */
+        var name = String(comp.name).replace(/[\\\/:*?"<>|]/g, "_");
+        return new File(dir.fsName + "/" + name + ".rbj");
+    };
+
+    ae.importSeed = function () {
+        /* The newest .rbj in the bridge folder, because the file just made on
+         * the other side is nearly always the file wanted. Null whenever that
+         * guess has nothing to stand on. */
+        var dir = bridgeFolder();
+        if (dir === null || !dir.exists) { return null; }
+        var files = dir.getFiles("*.rbj");
+        var best = null;
+        for (var i = 0; i < files.length; i++) {
+            /* `getFiles` lists Folders too, and a directory named x.rbj
+             * should not be offered as a file. */
+            if (!(files[i] instanceof File)) { continue; }
+            if (best === null || files[i].modified > best.modified) {
+                best = files[i];
+            }
+        }
+        return best;
+    };
+
     ae.SOURCE_APP = "After Effects";
 
     ae.sourceBlock = function (comp) {
