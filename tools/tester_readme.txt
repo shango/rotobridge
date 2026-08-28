@@ -25,6 +25,11 @@ AFTER EFFECTS
    your own After Effects user folder - no administrator password, nothing
    outside your user folder - and says what it did.
 
+   Run Script File, not "Install ScriptUI Panel...". That command copies the
+   one file you point it at and nothing else, so it would install the
+   installer instead of RotoBridge. If you pick it by mistake the installer
+   says what is missing rather than half-installing.
+
 3. Restart After Effects. RotoBridge is now in the menu:
 
        Window > RotoBridge.jsx
