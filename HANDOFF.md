@@ -3,7 +3,7 @@
 Scratch record of where things stand. Detail lives in `prd.md` and
 `test/probe/README.md`; this file only holds what those two do not.
 
-Last updated: 2026-08-27.
+Last updated: 2026-09-02.
 
 ## In progress 2026-08-27: install and bridge-folder UX
 
@@ -38,6 +38,160 @@ Host facts for this work: user's AE user-scripts folder already held a stray
 semantics replace exactly that failure shape. The user offered
 `C:/Users/shann/Documents/dev` for Windows-side installer verification;
 everything authored stays in the repo per the standing rule.
+
+## Open from the beta drop, 2026-09-02
+
+Three tester reports, diagnosed in session, **none of them fixed** and nothing
+committed against any of them. Two are understood well enough to build; the
+third is waiting on a file.
+
+### 1. AE to Nuke: untouched feather and static tangents arrive keyed
+
+Reported as "Nuke is adding keyframes for properties the artist never
+touched". `_write_frame` (`nuke/rotobridge_import.py:233`) keys all four
+members of every control point - `center`, `leftTangent`, `rightTangent`,
+`featherCenter` - at every key frame, whether or not that member ever moves.
+A mask with an animated path and no feather arrives with `featherCenter`
+keyed at every shape key holding (0,0); a translated rectangle gets keys on
+tangent curves that never change. These are independent `AnimCurve`s in Nuke
+(`rotobridge_export._keyed_curves` reads each separately and takes the union),
+so it is invented animation, not a Nuke convention.
+
+The keyless path exists - `_set_static`, line 247 - but is all-or-nothing per
+shape: it fires only when `authored_frames` is empty **and** the dense points
+are identical on every frame, so any real path animation sends the whole
+shape down the keyed route, feather included. The After Effects importer
+decides per property instead (`setSamples` turns a one-sample result into
+`prop.setValue`, `ae/lib/rotobridge_import.jsx:828`); that asymmetry is the
+bug.
+
+**`opc` / `fx` / `fy` are not affected and were checked, not assumed.**
+`_collapse` (line 452) reduces a constant to one sample and
+`write_attr_static` writes it with no keys. Run against
+`test/golden/ae_scene.rbj`, the five untouched shapes give `opc_keys=1`,
+`fx_keys=1` at tolerance 0.5 and inf; the one shape whose artist ramped both
+gives 2 and 2. Tolerance 0 keys every frame of them by design (prd.md
+section 8), so **rule that out first on any report of keyed opacity**.
+
+**Fix**: move the static decision from per-shape to per-member. For each
+member of each point, if its value is identical on every frame in range, one
+`setPosition` and exclude it from `_write_frame` / `_remove_frame` /
+`_apply_key_types`. Same rule catches the tangent noise. Use **exact
+equality, not a tolerance**: `measure()` still reads all four members, so a
+member declared static that actually drifts past tolerance makes
+`drift.correct` burn all eight passes adding keys `_write_frame` refuses to
+apply, then emit a `drift-residual` warning naming a frame nothing can fix.
+
+**Rejected design, with the reason, so it is not relitigated.** The user
+proposed a flag from the AE side: "if AE reports no keys on feather, do not
+write feather keys in Nuke". It does not work, twice over.
+
+- **AE has no feather keyframes to report.** The per-vertex feather is not a
+  keyable Property. `featherRadii` / `featherSegLocs` / `featherRelSegLocs`
+  are fields of the `Shape` the mask path property evaluates to
+  (`ae/lib/rotobridge_export.jsx:182`), so they ride the path's keys.
+  `authored_attributes` covers only `opacity` and `maskFeather`, the uniform
+  one (lines 1010-1022). Any such flag would be a cached data test, not
+  provenance.
+- **It would be actively wrong on a rotating or scaling layer.**
+  `pointsAtFrame` (line 130) bakes vertices and tangents through the layer
+  affine, and Nuke's `featherCenter` is `feather_vector(scalar, normal)`
+  (`core/geom.py:200`) computed from that frame's baked points. The radius
+  holds still while the offset **vector** rotates with the layer. AE would
+  honestly report "feather never keyed" and honouring it would pin the
+  feather to frame 0's direction while the shape turns underneath it, with
+  the drift pass unable to rescue it for the reason above.
+
+The data test handles that case correctly on its own: the offsets differ
+frame to frame, so it keys them.
+
+**Blocked on, and the user chose to skip it**: nothing has measured a *mixed*
+control point in 17.1v1 - `center` keyed while `featherCenter` is keyless -
+or whether `removePositionKey` throws on a keyless curve during the sweep.
+`probe_nuke_static.py` and `_static2.py` measured fully keyless points only.
+The agreed fallback if it is built without the probe: wrap the keyless
+`featherCenter` in a try/except falling back to the current always-key path,
+and guard `_remove_frame` so it only removes from members that are keyed.
+
+### 2. Nuke to AE: a bare `ease` lands as a speed-0 bezier
+
+Reported as "visually correct, but the linear move makes eased keyframes with
+zero velocity". A Nuke source writes `interp: {"in": "ease", "out": "ease"}`
+with no `ease` parameters, ever (`nuke/rotobridge_export.py:243`). Spec 10.3
+defines that as "smooth, parameters unknown, rely on the drift pass".
+
+**Three routes land there**, and they are not equivalent:
+
+1. Control points carrying Nuke's default cubic or the unset 256 sentinel
+   (`interp.sides_from_nuke`, last line).
+2. The **pinned range endpoints**: `_sparse_keys` does
+   `union.add(first); union.add(last)` and those frames have no
+   control-point vote, so `reduce_sides([])` returns ease/ease.
+3. **Transform key frames** folded into the union by
+   `_transform_key_frames`. No control point is keyed there either, so again
+   no votes, again ease/ease. A perfectly linear transform move exports as
+   "smooth, unknown", because the exporter takes the transform's key *times*
+   and never reads that knob's interpolation.
+
+In After Effects, `applyKeyInterp` (`ae/lib/rotobridge_import.jsx:349`) sees
+no `ease` member, skips `setTemporalEaseAtKey`, and sets BEZIER/BEZIER via
+`side_to_ae`. The key still holds AE's stored default temporal ease of speed
+0 / influence 16.667, and the type flip activates it. `easeFor` (line 343)
+spells the same zero out loud for the case where an `ease` block is present
+with a bare side: `new KeyframeEase(0, AE_DEFAULT_INFLUENCE)`.
+
+**It is not merely lossy, it bends the curve the wrong way, and there is a
+measurement.** Case 63, quoted inside `interp.sides_from_nuke`: on a cubic
+segment Nuke evaluates **0.6759** at eval(25) where the straight line reads
+**0.4898**. Nuke's cubic sits *above* the line early, so it leaves the key
+faster than linear; AE's speed-0 bezier sits *below* it, easing out of zero.
+The drift pass then pays for the mismatch in corrective keys, which is
+exactly why the report says "visually correct" and "too many keyframes" in
+the same breath.
+
+**Fix**: for a key whose **both** sides are bare `ease`, set temporal
+auto-bezier (`setTemporalAutoBezierAtKey`) instead of leaving AE's stored
+speed-0 ease. Auto-bezier is per key, not per side, so a mixed pair such as
+`in: ease, out: hold` must keep its explicit types. Auto-bezier is AE's
+analogue of a smooth non-zero velocity through the key, which is the shape of
+Nuke's cubic. Expect the corrective key count to fall as a side effect.
+
+**Sharper fix available for routes 2 and 3**: those keys are not "smooth",
+they are *unknown*. For a transform-driven move the Nuke exporter could read
+the transform curve's own interpolation and write `linear` honestly. Unprobed.
+
+### 3. Nuke to Nuke: three keys out, twenty back (needs the file)
+
+Screenshot of a dope sheet: `Ellipse_Smooth` exported with keys at 1001,
+1010, 1020 and re-imported with a key on every frame of 1001-1020. **This is
+the path the code claims is exact** - `interp.to_nuke({"in": "ease",
+"out": "ease"})` returns `(NUKE_CUBIC, True)`, no warning - so one of the
+assumptions broke. Candidates, in order:
+
+1. **Tolerance 0.** The panel field says "0 = every frame" and
+   `drift.correct` short-circuits at line 70. Twenty frames, twenty keys, by
+   definition. Default is 0.5, so it has to have been typed.
+2. **The shape was animated by a transform rather than by its control
+   points** - route 3 of finding 2 above. The exporter bakes the transform
+   into the points, the destination has to rebuild the motion by
+   cubic-interpolating control points, and under rotation or scale the points
+   travel arcs that a cubic through three samples misses badly. The drift
+   pass subdivides to 0.5 px and can land on every frame. The dope sheet
+   hints at this: the source node's `Ellipse_Smooth` shows a keyed `curve`
+   row while its `Ellipse_Smooth_Nuke` shows keyed `curve_points`.
+3. `interp-mixed`, which announces itself in the export warnings.
+
+**The evidence is already on disk** and separates all three: the import
+dialog line, mirrored into the `.rotobridge.txt` record beside the saved
+`.nk`, reads `<name>: N authored key(s), M corrective; worst drift X px at
+frame Y`. `20 authored, 0 corrective` with no drift clause is candidate 1;
+`0 authored, 19 corrective` is candidate 2. The `.rbj` confirms it
+independently: `authored_frames` empty or much shorter than `keys` means the
+animation came from a transform, since it is the control-point union taken
+*before* the transform frames are folded in.
+
+Also unexplained in that screenshot: the export node holds two shapes and the
+import node one. Possibly just the crop.
 
 Previous update: 2026-08-22. **Phase 4 is complete and has met both hosts.**
 
