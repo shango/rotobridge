@@ -1835,6 +1835,32 @@ class TestGoldenAeSceneViaNuke(unittest.TestCase):
                              [k["frame"] for k in before["keys"]],
                              after["name"])
 
+    def test_the_unfeathered_shapes_came_back_unfeathered(self):
+        # Nuke gives every control point a featherCenter, so a shape nobody
+        # feathered has an all-zero one rather than none at all. The exporter
+        # has to report that as feather_model "none" (`any_feather` never
+        # flips) and write no `feather` member anywhere, because under "none"
+        # a written zero cannot be told from an authored zero-width point.
+        # This is real Nuke output, so it pins the export half of "a Nuke roto
+        # with no feather must not switch on After Effects' feather tool"
+        # without needing a licence to run. The import half is
+        # test_ae_import.js, "leaves the mask's feather arrays empty".
+        self.assertEqual(
+            dict((s["name"], s["feather_model"]) for s in self.doc["shapes"]),
+            {"linear": "none", "eased": "none", "mixed": "none",
+             "feathered": "per_point", "offgrid": "none", "opened": "none"})
+        for shape in self.doc["shapes"]:
+            if shape["feather_model"] != "none":
+                continue
+            for at, record in shape["frames"].items():
+                for i, point in enumerate(record["points"]):
+                    self.assertNotIn("feather", point,
+                                     "%s frame %s point %d" % (shape["name"],
+                                                               at, i))
+                    self.assertNotIn("feather_offset", point,
+                                     "%s frame %s point %d" % (shape["name"],
+                                                               at, i))
+
     def test_the_open_spline_came_back_open(self):
         opened = [s for s in self.doc["shapes"] if s["name"] == "opened"][0]
         self.assertFalse(opened["closed"])

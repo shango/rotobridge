@@ -922,10 +922,16 @@ describe("options", function () {
 describe("import per-point feather", function () {
     var LAST = 24;
 
-    function featherDoc(radiusAt) {
+    function featherDoc(radiusAt, model) {
         /* Four vertices that never move, so geometry contributes nothing to
          * the deviation and anything the drift pass reacts to is the feather.
-         * `radiusAt(frame)` returns the four signed radii. */
+         * `radiusAt(frame)` returns the four signed radii.
+         *
+         * `model` defaults to "per_point". Pass "none" for a shape whose
+         * source never had feather at all: the format then forbids a
+         * `feather` member on any point, because a zero written under "none"
+         * cannot be told from an authored zero-width point. */
+        model = model || "per_point";
         var frames = {};
         for (var f = 0; f <= LAST; f++) {
             var radii = radiusAt(f);
@@ -933,7 +939,8 @@ describe("import per-point feather", function () {
             for (var i = 0; i < 4; i++) {
                 pts[i] = { "c": [100 + (i === 1 || i === 2 ? 200 : 0),
                                  100 + (i >= 2 ? 200 : 0)],
-                           "in": [0, 0], "out": [0, 0], "feather": radii[i] };
+                           "in": [0, 0], "out": [0, 0] };
+                if (model === "per_point") { pts[i]["feather"] = radii[i]; }
             }
             frames[String(f)] = { "opacity": 1.0, "feather_uniform": [0, 0],
                                   "points": pts };
@@ -945,7 +952,7 @@ describe("import per-point feather", function () {
                         "height": 1080, "pixel_aspect": 1, "fps": 24 },
             "range": [0, LAST], "warnings": [],
             "shapes": [{ "name": "feathered", "closed": true, "blend": "union",
-                         "feather_model": "per_point",
+                         "feather_model": model,
                          "feather_falloff": "smooth",
                          "frames": frames,
                          "keys": [{ "frame": 0, "interp": sides },
@@ -995,6 +1002,30 @@ describe("import per-point feather", function () {
         var between = prop.valueAtTime(6 / 24, false).featherRadii;
         eq(onKey.join(","), "30,-15,0,12", "the written order, on a key");
         eq(between.join(","), "30,0,12,-15", "regrouped, between keys");
+    });
+
+    it("leaves the mask's feather arrays empty when the file says none",
+       function () {
+        // Nuke to After Effects. Every Nuke control point owns a
+        // featherCenter, so "no feather" there is an all-zero one, which the
+        // Nuke exporter reports as feather_model "none" (`any_feather` never
+        // flips). What must not happen at this end is the mask arriving with
+        // After Effects' feather tool active on it - not even with
+        // zero-width points, which are a thing an artist can author and which
+        // the file would have spelled "per_point". `makeShape` leaves all
+        // seven Shape feather members unassigned under "none", so a fresh
+        // Shape keeps them empty.
+        //
+        // The control is the sibling tests above: they import the same four
+        // vertices as "per_point" and read four radii back, so this is not
+        // passing because the importer never writes feather.
+        var host = importInto(featherDoc(STATIC, "none"),
+                              { workAreaDuration: (LAST + 1) / 24 });
+        var got = host.comp.layer(1)._masks[0]
+                      .property("ADBE Mask Shape").valueAtTime(0, false);
+        eq((got.featherRadii || []).length, 0, "featherRadii");
+        eq((got.featherSegLocs || []).length, 0, "featherSegLocs");
+        eq((got.featherRelSegLocs || []).length, 0, "featherRelSegLocs");
     });
 
     it("keeps each radius with its own anchor through the reorder", function () {

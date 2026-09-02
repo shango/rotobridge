@@ -454,6 +454,35 @@ def main():
         failures.append("baked transform travel was %.3f, wanted 400" % travel)
     say()
 
+    say("--- a shape with no per-point feather ---")
+    say("  Nuke gives every control point a featherCenter, so 'no feather' is")
+    say("  an all-zero one, not an absent one. It has to export as")
+    say("  feather_model 'none' with no `feather` member anywhere: under")
+    say("  'none' a written zero cannot be told from an authored zero-width")
+    say("  point, and an importer meeting one would switch After Effects'")
+    say("  feather tool on for a shape nobody feathered.")
+    plain_node, _ = build_source(feather=False)
+    plain = rbx.export_node(plain_node, FIRST, LAST, 2048, 858, 1.0, 24.0)[
+        "shapes"][0]
+    say("  feather_model = %s" % plain["feather_model"])
+    if plain["feather_model"] != "none":
+        failures.append("a shape with no feather exported feather_model %r, "
+                        "wanted 'none'" % plain["feather_model"])
+    stray = [(at, i)
+             for at, record in sorted(plain["frames"].items())
+             for i, point in enumerate(record["points"])
+             if "feather" in point or "feather_offset" in point]
+    if stray:
+        failures.append("%d point(s) carry a feather member under 'none', "
+                        "first at frame %s point %d"
+                        % (len(stray), stray[0][0], stray[0][1]))
+    # The uniform feather is a different layer and `build_source` still keys
+    # it here, so this also says what feather_model is NOT describing.
+    say("  uniform feather still animates: %s -> %s"
+        % (plain["frames"][str(FIRST)]["feather_uniform"],
+           plain["frames"][str(LAST)]["feather_uniform"]))
+    say()
+
     say("--- Phase 3: the drift bound, acceptance criterion 4 ---")
     say("  Nuke to Nuke does not drift - the same keys re-evaluate to the")
     say("  same curve, which is the round trip working. So this thins the")
